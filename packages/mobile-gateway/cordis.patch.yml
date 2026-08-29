@@ -1,0 +1,4 @@
+- insert:
+    - id: dsh-mobile-v1-gateway
+      name: 'dsh-mobile-v1-gateway'
+

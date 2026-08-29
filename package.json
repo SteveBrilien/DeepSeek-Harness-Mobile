@@ -1,0 +1,19 @@
+{
+  "name": "dsh-mobile-app-v1",
+  "version": "1.0.0-alpha.2",
+  "private": true,
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "build:web": "pnpm --filter @dsh-mobile/client build",
+    "build:gateway": "pnpm --filter dsh-mobile-v1-gateway check",
+    "dev:fixture": "node --watch scripts/fixture-gateway.mjs",
+    "sync:assets": "node scripts/sync-client.mjs",
+    "build": "pnpm run build:web && pnpm run sync:assets && pnpm run build:gateway",
+    "test": "pnpm --filter dsh-mobile-v1-gateway test && pnpm --filter @dsh-mobile/client test",
+    "check": "pnpm -r check",
+    "package:gateway": "node scripts/package-gateway.mjs",
+    "bootstrap:android": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-android.ps1",
+    "build:android": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-android.ps1",
+    "clean": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/clean.ps1"
+  }
+}

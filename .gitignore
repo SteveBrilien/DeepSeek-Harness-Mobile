@@ -1,0 +1,25 @@
+node_modules/
+.cache/pnpm-store/
+.cache/gradle/
+.cache/android-sdk/
+packages/mobile-client/dist/
+packages/mobile-gateway/public/*
+!packages/mobile-gateway/public/.gitkeep
+android/app/src/main/assets/www/*
+!android/app/src/main/assets/www/.gitkeep
+android/.gradle/
+android/build/
+android/app/build/
+artifacts/apk/**/*.apk
+artifacts/apk/**/*.aab
+artifacts/reports/*.tmp
+*.jks
+*.keystore
+*.properties.local
+.env
+.env.*
+!.env.example
+
+
+# whole cache tree (build/download caches, not source)
+.cache/

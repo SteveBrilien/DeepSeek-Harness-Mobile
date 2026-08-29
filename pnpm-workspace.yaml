@@ -1,0 +1,8 @@
+packages:
+  - packages/*
+
+storeDir: .cache/pnpm-store
+virtualStoreDir: node_modules/.pnpm
+autoInstallPeers: true
+minimumReleaseAgeExclude:
+  - '@vitejs/plugin-react@6.1.1'
