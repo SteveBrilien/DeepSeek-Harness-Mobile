@@ -90,3 +90,13 @@ Files:
 - `release/SHA256SUMS`
 - `release/update.json`
 - `README.md`
+
+## 2026-09-09T09:20:31.294706Z — DOCS: Add current project handoff and refresh active next-actions
+
+Added docs/HANDOFF.md as the canonical continuation handoff for 0.3.0-alpha.3, replacing stale assumptions with current architecture, release artifact, Runtime installer/mirror/cache/crash-containment state, validation status, target-device E2E sequence, security invariants, important file ownership, and current infrastructure. Rewrote docs/NEXT_ACTIONS.md around target OriginOS alpha.3 validation, resource reuse/non-destructive A/B update tests, installer resilience, and release promotion. Updated README to direct future agents to HANDOFF and NEXT_ACTIONS first.
+
+Files:
+- `docs/HANDOFF.md`
+- `docs/NEXT_ACTIONS.md`
+- `README.md`
+- `CHANGELOG.md`

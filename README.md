@@ -95,8 +95,12 @@ When a newer `versionCode` exists, it downloads the HTTPS APK, verifies its SHA-
 
 Future agents should read `AGENTS.md` before changing architecture, storage formats, prompt/context injection, privilege behavior, DSH compatibility seams, or update/recovery mechanisms.
 
+For continuation work, read `docs/HANDOFF.md` first and then `docs/NEXT_ACTIONS.md` before starting implementation.
+
 Primary documents:
 
+- `docs/HANDOFF.md`
+- `docs/NEXT_ACTIONS.md`
 - `docs/ARCHITECTURE.md`
 - `docs/DEVELOPMENT_RULES.md`
 - `docs/DSH_COMPATIBILITY.md`
