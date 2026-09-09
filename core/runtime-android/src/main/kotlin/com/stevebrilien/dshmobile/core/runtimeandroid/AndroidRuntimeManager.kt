@@ -77,12 +77,18 @@ class AndroidRuntimeManager(
                 ),
                 ComponentHealth(
                     RuntimeComponent.PLUGINS,
-                    if (dshInstalled) HealthState.UNKNOWN else HealthState.UNKNOWN,
+                    HealthState.UNKNOWN,
                     "Plugin health is owned by DSH and will be queried after startup",
                 ),
             ),
         )
     }
+
+    fun inspectResources(): RuntimeResourceInventory = installer.inspectResources()
+
+    fun installSources(): List<RuntimeInstallSource> =
+        listOf(RuntimeInstallSource("auto", "自动选择", "并行测速后选择当前最快可用源")) +
+            RuntimePins.ALPINE_MIRRORS.map { RuntimeInstallSource(it.id, it.name, it.baseUrl) }
 
     override suspend fun start(): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
@@ -121,12 +127,13 @@ class AndroidRuntimeManager(
 
     suspend fun stageDefault(
         targetSlot: RuntimeSlot = inactiveSlot(),
-        progress: (String) -> Unit = {},
+        preferredSourceId: String = "auto",
+        progress: (RuntimeInstallProgress) -> Unit = {},
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val active = stateStore.read().activeSlot
             require(targetSlot != active) { "Refusing to stage over the active runtime slot" }
-            installer.stage(targetSlot, progress)
+            installer.stage(targetSlot, preferredSourceId, progress)
         }
     }
 

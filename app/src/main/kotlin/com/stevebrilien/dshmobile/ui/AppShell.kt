@@ -1,9 +1,14 @@
 package com.stevebrilien.dshmobile.ui
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
@@ -46,6 +51,7 @@ import com.stevebrilien.dshmobile.core.recovery.NativeRecoveryShell
 import com.stevebrilien.dshmobile.core.recovery.ProjectRegistry
 import com.stevebrilien.dshmobile.core.recovery.RecoveryVault
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 private enum class MainSection(
@@ -66,28 +72,50 @@ fun DshMobileApp() {
     val vault = remember(context) { RecoveryVault(context) }
     val onboardingStore = remember(context) { OnboardingStateStore(context) }
     var onboardingComplete by remember(onboardingStore) { mutableStateOf(onboardingStore.isComplete()) }
+    var showLaunchSplash by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        delay(620)
+        showLaunchSplash = false
+    }
 
     DshMobileTheme(themeMode) {
-        if (!onboardingComplete) {
-            OnboardingScreen(
-                vault = vault,
-                themeMode = themeMode,
-                onThemeChange = setThemeMode,
-                onComplete = {
-                    onboardingStore.complete()
-                    onboardingComplete = true
-                },
-            )
-        } else {
-            DshMobileShell(
-                vault = vault,
-                themeMode = themeMode,
-                onThemeChange = setThemeMode,
-                onRunOnboarding = {
-                    onboardingStore.reset()
-                    onboardingComplete = false
-                },
-            )
+        val colors = LocalDshColors.current
+        Box(Modifier.fillMaxSize().background(colors.base)) {
+            AnimatedVisibility(
+                visible = !showLaunchSplash,
+                enter = fadeIn(tween(220)),
+                exit = fadeOut(tween(120)),
+            ) {
+                if (!onboardingComplete) {
+                    OnboardingScreen(
+                        vault = vault,
+                        themeMode = themeMode,
+                        onThemeChange = setThemeMode,
+                        onComplete = {
+                            onboardingStore.complete()
+                            onboardingComplete = true
+                        },
+                    )
+                } else {
+                    DshMobileShell(
+                        vault = vault,
+                        themeMode = themeMode,
+                        onThemeChange = setThemeMode,
+                        onRunOnboarding = {
+                            onboardingStore.reset()
+                            onboardingComplete = false
+                        },
+                    )
+                }
+            }
+            AnimatedVisibility(
+                visible = showLaunchSplash,
+                enter = fadeIn(tween(120)),
+                exit = fadeOut(tween(220)),
+            ) {
+                DshLaunchSplash(Modifier.fillMaxSize())
+            }
         }
     }
 }
@@ -121,29 +149,38 @@ private fun DshMobileShell(
             .fillMaxSize()
             .statusBarsPadding()
 
-        when (selected) {
-            MainSection.Chat -> ChatScreen(modifier = contentModifier)
-            MainSection.Projects -> ProjectsScreen(
-                registry = projectRegistry,
-                modifier = contentModifier,
-            )
-            MainSection.Files -> FilesScreen(
-                fileManager = fileManager,
-                modifier = contentModifier,
-            )
-            MainSection.Terminal -> TerminalScreen(
-                shell = recoveryShell,
-                fileManager = fileManager,
-                modifier = contentModifier,
-            )
-            MainSection.More -> RecoveryScreen(
-                vault = vault,
-                controller = recoveryController,
-                themeMode = themeMode,
-                onThemeChange = onThemeChange,
-                onRunOnboarding = onRunOnboarding,
-                modifier = contentModifier,
-            )
+        AnimatedContent(
+            targetState = selected,
+            transitionSpec = {
+                (fadeIn(tween(170)) + slideInHorizontally(tween(190)) { it / 18 }) togetherWith
+                    (fadeOut(tween(120)) + slideOutHorizontally(tween(150)) { -it / 24 })
+            },
+            label = "main-section",
+        ) { section ->
+            when (section) {
+                MainSection.Chat -> ChatScreen(modifier = contentModifier)
+                MainSection.Projects -> ProjectsScreen(
+                    registry = projectRegistry,
+                    modifier = contentModifier,
+                )
+                MainSection.Files -> FilesScreen(
+                    fileManager = fileManager,
+                    modifier = contentModifier,
+                )
+                MainSection.Terminal -> TerminalScreen(
+                    shell = recoveryShell,
+                    fileManager = fileManager,
+                    modifier = contentModifier,
+                )
+                MainSection.More -> RecoveryScreen(
+                    vault = vault,
+                    controller = recoveryController,
+                    themeMode = themeMode,
+                    onThemeChange = onThemeChange,
+                    onRunOnboarding = onRunOnboarding,
+                    modifier = contentModifier,
+                )
+            }
         }
 
         if (navigationExpanded) {

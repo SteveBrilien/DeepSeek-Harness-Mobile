@@ -1,13 +1,39 @@
 package com.stevebrilien.dshmobile.core.runtimeandroid
 
+internal data class AlpineMirror(
+    val id: String,
+    val name: String,
+    val baseUrl: String,
+)
+
+internal data class NpmMirror(
+    val id: String,
+    val name: String,
+    val registryUrl: String,
+)
+
 internal object RuntimePins {
     const val RUNTIME_MANIFEST_VERSION = 1
 
     const val ALPINE_VERSION = "3.24.1"
-    const val ALPINE_ROOTFS_URL =
-        "https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/aarch64/alpine-minirootfs-3.24.1-aarch64.tar.gz"
+    const val ALPINE_ROOTFS_FILE = "alpine-minirootfs-3.24.1-aarch64.tar.gz"
     const val ALPINE_ROOTFS_SHA256 =
         "f55a90f69052c5bd6f92cb09a8f47065970830b194c917a006fb94028e721259"
+
+    val ALPINE_MIRRORS = listOf(
+        AlpineMirror("official", "Alpine 官方 CDN", "https://dl-cdn.alpinelinux.org/alpine"),
+        AlpineMirror("tuna", "清华 TUNA", "https://mirrors.tuna.tsinghua.edu.cn/alpine"),
+        AlpineMirror("ustc", "中科大 USTC", "https://mirrors.ustc.edu.cn/alpine"),
+        AlpineMirror("aliyun", "阿里云", "https://mirrors.aliyun.com/alpine"),
+    )
+
+    val NPM_MIRRORS = listOf(
+        NpmMirror("npm-official", "npm 官方", "https://registry.npmjs.org"),
+        NpmMirror("npmmirror", "npmmirror", "https://registry.npmmirror.com"),
+    )
+
+    fun alpineRootfsUrl(mirror: AlpineMirror): String =
+        "${mirror.baseUrl}/v3.24/releases/aarch64/$ALPINE_ROOTFS_FILE"
 
     const val PROOT_VERSION = "5.1.107.92"
     const val PROOT_PACKAGE_SHA256 =

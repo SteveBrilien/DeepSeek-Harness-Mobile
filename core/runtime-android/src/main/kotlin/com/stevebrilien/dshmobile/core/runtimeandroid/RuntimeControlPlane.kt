@@ -15,12 +15,21 @@ class RuntimeControlPlane(context: Context) {
 
     fun health(): RuntimeHealth = runBlocking { manager.health() }
 
-    fun installDefault(progress: (String) -> Unit = {}): Result<RuntimeSlot> = runBlocking {
-        val target = manager.inactiveSlot()
-        manager.stageDefault(target, progress).getOrThrow()
-        manager.verify(target).getOrThrow()
-        manager.activate(target).getOrThrow()
-        Result.success(target)
+    fun inspectResources(): RuntimeResourceInventory = manager.inspectResources()
+
+    fun installSources(): List<RuntimeInstallSource> = manager.installSources()
+
+    fun installDefault(
+        preferredSourceId: String = "auto",
+        progress: (RuntimeInstallProgress) -> Unit = {},
+    ): Result<RuntimeSlot> = runBlocking {
+        runCatching {
+            val target = manager.inactiveSlot()
+            manager.stageDefault(target, preferredSourceId, progress).getOrThrow()
+            manager.verify(target).getOrThrow()
+            manager.activate(target).getOrThrow()
+            target
+        }
     }
 
     fun start(): Result<Unit> = runBlocking { manager.start() }
@@ -36,9 +45,10 @@ class RuntimeControlPlane(context: Context) {
     }
 
     fun rollback(): Result<Unit> = runBlocking {
-        manager.rollback().getOrThrow()
-        manager.start().getOrThrow()
-        Result.success(Unit)
+        runCatching {
+            manager.rollback().getOrThrow()
+            manager.start().getOrThrow()
+        }
     }
 
     fun logTail(maxChars: Int = 32_000): String {

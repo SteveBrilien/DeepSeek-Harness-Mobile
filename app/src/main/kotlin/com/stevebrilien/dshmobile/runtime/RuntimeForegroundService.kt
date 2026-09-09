@@ -13,7 +13,9 @@ import com.stevebrilien.dshmobile.MainActivity
 import com.stevebrilien.dshmobile.core.recovery.RecoveryBackupManager
 import com.stevebrilien.dshmobile.core.recovery.SecretVaultManager
 import com.stevebrilien.dshmobile.core.runtimeandroid.RuntimeControlPlane
+import com.stevebrilien.dshmobile.core.runtimeandroid.RuntimeInstallProgress
 import java.io.File
+import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -21,14 +23,16 @@ class RuntimeForegroundService : Service() {
     companion object {
         private const val CHANNEL_ID = "dsh_runtime"
         private const val NOTIFICATION_ID = 3108
+        private const val EXTRA_SOURCE_ID = "runtime_source_id"
 
         const val ACTION_INSTALL = "com.stevebrilien.dshmobile.runtime.INSTALL"
         const val ACTION_START = "com.stevebrilien.dshmobile.runtime.START"
         const val ACTION_STOP = "com.stevebrilien.dshmobile.runtime.STOP"
         const val ACTION_ROLLBACK = "com.stevebrilien.dshmobile.runtime.ROLLBACK"
 
-        fun dispatch(context: Context, action: String) {
+        fun dispatch(context: Context, action: String, preferredSourceId: String? = null) {
             val intent = Intent(context, RuntimeForegroundService::class.java).setAction(action)
+            preferredSourceId?.let { intent.putExtra(EXTRA_SOURCE_ID, it) }
             context.startForegroundService(intent)
         }
     }
@@ -38,6 +42,7 @@ class RuntimeForegroundService : Service() {
     private lateinit var control: RuntimeControlPlane
     private lateinit var secretVault: SecretVaultManager
     private lateinit var recoveryBackups: RecoveryBackupManager
+    private lateinit var telemetry: RuntimeInstallTelemetry
     private lateinit var credentialFile: File
     private var credentialObserver: FileObserver? = null
 
@@ -46,6 +51,7 @@ class RuntimeForegroundService : Service() {
         control = RuntimeControlPlane(applicationContext)
         secretVault = SecretVaultManager(applicationContext)
         recoveryBackups = RecoveryBackupManager(applicationContext)
+        telemetry = RuntimeInstallTelemetry(applicationContext)
         credentialFile = File(filesDir, "persistent/dsh-home/.credentials.yaml")
         credentialFile.parentFile?.let { it.mkdirs() }
         restorePersistentDshHomeBestEffort()
@@ -56,16 +62,17 @@ class RuntimeForegroundService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action ?: ACTION_START
+        val preferredSourceId = intent?.getStringExtra(EXTRA_SOURCE_ID) ?: "auto"
         startForeground(NOTIFICATION_ID, notification("本地 Runtime 服务已启动"))
         if (!busy.compareAndSet(false, true)) {
-            updateNotification("已有 Runtime 操作正在进行")
+            updateNotification("已有 Runtime 操作正在进行", telemetry.snapshot())
             return START_STICKY
         }
 
         executor.execute {
             try {
                 when (action) {
-                    ACTION_INSTALL -> installAndStart()
+                    ACTION_INSTALL -> installAndStart(preferredSourceId)
                     ACTION_START -> runResult("正在启动 DSH Runtime", "DSH Runtime 正在运行") { control.start() }
                     ACTION_STOP -> {
                         runResult("正在停止 DSH Runtime", "DSH Runtime 已停止") { control.stop() }
@@ -76,6 +83,9 @@ class RuntimeForegroundService : Service() {
                     ACTION_ROLLBACK -> runResult("正在回滚 Runtime", "已恢复上一 Runtime slot") { control.rollback() }
                     else -> updateNotification("未知 Runtime 操作")
                 }
+            } catch (t: Throwable) {
+                if (action == ACTION_INSTALL) runCatching { telemetry.fail(t) }
+                updateNotification("Runtime 操作失败：${shortMessage(t)}", if (action == ACTION_INSTALL) telemetry.snapshot() else null)
             } finally {
                 busy.set(false)
             }
@@ -93,15 +103,35 @@ class RuntimeForegroundService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun installAndStart() {
-        updateNotification("正在准备 Runtime 安装")
-        val install = control.installDefault { stage -> updateNotification(stage) }
+    private fun installAndStart(preferredSourceId: String) {
+        runCatching { telemetry.begin(preferredSourceId) }
+        updateNotification("正在准备 Runtime 安装", telemetry.snapshot())
+        var lastNotificationAt = 0L
+        var lastPhase = ""
+        val install = control.installDefault(preferredSourceId) { progress ->
+            runCatching { telemetry.update(progress) }
+            val now = System.currentTimeMillis()
+            if (progress.phase != lastPhase || now - lastNotificationAt >= 500L) {
+                lastPhase = progress.phase
+                lastNotificationAt = now
+                updateNotification(progress.message, telemetry.snapshot())
+            }
+        }
         install.onFailure {
-            updateNotification("Runtime 安装失败：${shortMessage(it)}")
+            runCatching { telemetry.fail(it) }
+            updateNotification("Runtime 安装失败：${shortMessage(it)}", telemetry.snapshot())
             return
         }
-        updateNotification("Runtime 已安装到 slot ${install.getOrNull()?.name}，正在启动 DSH")
-        runResult("正在启动 DSH Runtime", "DSH Runtime 已安装并运行") { control.start() }
+        runCatching { telemetry.update(RuntimeInstallProgress("start", "Runtime 已安装，正在启动 DSH", 99)) }
+        updateNotification("Runtime 已安装到 slot ${install.getOrNull()?.name}，正在启动 DSH", telemetry.snapshot())
+        val started = control.start()
+        started.onSuccess {
+            runCatching { telemetry.succeed("DSH Runtime 已安装并运行") }
+            updateNotification("DSH Runtime 已安装并运行", telemetry.snapshot())
+        }.onFailure {
+            runCatching { telemetry.fail(it) }
+            updateNotification("Runtime 已安装，但 DSH 启动失败：${shortMessage(it)}", telemetry.snapshot())
+        }
     }
 
     private fun runResult(
@@ -168,30 +198,47 @@ class RuntimeForegroundService : Service() {
                 "DSH 本地 Runtime",
                 NotificationManager.IMPORTANCE_LOW,
             ).apply {
-                description = "保持手机本地 DeepSeek Harness Runtime 可用。"
+                description = "保持手机本地 DeepSeek Harness Runtime 可用，并同步安装进度。"
                 setShowBadge(false)
             },
         )
     }
 
-    private fun updateNotification(text: String) {
+    private fun updateNotification(text: String, snapshot: RuntimeInstallSnapshot? = null) {
         getSystemService(NotificationManager::class.java)
-            .notify(NOTIFICATION_ID, notification(text))
+            .notify(NOTIFICATION_ID, notification(text, snapshot))
     }
 
-    private fun notification(text: String): Notification {
+    private fun notification(text: String, snapshot: RuntimeInstallSnapshot? = null): Notification {
         val launch = PendingIntent.getActivity(
             this,
             0,
             Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        return Notification.Builder(this, CHANNEL_ID)
+        val builder = Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle("DeepSeek Harness Mobile")
             .setContentText(text)
             .setContentIntent(launch)
-            .setOngoing(true)
-            .build()
+            .setOngoing(snapshot?.running != false)
+            .setOnlyAlertOnce(true)
+        snapshot?.percent?.let { builder.setProgress(100, it.coerceIn(0, 100), false) }
+        snapshot?.let {
+            val parts = buildList {
+                if (!it.sourceName.isNullOrBlank()) add(it.sourceName)
+                if (it.elapsedMillis > 0L) add("已用 ${formatDuration(it.elapsedMillis)}")
+                it.etaMillis?.takeIf { eta -> eta > 0L }?.let { eta -> add("预计剩余 ${formatDuration(eta)}") }
+            }
+            if (parts.isNotEmpty()) builder.setSubText(parts.joinToString(" · "))
+        }
+        return builder.build()
+    }
+
+    private fun formatDuration(millis: Long): String {
+        val seconds = (millis / 1000L).coerceAtLeast(0L)
+        val minutes = seconds / 60L
+        val rest = seconds % 60L
+        return if (minutes > 0L) String.format(Locale.US, "%d:%02d", minutes, rest) else "${rest}s"
     }
 }

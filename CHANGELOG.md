@@ -60,3 +60,23 @@ Files:
 - `docs/DSH_COMPATIBILITY.md`
 - `docs/adr/0006-cache-stable-mobile-environment-context.md`
 - `docs/adr/0007-single-terminal-multiple-execution-domains.md`
+
+## 2026-09-09T09:10:15.553635Z — UPDATE: Polish first-run UX and harden Runtime installation
+
+Refined onboarding hierarchy and bottom actions, corrected launcher icon safe-area cropping, added official DeepSeek Harness fish branding, animated page/action feedback, Runtime install progress/log/elapsed/ETA telemetry with notification sync, multi-mirror Alpine/npm probing and automatic fallback, reusable local/Recovery-Vault rootfs cache discovery, existing Runtime version inventory and non-destructive A/B update prompt, and foreground-service exception containment so install failures are surfaced instead of crashing the app. Version bumped to 0.3.0-alpha.3 / code 4. Validation on the development host: android_debug succeeded, android_lint succeeded, stable signing certificate verification succeeded, git diff check and new XML parse checks passed. Device E2E is still pending because no ADB device is currently connected.
+
+Files:
+- `app/build.gradle.kts`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/runtime/RuntimeForegroundService.kt`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/runtime/RuntimeInstallTelemetry.kt`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/AppShell.kt`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/Branding.kt`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/DshComponents.kt`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/OnboardingScreen.kt`
+- `app/src/main/res/drawable/ic_deepseek_fish_mark.xml`
+- `app/src/main/res/drawable/ic_dsh_fish_foreground.xml`
+- `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/AndroidRuntimeManager.kt`
+- `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/NativeRuntimeInstaller.kt`
+- `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/RuntimeControlPlane.kt`
+- `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/RuntimeInstallModels.kt`
+- `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/RuntimePins.kt`
