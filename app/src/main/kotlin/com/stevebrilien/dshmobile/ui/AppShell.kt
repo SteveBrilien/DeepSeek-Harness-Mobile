@@ -90,8 +90,6 @@ fun DshMobileApp() {
                 if (!onboardingComplete) {
                     OnboardingScreen(
                         vault = vault,
-                        themeMode = themeMode,
-                        onThemeChange = setThemeMode,
                         onComplete = {
                             onboardingStore.complete()
                             onboardingComplete = true

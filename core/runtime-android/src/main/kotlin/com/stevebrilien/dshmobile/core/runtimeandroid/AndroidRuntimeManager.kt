@@ -24,6 +24,11 @@ class AndroidRuntimeManager(
     private val vault: RecoveryVault = RecoveryVault(context.applicationContext),
 ) : RuntimeManager {
     companion object {
+        private const val WEB_AUTH_REQUIRED_MARKER = "dsh web authentication required"
+        private val WEB_LAUNCH_URL = Regex(
+            """dsh web:\s+(http://(?:127\.0\.0\.1|localhost):${RuntimePins.DSH_HTTP_PORT}/\?token=[^\s()]+)""",
+        )
+
         val DEFAULT_COMPONENT_VERSIONS: Map<RuntimeComponent, String> = mapOf(
             RuntimeComponent.LINUX_USERSPACE to "alpine-${RuntimePins.ALPINE_VERSION}",
             RuntimeComponent.NODE to "24",
@@ -46,7 +51,7 @@ class AndroidRuntimeManager(
         val linuxHealthy = rootfs?.let { File(it, "bin/sh").isFile } == true
         val nodeHealthy = rootfs?.let { File(it, "usr/bin/node").isFile } == true
         val dshInstalled = rootfs?.let { File(it, "opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js").isFile } == true
-        val webReady = probeWebHealth()
+        val webReady = probeWebReady()
 
         RuntimeHealth(
             runtimeId = runtimeId,
@@ -92,18 +97,18 @@ class AndroidRuntimeManager(
 
     override suspend fun start(): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            if (probeWebHealth()) return@runCatching
+            if (probeWebReady()) return@runCatching
             val active = stateStore.read().activeSlot ?: error("No active runtime slot. Install a runtime first.")
             installer.verify(active)
             contextSnapshotWriter.writeStableBootSnapshot()
             installer.ensureMobileContextIntegration(active)
             val command =
-                "exec node /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js web " +
+                "exec /usr/local/bin/dsh web " +
                     "--host 127.0.0.1 --port ${RuntimePins.DSH_HTTP_PORT} --no-open"
             val logFile = File(stateStore.layout.logsDir, "dsh-web.log")
             RuntimeProcessRegistry.start(installer.buildProcess(active, command), logFile)
-            repeat(40) {
-                if (probeWebHealth()) return@runCatching
+            repeat(120) {
+                if (probeWebReady()) return@runCatching
                 if (!RuntimeProcessRegistry.isAlive()) {
                     error("DSH process exited before health endpoint became ready. See ${logFile.absolutePath}")
                 }
@@ -165,6 +170,17 @@ class AndroidRuntimeManager(
 
     fun logFile(): File = File(stateStore.layout.logsDir, "dsh-web.log")
 
+    fun isWebReady(): Boolean = probeWebReady()
+
+    fun webLaunchUrl(): String? {
+        val file = logFile()
+        if (!file.isFile) return null
+        val bytes = file.readBytes()
+        val start = (bytes.size - 128 * 1024).coerceAtLeast(0)
+        val tail = String(bytes, start, bytes.size - start, StandardCharsets.UTF_8)
+        return WEB_LAUNCH_URL.findAll(tail).lastOrNull()?.groupValues?.getOrNull(1)
+    }
+
     suspend fun executeShell(
         command: String,
         workingDirectory: String = "/workspace",
@@ -206,15 +222,23 @@ class AndroidRuntimeManager(
         }
     }
 
-    private fun probeWebHealth(): Boolean = runCatching {
-        val connection = (URL("http://127.0.0.1:${RuntimePins.DSH_HTTP_PORT}/healthz").openConnection() as HttpURLConnection).apply {
-            connectTimeout = 500
-            readTimeout = 500
+    private fun probeWebReady(): Boolean = runCatching {
+        val connection = (URL("http://127.0.0.1:${RuntimePins.DSH_HTTP_PORT}/").openConnection() as HttpURLConnection).apply {
+            connectTimeout = 800
+            readTimeout = 800
             requestMethod = "GET"
             useCaches = false
+            instanceFollowRedirects = false
         }
         try {
-            connection.responseCode in 200..399
+            val code = connection.responseCode
+            val stream = if (code >= 400) connection.errorStream else connection.inputStream
+            val body = stream?.bufferedReader(StandardCharsets.UTF_8)?.use { reader ->
+                val chars = CharArray(512)
+                val read = reader.read(chars)
+                if (read > 0) String(chars, 0, read) else ""
+            }.orEmpty()
+            code == HttpURLConnection.HTTP_UNAUTHORIZED && body.contains(WEB_AUTH_REQUIRED_MARKER)
         } finally {
             connection.disconnect()
         }

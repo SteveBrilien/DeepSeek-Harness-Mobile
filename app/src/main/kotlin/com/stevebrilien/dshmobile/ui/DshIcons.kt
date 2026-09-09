@@ -44,6 +44,8 @@ enum class DshIconGlyph {
     STOP,
     ROLLBACK,
     SHIELD,
+    HISTORY,
+    INFO,
 }
 
 @Composable
@@ -292,6 +294,30 @@ fun DshIcon(
                     close()
                 }
                 drawPath(path, tint, style = stroke)
+            }
+            DshIconGlyph.HISTORY -> {
+                drawArc(
+                    tint,
+                    startAngle = -55f,
+                    sweepAngle = 300f,
+                    useCenter = false,
+                    topLeft = p(.17f, .17f),
+                    size = Size(s * .66f, s * .66f),
+                    style = stroke,
+                )
+                val arrow = Path().apply {
+                    moveTo(p(.18f, .18f).x, p(.18f, .18f).y)
+                    lineTo(p(.18f, .39f).x, p(.18f, .39f).y)
+                    lineTo(p(.39f, .34f).x, p(.39f, .34f).y)
+                }
+                drawPath(arrow, tint, style = stroke)
+                drawLine(tint, p(.50f, .31f), p(.50f, .52f), thin.width)
+                drawLine(tint, p(.50f, .52f), p(.65f, .61f), thin.width)
+            }
+            DshIconGlyph.INFO -> {
+                drawCircle(tint, radius = s * .36f, center = p(.50f, .50f), style = stroke)
+                drawCircle(tint, radius = s * .035f, center = p(.50f, .34f))
+                drawLine(tint, p(.50f, .46f), p(.50f, .69f), stroke.width)
             }
         }
     }

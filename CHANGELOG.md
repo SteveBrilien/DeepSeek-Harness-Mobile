@@ -120,3 +120,26 @@ Files:
 - `docs/HANDOFF.md`
 - `docs/NEXT_ACTIONS.md`
 - `CHANGELOG.md`
+
+## 2026-09-09T16:19:45.485996Z — RELEASE: Prepare 0.3.0-alpha.4 manual-test release
+
+Promoted the Runtime/terminal/UI hardening work to 0.3.0-alpha.4 (versionCode 5). The clean Alpine ARM64 Runtime E2E passes with Node 24.18.1, DSH 0.1.2-rc.1, koffi, source-rebuilt node-pty, a real PTY shell command, Mobile Context integration, and authenticated DSH Web token exchange. Runtime downloads now support resumable partial files, retry/fallback and stalled-install detection; DSH uses an Alpine/musl-safe launcher and tokenized initial WebView URL with log redaction. UI was simplified toward the DeepSeek Harness visual language, launcher icon safe area was reduced, and Terminal was made terminal-first with recent/pinned command history behind a history surface. Final alpha.4 android_debug, android_lint, android_signing_verify and mobile_context_contract all passed on the development host. APK SHA-256: 043c9ecc64784f09da1782607c8b8e25df7a1db5f55e637e16dccfb25c95f109. Physical OriginOS device validation remains intentionally manual and is not claimed complete.
+
+Files:
+- `app/build.gradle.kts`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/AppShell.kt`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/Branding.kt`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/ChatScreen.kt`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/DshIcons.kt`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/OnboardingScreen.kt`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/TerminalScreen.kt`
+- `app/src/main/res/drawable/ic_dsh_fish_foreground.xml`
+- `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/AndroidRuntimeManager.kt`
+- `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/NativeRuntimeInstaller.kt`
+- `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/RuntimeControlPlane.kt`
+- `scripts/test-runtime-alpine-e2e.sh`
+- `release/DeepSeek-Harness-Mobile-0.3.0-alpha.4.apk`
+- `release/SHA256SUMS`
+- `release/update.json`
+- `docs/HANDOFF.md`
+- `docs/NEXT_ACTIONS.md`

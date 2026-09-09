@@ -11,6 +11,10 @@ import java.nio.charset.StandardCharsets
  * Coroutine implementation details stay inside runtime-android rather than leaking into app.
  */
 class RuntimeControlPlane(context: Context) {
+    companion object {
+        private val TOKEN_REDACTION = Regex("""token=[A-Za-z0-9_-]+""")
+    }
+
     private val manager = AndroidRuntimeManager(context.applicationContext)
 
     fun health(): RuntimeHealth = runBlocking { manager.health() }
@@ -34,6 +38,10 @@ class RuntimeControlPlane(context: Context) {
 
     fun start(): Result<Unit> = runBlocking { manager.start() }
 
+    fun isWebReady(): Boolean = manager.isWebReady()
+
+    fun webLaunchUrl(): String? = manager.webLaunchUrl()
+
     fun stop(): Result<Unit> = runBlocking { manager.stop() }
 
     fun executeShell(
@@ -56,6 +64,9 @@ class RuntimeControlPlane(context: Context) {
         if (!file.isFile) return "No DSH runtime log yet."
         val bytes = file.readBytes()
         val start = (bytes.size - maxChars.coerceAtLeast(1)).coerceAtLeast(0)
-        return String(bytes, start, bytes.size - start, StandardCharsets.UTF_8)
+        return TOKEN_REDACTION.replace(
+            String(bytes, start, bytes.size - start, StandardCharsets.UTF_8),
+            "token=[redacted]",
+        )
     }
 }

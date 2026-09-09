@@ -1,7 +1,7 @@
 {
-  "versionCode": 4,
-  "versionName": "0.3.0-alpha.3",
-  "apkUrl": "https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.3.apk",
-  "sha256": "a191a6988820a831b893e0338a736155ddbd2dc29988f09a59748eb8125054cb",
-  "notes": "0.3.0-alpha.3 manual-test build: refined first-run onboarding and launcher branding, Runtime install progress/log/elapsed/ETA telemetry, automatic multi-mirror source probing and fallback, reusable local/Recovery-Vault resources, existing Runtime version detection with non-destructive A/B update choice, and install crash containment."
+  "versionCode": 5,
+  "versionName": "0.3.0-alpha.4",
+  "apkUrl": "https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.4.apk",
+  "sha256": "043c9ecc64784f09da1782607c8b8e25df7a1db5f55e637e16dccfb25c95f109",
+  "notes": "0.3.0-alpha.4 manual-test build: simplified DeepSeek Harness-aligned UI, corrected launcher icon safe area, terminal-first layout with recent/pinned command history, hardened resumable Runtime downloads and retries, Alpine/musl native dependency rebuild for node-pty, DSH 0.1.2-rc.1 launcher compatibility, authenticated WebView token handoff, and Runtime token redaction."
 }

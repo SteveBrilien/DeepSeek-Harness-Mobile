@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 internal class NativeRuntimeInstaller(
     context: Context,
@@ -101,8 +102,25 @@ internal class NativeRuntimeInstaller(
         ensureNativeLauncher()
         progress(RuntimeInstallProgress("discover", "检测本机已有 Runtime 与缓存", 2))
         val reusableArchive = findReusableRootfsArchive(progress)
-        val alpineMirror = selectAlpineMirror(preferredSourceId, progress)
-        val archive = reusableArchive ?: downloadRootfsArchive(alpineMirror, progress)
+        var alpineMirror = selectAlpineMirror(preferredSourceId, progress)
+        val archive = reusableArchive ?: runCatching {
+            downloadRootfsArchive(alpineMirror, progress)
+        }.recoverCatching { firstFailure ->
+            val official = RuntimePins.ALPINE_MIRRORS.first { it.id == "official" }
+            if (alpineMirror.id == official.id) throw firstFailure
+            progress(
+                RuntimeInstallProgress(
+                    "download",
+                    "当前下载源连续失败，切换 Alpine 官方源继续",
+                    9,
+                    sourceId = official.id,
+                    sourceName = official.name,
+                    logLine = firstFailure.message,
+                ),
+            )
+            alpineMirror = official
+            downloadRootfsArchive(official, progress)
+        }.getOrThrow()
         val slotDir = layout.slotRoot(slot)
         val staged = File(slotDir.parentFile, ".${slotDir.name}.staging-${System.currentTimeMillis()}")
         if (staged.exists()) staged.deleteRecursively()
@@ -119,15 +137,16 @@ internal class NativeRuntimeInstaller(
             progress(RuntimeInstallProgress("packages", "安装 Runtime 基础软件包", 43, sourceId = alpineMirror.id, sourceName = alpineMirror.name))
             val packageCommand = "apk update && apk add --no-cache bash ca-certificates curl git openssh-client python3 nodejs npm"
             runCatching {
-                runInsideRootfs(rootfs, packageCommand, timeoutMillis = 15 * 60_000L) { line ->
+                runInsideRootfs(rootfs, packageCommand, timeoutMillis = 15 * 60_000L, idleTimeoutMillis = 4 * 60_000L) { line ->
                     progress(RuntimeInstallProgress("packages", "安装 Runtime 基础软件包", 48, sourceId = alpineMirror.id, sourceName = alpineMirror.name, logLine = line))
                 }
             }.recoverCatching { firstFailure ->
                 val official = RuntimePins.ALPINE_MIRRORS.first { it.id == "official" }
                 if (alpineMirror.id == official.id) throw firstFailure
                 progress(RuntimeInstallProgress("packages", "当前镜像不可用，自动回退 Alpine 官方源", 46, sourceId = official.id, sourceName = official.name, logLine = firstFailure.message))
+                alpineMirror = official
                 configureAlpineRepositories(rootfs, official)
-                runInsideRootfs(rootfs, packageCommand, timeoutMillis = 15 * 60_000L) { line ->
+                runInsideRootfs(rootfs, packageCommand, timeoutMillis = 15 * 60_000L, idleTimeoutMillis = 4 * 60_000L) { line ->
                     progress(RuntimeInstallProgress("packages", "从 Alpine 官方源继续安装", 50, sourceId = official.id, sourceName = official.name, logLine = line))
                 }
             }.getOrThrow()
@@ -139,6 +158,7 @@ internal class NativeRuntimeInstaller(
                     rootfs,
                     "NPM_CONFIG_REGISTRY=${shellQuote(npmMirror.registryUrl)} npm install -g pnpm@${RuntimePins.PNPM_VERSION}",
                     timeoutMillis = 15 * 60_000L,
+                    idleTimeoutMillis = 4 * 60_000L,
                 ) { line ->
                     progress(RuntimeInstallProgress("pnpm", "安装 pnpm ${RuntimePins.PNPM_VERSION}", 66, sourceId = npmMirror.id, sourceName = npmMirror.name, logLine = line))
                 }
@@ -151,6 +171,7 @@ internal class NativeRuntimeInstaller(
                     rootfs,
                     "NPM_CONFIG_REGISTRY=${shellQuote(officialNpm.registryUrl)} npm install -g pnpm@${RuntimePins.PNPM_VERSION}",
                     timeoutMillis = 15 * 60_000L,
+                    idleTimeoutMillis = 4 * 60_000L,
                 ) { line ->
                     progress(RuntimeInstallProgress("pnpm", "从 npm 官方源继续安装", 67, sourceId = officialNpm.id, sourceName = officialNpm.name, logLine = line))
                 }
@@ -160,11 +181,17 @@ internal class NativeRuntimeInstaller(
             fun installDshWith(registry: NpmMirror) {
                 runInsideRootfs(
                     rootfs,
-                    "mkdir -p /opt/dsh && cd /opt/dsh && " +
+                    "rm -rf /opt/dsh/node_modules /opt/dsh/package-lock.json /opt/dsh/pnpm-lock.yaml && " +
+                        "mkdir -p /opt/dsh && cd /opt/dsh && " +
                         "printf '%s\\n' '{\"private\":true}' > package.json && " +
-                        "PNPM_CONFIG_REGISTRY=${shellQuote(registry.registryUrl)} PNPM_CONFIG_AUTO_INSTALL_PEERS=true " +
-                        "pnpm add @deepseek-ai/dsh@${RuntimePins.DSH_VERSION}",
+                        "NPM_CONFIG_REGISTRY=${shellQuote(registry.registryUrl)} " +
+                        "NPM_CONFIG_AUDIT=false NPM_CONFIG_FUND=false NPM_CONFIG_FETCH_RETRIES=3 " +
+                        "NPM_CONFIG_FETCH_TIMEOUT=120000 NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=3000 " +
+                        "NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=20000 " +
+                        "npm install --omit=dev --include=optional --no-audit --no-fund " +
+                        "@deepseek-ai/dsh@${RuntimePins.DSH_VERSION}",
                     timeoutMillis = 30 * 60_000L,
+                    idleTimeoutMillis = 4 * 60_000L,
                 ) { line ->
                     progress(RuntimeInstallProgress("dsh", "安装 DSH ${RuntimePins.DSH_VERSION}", 80, sourceId = registry.id, sourceName = registry.name, logLine = line))
                 }
@@ -177,13 +204,57 @@ internal class NativeRuntimeInstaller(
                 installDshWith(officialNpm)
             }.getOrThrow()
 
-            progress(RuntimeInstallProgress("integration", "安装 DSH Mobile 环境集成", 88))
+            // node-pty 1.2.0-beta.15 does not currently ship a usable Alpine/musl arm64
+            // prebuild in the DSH dependency tree. Build it inside the target rootfs, then remove
+            // the temporary compiler toolchain so the installed Runtime remains reasonably small.
+            progress(RuntimeInstallProgress("native", "编译 DSH 原生终端组件", 83, sourceId = npmMirror.id, sourceName = npmMirror.name))
+            runInsideRootfs(
+                rootfs,
+                "apk add --no-cache --virtual .dsh-build-deps build-base linux-headers",
+                timeoutMillis = 15 * 60_000L,
+                idleTimeoutMillis = 4 * 60_000L,
+            ) { line ->
+                progress(RuntimeInstallProgress("native", "准备原生组件编译环境", 84, sourceId = npmMirror.id, sourceName = npmMirror.name, logLine = line))
+            }
+            runInsideRootfs(
+                rootfs,
+                "cd /opt/dsh && npm_config_build_from_source=true npm rebuild node-pty",
+                timeoutMillis = 15 * 60_000L,
+                idleTimeoutMillis = 4 * 60_000L,
+            ) { line ->
+                progress(RuntimeInstallProgress("native", "编译 DSH 原生终端组件", 86, sourceId = npmMirror.id, sourceName = npmMirror.name, logLine = line))
+            }
+            runInsideRootfs(
+                rootfs,
+                "cd /opt/dsh && node -e \"require('koffi'); const p=require('node-pty'); if(typeof p.spawn!=='function') process.exit(2); console.log('native-modules-ok')\"",
+                timeoutMillis = 60_000L,
+            ) { line ->
+                progress(RuntimeInstallProgress("native", "校验 DSH 原生组件", 87, logLine = line))
+            }
+            runCatching {
+                runInsideRootfs(
+                    rootfs,
+                    "apk del .dsh-build-deps",
+                    timeoutMillis = 5 * 60_000L,
+                    idleTimeoutMillis = 2 * 60_000L,
+                ) { line ->
+                    progress(RuntimeInstallProgress("native", "清理临时编译依赖", 87, logLine = line))
+                }
+            }.onFailure { cleanupFailure ->
+                progress(RuntimeInstallProgress("native", "临时编译依赖清理未完成，不影响 Runtime 使用", 87, logLine = cleanupFailure.message))
+            }
+
+            progress(RuntimeInstallProgress("launcher", "配置 DSH 启动器", 88))
+            ensureDshLauncher(rootfs)
+            progress(RuntimeInstallProgress("integration", "安装 DSH Mobile 环境集成", 89))
             ensureMobileContextIntegrationForRootfs(rootfs)
             progress(RuntimeInstallProgress("verify", "校验本地 Runtime", 94))
             val versions = runInsideRootfs(
                 rootfs,
                 "node --version && npm --version && " +
-                    "node /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js --version",
+                    "test -x /usr/local/bin/dsh && " +
+                    "cd /opt/dsh && node -e \"require('koffi'); const p=require('node-pty'); if(typeof p.spawn!=='function') process.exit(2)\" && " +
+                    "/usr/local/bin/dsh --version",
                 timeoutMillis = 60_000L,
             ) { line ->
                 progress(RuntimeInstallProgress("verify", "校验本地 Runtime", 96, logLine = line))
@@ -214,8 +285,9 @@ internal class NativeRuntimeInstaller(
         check(manifest.optString("dshVersion") == RuntimePins.DSH_VERSION)
         return runInsideRootfs(
             rootfs,
-            "test -x /usr/bin/node && test -f /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js && " +
-                "node /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js --version",
+            "test -x /usr/bin/node && test -x /usr/local/bin/dsh && test -f /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js && " +
+                "cd /opt/dsh && node -e \"require('koffi'); const p=require('node-pty'); if(typeof p.spawn!=='function') process.exit(2)\" && " +
+                "/usr/local/bin/dsh --version",
             timeoutMillis = 60_000L,
         )
     }
@@ -230,8 +302,18 @@ internal class NativeRuntimeInstaller(
         ensureMobileContextIntegrationForRootfs(layout.rootfs(slot))
     }
 
+    private fun ensureDshLauncher(rootfs: File) {
+        val script = "#!/bin/sh\nexec node --expose-internals /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js \"\$@\""
+        runInsideRootfs(
+            rootfs,
+            "mkdir -p /usr/local/bin && printf '%s\\n' ${shellQuote(script)} > /usr/local/bin/dsh && chmod 0755 /usr/local/bin/dsh",
+            timeoutMillis = 60_000L,
+        )
+    }
+
     private fun ensureMobileContextIntegrationForRootfs(rootfs: File) {
         check(rootfs.isDirectory) { "Runtime rootfs is missing: ${rootfs.absolutePath}" }
+        ensureDshLauncher(rootfs)
         val pluginDir = File(layout.persistentDshHome, "mobile-plugins/dsh-mobile-context")
         MOBILE_CONTEXT_PLUGIN_ASSETS.forEach { relative ->
             val destination = File(pluginDir, relative)
@@ -245,12 +327,12 @@ internal class NativeRuntimeInstaller(
         }
 
         val marker = File(layout.persistentDshHome, "mobile/context-plugin.version")
-        if (marker.readTextIfExists() == MOBILE_CONTEXT_PLUGIN_VERSION) return
+        val installedPluginManifest = File(layout.persistentDshHome, "profiles/web/node_modules/@dsh-mobile/dsh-mobile-context/package.json")
+        if (marker.readTextIfExists() == MOBILE_CONTEXT_PLUGIN_VERSION && installedPluginManifest.isFile) return
         runInsideRootfs(
             rootfs,
             "mkdir -p /dsh-home/mobile && " +
-                "node /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js plugin --profile web add " +
-                "file:/dsh-home/mobile-plugins/dsh-mobile-context",
+                "/usr/local/bin/dsh plugin --profile web add file:/dsh-home/mobile-plugins/dsh-mobile-context",
             timeoutMillis = 10 * 60_000L,
         )
         marker.parentFile?.let { check(it.exists() || it.mkdirs()) }
@@ -285,58 +367,113 @@ internal class NativeRuntimeInstaller(
         progress: (RuntimeInstallProgress) -> Unit,
     ): File {
         stateStore.ensureLayout()
+        layout.downloadsDir.mkdirs()
         val target = File(layout.downloadsDir, RuntimePins.ALPINE_ROOTFS_FILE)
+        if (target.isFile && runCatching { sha256(target) == RuntimePins.ALPINE_ROOTFS_SHA256 }.getOrDefault(false)) {
+            progress(RuntimeInstallProgress("cache", "复用已校验的本机 Alpine 缓存", 28, logLine = target.absolutePath))
+            return target
+        }
         val tmp = File(layout.downloadsDir, ".${target.name}.download")
-        if (tmp.exists()) tmp.delete()
         val url = RuntimePins.alpineRootfsUrl(mirror)
         progress(RuntimeInstallProgress("download", "从 ${mirror.name} 下载 Alpine ${RuntimePins.ALPINE_VERSION}", 9, sourceId = mirror.id, sourceName = mirror.name, logLine = url))
-        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 15_000
-            readTimeout = 60_000
-            instanceFollowRedirects = true
-            requestMethod = "GET"
-            setRequestProperty("Accept-Encoding", "identity")
-        }
-        try {
-            check(connection.responseCode in 200..299) {
-                "Rootfs download failed with HTTP ${connection.responseCode}"
-            }
-            val total = connection.contentLengthLong.takeIf { it > 0 }
-            var downloaded = 0L
-            var lastReportAt = 0L
-            connection.inputStream.use { input ->
-                FileOutputStream(tmp).use { output ->
-                    val buffer = ByteArray(32 * 1024)
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read < 0) break
-                        output.write(buffer, 0, read)
-                        downloaded += read
-                        val now = System.currentTimeMillis()
-                        if (now - lastReportAt >= 250L || (total != null && downloaded >= total)) {
-                            lastReportAt = now
-                            val percent = total?.let { (9 + (downloaded * 20L / it).toInt()).coerceIn(9, 29) } ?: 18
-                            progress(
-                                RuntimeInstallProgress(
-                                    phase = "download",
-                                    message = "正在下载 Alpine ${RuntimePins.ALPINE_VERSION}",
-                                    percent = percent,
-                                    downloadedBytes = downloaded,
-                                    totalBytes = total,
-                                    sourceId = mirror.id,
-                                    sourceName = mirror.name,
-                                ),
-                            )
+
+        var lastFailure: Throwable? = null
+        for (attemptIndex in 0 until 3) {
+            val requestedOffset = tmp.length().coerceAtLeast(0L)
+            var connection: HttpURLConnection? = null
+            try {
+                connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 15_000
+                    readTimeout = 45_000
+                    instanceFollowRedirects = true
+                    requestMethod = "GET"
+                    setRequestProperty("Accept-Encoding", "identity")
+                    if (requestedOffset > 0L) setRequestProperty("Range", "bytes=$requestedOffset-")
+                }
+                val code = connection.responseCode
+                if (code == 416 && requestedOffset > 0L) {
+                    tmp.delete()
+                    error("Rootfs server rejected saved resume offset; restarting download")
+                }
+                check(code in 200..299) { "Rootfs download failed with HTTP $code" }
+                val resumed = requestedOffset > 0L && code == HttpURLConnection.HTTP_PARTIAL
+                if (requestedOffset > 0L && !resumed) tmp.delete()
+                var downloaded = if (resumed) requestedOffset else 0L
+                val responseBytes = connection.contentLengthLong.takeIf { it > 0 }
+                val total = when {
+                    resumed && responseBytes != null -> requestedOffset + responseBytes
+                    responseBytes != null -> responseBytes
+                    else -> null
+                }
+                if (resumed) {
+                    progress(
+                        RuntimeInstallProgress(
+                            "download",
+                            "网络恢复，继续之前的下载",
+                            total?.let { (9 + (downloaded * 20L / it).toInt()).coerceIn(9, 29) } ?: 18,
+                            downloadedBytes = downloaded,
+                            totalBytes = total,
+                            sourceId = mirror.id,
+                            sourceName = mirror.name,
+                            logLine = "resume offset=$requestedOffset",
+                        ),
+                    )
+                }
+                var lastReportAt = 0L
+                connection.inputStream.use { input ->
+                    FileOutputStream(tmp, resumed).use { output ->
+                        val buffer = ByteArray(32 * 1024)
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            output.write(buffer, 0, read)
+                            downloaded += read
+                            val now = System.currentTimeMillis()
+                            if (now - lastReportAt >= 250L || (total != null && downloaded >= total)) {
+                                lastReportAt = now
+                                val percent = total?.let { (9 + (downloaded * 20L / it).toInt()).coerceIn(9, 29) } ?: 18
+                                progress(
+                                    RuntimeInstallProgress(
+                                        phase = "download",
+                                        message = "正在下载 Alpine ${RuntimePins.ALPINE_VERSION}",
+                                        percent = percent,
+                                        downloadedBytes = downloaded,
+                                        totalBytes = total,
+                                        sourceId = mirror.id,
+                                        sourceName = mirror.name,
+                                    ),
+                                )
+                            }
                         }
                     }
                 }
+                lastFailure = null
+                break
+            } catch (t: Throwable) {
+                lastFailure = t
+                progress(
+                    RuntimeInstallProgress(
+                        "download",
+                        "下载中断，保留进度并自动重试 ${attemptIndex + 1}/3",
+                        18,
+                        downloadedBytes = tmp.length(),
+                        sourceId = mirror.id,
+                        sourceName = mirror.name,
+                        logLine = t.message,
+                    ),
+                )
+                if (attemptIndex < 2) Thread.sleep(1_200L * (attemptIndex + 1))
+            } finally {
+                connection?.disconnect()
             }
-        } finally {
-            connection.disconnect()
         }
-        check(sha256(tmp) == RuntimePins.ALPINE_ROOTFS_SHA256) { "Alpine rootfs SHA-256 mismatch" }
+        lastFailure?.let { throw it }
+        if (sha256(tmp) != RuntimePins.ALPINE_ROOTFS_SHA256) {
+            tmp.delete()
+            error("Alpine rootfs SHA-256 mismatch")
+        }
         if (target.exists()) target.delete()
-        check(tmp.renameTo(target)) { "Unable to finalize rootfs download" }
+        check(tmp.renameTo(target)) { "Unable to publish downloaded rootfs archive" }
         cacheRootfsPersistentlyBestEffort(target, progress)
         return target
     }
@@ -531,25 +668,43 @@ internal class NativeRuntimeInstaller(
         rootfs: File,
         command: String,
         timeoutMillis: Long,
+        idleTimeoutMillis: Long? = null,
         onOutputLine: (String) -> Unit = {},
     ): String {
         val process = buildProcessForRootfs(rootfs, command)
             .redirectErrorStream(true)
             .start()
         val output = StringBuilder()
+        val startedAt = System.currentTimeMillis()
+        val lastOutputAt = AtomicLong(startedAt)
         val reader = Thread {
             process.inputStream.bufferedReader().useLines { lines ->
                 lines.forEach { line ->
+                    lastOutputAt.set(System.currentTimeMillis())
                     if (output.length < 512_000) output.appendLine(line)
                     runCatching { onOutputLine(line.take(500)) }
                 }
             }
         }.apply { start() }
-        val completed = process.waitFor(timeoutMillis, TimeUnit.MILLISECONDS)
+        var completed = false
+        var failureReason: String? = null
+        while (!completed) {
+            completed = process.waitFor(1, TimeUnit.SECONDS)
+            if (completed) break
+            val now = System.currentTimeMillis()
+            if (now - startedAt >= timeoutMillis) {
+                failureReason = "Runtime command timed out"
+                break
+            }
+            if (idleTimeoutMillis != null && now - lastOutputAt.get() >= idleTimeoutMillis) {
+                failureReason = "Runtime command stalled: no output for ${idleTimeoutMillis / 1_000}s"
+                break
+            }
+        }
         if (!completed) {
             process.destroy()
             if (!process.waitFor(2, TimeUnit.SECONDS)) process.destroyForcibly()
-            throw IllegalStateException("Runtime command timed out")
+            throw IllegalStateException(failureReason ?: "Runtime command interrupted")
         }
         reader.join(2_000)
         check(process.exitValue() == 0) { "Runtime command failed (${process.exitValue()}):\n$output" }

@@ -74,23 +74,7 @@ fun DeepSeekHarnessBrand(
 
 @Composable
 fun DshLaunchSplash(modifier: Modifier = Modifier) {
-    val colors = LocalDshColors.current
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            DeepSeekHarnessBrand()
-            Text(
-                text = "Mobile",
-                modifier = Modifier.padding(top = 10.dp),
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.textTertiary,
-                letterSpacing = 1.5.sp,
-            )
-            Spacer(Modifier.height(30.dp))
-            LinearProgressIndicator(
-                modifier = Modifier.width(148.dp).height(2.dp),
-                color = colors.textPrimary,
-                trackColor = colors.border1,
-            )
-        }
+        DeepSeekHarnessBrand()
     }
 }

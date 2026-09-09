@@ -80,8 +80,6 @@ import java.util.Locale
 @Composable
 internal fun OnboardingScreen(
     vault: RecoveryVault,
-    themeMode: DshThemeMode,
-    onThemeChange: (DshThemeMode) -> Unit,
     onComplete: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -271,11 +269,7 @@ internal fun OnboardingScreen(
                 label = "onboarding-step",
             ) { currentStep ->
                 when (currentStep) {
-                    0 -> WelcomeStep(
-                        themeMode = themeMode,
-                        onThemeChange = onThemeChange,
-                        onNext = { step = 1 },
-                    )
+                    0 -> WelcomeStep(onNext = { step = 1 })
                     1 -> RecoveryStep(
                         discovery = discovery,
                         secretStatus = secretStatus,
@@ -364,9 +358,8 @@ private fun OnboardingTop(step: Int) {
     val colors = LocalDshColors.current
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("DeepSeek Harness Mobile", style = MaterialTheme.typography.titleSmall, color = colors.textPrimary)
-                Text("首次环境配置", style = MaterialTheme.typography.labelMedium, color = colors.textTertiary)
+            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                DeepSeekHarnessBrand(compact = true)
             }
             Text("${step + 1} / 5", style = MaterialTheme.typography.labelMedium, color = colors.textTertiary)
         }
@@ -381,8 +374,8 @@ private fun OnboardingTop(step: Int) {
 
 @Composable
 private fun OnboardingStage(
-    title: String,
-    subtitle: String,
+    title: String?,
+    subtitle: String? = null,
     actions: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     message: String? = null,
@@ -397,7 +390,9 @@ private fun OnboardingStage(
                 .verticalScroll(rememberScrollState()),
         ) {
             Spacer(Modifier.height(14.dp))
-            DshPageHeader(title = title, subtitle = subtitle)
+            if (!title.isNullOrBlank()) {
+                DshPageHeader(title = title, subtitle = subtitle)
+            }
             content()
             if (!message.isNullOrBlank()) {
                 DshMessageBanner(
@@ -425,68 +420,29 @@ private fun OnboardingStage(
 @Composable
 private fun BottomActions(content: @Composable RowScope.() -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
         verticalAlignment = Alignment.CenterVertically,
         content = content,
     )
 }
 
 @Composable
-private fun WelcomeStep(
-    themeMode: DshThemeMode,
-    onThemeChange: (DshThemeMode) -> Unit,
-    onNext: () -> Unit,
-) {
-    val colors = LocalDshColors.current
+private fun WelcomeStep(onNext: () -> Unit) {
     OnboardingStage(
-        title = "欢迎使用",
-        subtitle = "用几步完成数据保护、后台策略与本地运行环境。",
+        title = null,
         actions = {
             DshButton(
-                text = "开始配置",
+                text = "开始",
                 onClick = onNext,
                 modifier = Modifier.fillMaxWidth(),
                 style = DshButtonStyle.PRIMARY,
             )
         },
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(top = 44.dp, bottom = 28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            DeepSeekHarnessBrand(compact = true)
-            Text(
-                "手机上的本地 Harness",
-                modifier = Modifier.padding(top = 18.dp),
-                style = MaterialTheme.typography.titleLarge,
-                color = colors.textPrimary,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                "运行环境与恢复工具彼此独立，Runtime 损坏时仍能自救。",
-                modifier = Modifier.padding(top = 7.dp),
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.textSecondary,
-            )
-        }
-        DshPanel(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(14.dp)) {
-                DshSectionTitle(title = "外观", description = "可随时在“更多”中修改")
-                Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    DshThemeMode.entries.forEach { mode ->
-                        DshButton(
-                            text = mode.labelZh,
-                            onClick = { onThemeChange(mode) },
-                            style = if (mode == themeMode) DshButtonStyle.PRIMARY else DshButtonStyle.SECONDARY,
-                        )
-                    }
-                }
-            }
-        }
+        // Intentionally empty: the persistent DSH wordmark in the top bar is the onboarding identity.
+        // Theme and explanatory details live in Settings instead of competing with the primary path.
+        Spacer(Modifier.height(1.dp))
     }
 }
 
@@ -621,15 +577,15 @@ private fun DeviceReadinessStep(
     onBack: () -> Unit,
 ) {
     val colors = LocalDshColors.current
+    @Suppress("UNUSED_VARIABLE") val refreshAction = onRefresh
     val vivoLike = manufacturer.contains("vivo", ignoreCase = true)
     OnboardingStage(
-        title = "保持后台稳定",
-        subtitle = "前台服务负责托管本地 DSH Runtime。",
+        title = "后台运行",
+        subtitle = "确认系统不会回收 Runtime。",
         actions = {
             BottomActions {
                 DshButton("返回", onBack)
-                DshButton("电池优化设置", onOpenBatterySettings)
-                DshButton("重新检查", onRefresh)
+                DshButton("系统设置", onOpenBatterySettings)
                 DshButton(
                     text = if (batteryOptimizationExempt) "继续" else "稍后处理并继续",
                     onClick = onContinue,
@@ -685,6 +641,7 @@ private fun RuntimeStep(
     onBack: () -> Unit,
 ) {
     val colors = LocalDshColors.current
+    @Suppress("UNUSED_VARIABLE") val refreshAction = onRefresh
     val active = inventory?.reusableInstalledRuntime == true || health?.activeSlot != null
     val exactRecommended = inventory?.reusableInstalledRuntime == true &&
         inventory.installedDshVersion == inventory.targetDshVersion
@@ -693,12 +650,11 @@ private fun RuntimeStep(
     val failed = installSnapshot.failed
 
     OnboardingStage(
-        title = "本地运行环境",
-        subtitle = "优先复用本机资源；缺失部分再下载并安装。",
+        title = "安装 Runtime",
+        subtitle = "优先复用本机资源。",
         actions = {
             BottomActions {
                 DshButton("返回", onBack)
-                DshButton("刷新", onRefresh)
                 when {
                     installing -> DshButton("转后台继续", onContinue, style = DshButtonStyle.PRIMARY)
                     exactRecommended -> DshButton("使用已有环境", onContinue, style = DshButtonStyle.PRIMARY)
@@ -760,7 +716,7 @@ private fun RuntimeStep(
             )
         } else if (!active) {
             Text(
-                "安装会先测速下载源，再使用 A/B slot 写入新环境；已有可复用资源不会重复下载。",
+                "新环境写入 A/B slot；已校验资源不会重复下载。",
                 modifier = Modifier.padding(top = 13.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.textSecondary,
