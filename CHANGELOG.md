@@ -109,3 +109,14 @@ Files:
 - `docs/HANDOFF.md`
 - `.mcp/ssh/github_deploy_ed25519`
 - `.mcp/ssh/known_hosts`
+
+## 2026-09-09T12:09:26.181198Z — SECURITY: Harden release validation path and record unsafe legacy download root
+
+Revalidated alpha.3 after GitHub/deploy-key cutover: android_debug, android_lint and android_signing_verify all succeed. Fixed the Mobile Context contract runner so it no longer depends on the OrangePi distro's obsolete Node 12; it now bootstraps pinned Node 24.18.1 into ignored .mcp/tools state after SHA-256 verification and the contract passes. The former dsh.wmy-cloud.cn/dsh-mobile-download alpha.3 URL returned 404; inspection of the directory index showed the Python SimpleHTTP document root is the Azure user's home directory and publicly exposes private-directory names including .ssh/. To avoid publishing through that unsafe root, release/update.json now points alpha.3 to the already-tracked GitHub raw APK while Azure static hosting is remediated. No private directory contents were read.
+
+Files:
+- `scripts/run-mobile-context-contract.sh`
+- `release/update.json`
+- `docs/HANDOFF.md`
+- `docs/NEXT_ACTIONS.md`
+- `CHANGELOG.md`

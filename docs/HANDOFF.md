@@ -124,7 +124,7 @@ The current update manifest advertises:
 
 - `versionCode`: 4
 - `versionName`: `0.3.0-alpha.3`
-- download endpoint: `https://dsh.wmy-cloud.cn/dsh-mobile-download/DeepSeek-Harness-Mobile-0.3.0-alpha.3.apk`
+- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.3.apk`
 
 The project uses a stable development signing identity for alpha cover-install testing. Do not replace the signing identity casually; doing so breaks seamless upgrade/cover-install behavior.
 
@@ -234,6 +234,8 @@ Build through configured TaskProfiles where possible:
 - `android_signing_verify`;
 - `mobile_context_contract`;
 - device probes when ADB is online.
+
+`mobile_context_contract` is executed with a project-local pinned Node 24.18.1 bootstrap (`scripts/run-mobile-context-contract.sh`) because the OrangePi host distro still exposes Node 12 by default. The bootstrap verifies the official Node tarball against a pinned SHA-256 and caches it under ignored `.mcp/tools/` state before running the contract test.
 
 Avoid reintroducing host/canonical path contamination by mixing uncontrolled host build state with Bubblewrap project caches.
 

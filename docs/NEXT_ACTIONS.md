@@ -76,6 +76,19 @@ Continue hardening around real failures observed on-device:
 
 Every failure should answer: what failed, whether data is safe, what can be retried, and where logs are available.
 
+## P0 — Secure the public APK distribution endpoint
+
+The previously configured `https://dsh.wmy-cloud.cn/dsh-mobile-download/` path was found to be serving a Python SimpleHTTP directory rooted at the Azure user's home directory. The directory index exposed private-directory names including `.ssh/`. Do not publish new releases through that document root until it has been replaced with a dedicated release-only directory and directory browsing is disabled.
+
+Immediate safe behavior:
+
+1. use the tracked GitHub raw APK as the alpha.3 update-manifest fallback;
+2. do not probe or copy contents from exposed private directories;
+3. on the Azure host, move the static server document root to a dedicated release-only directory;
+4. disable directory browsing and expose only intended APK/manifest artifacts;
+5. verify the public endpoint no longer exposes home-directory entries before switching the manifest back;
+6. keep APK SHA-256 verification mandatory regardless of transport source.
+
 ## P1 — Release promotion after device E2E
 
 Do not call alpha.3 fully validated until the target-device checks pass.
@@ -109,7 +122,7 @@ Already verified on the OrangePi development host for alpha.3:
 - Android lint passes;
 - stable signing certificate check passes;
 - release APK/checksum/update manifest are present;
-- Mobile Context contract exists and has previously passed;
+- Mobile Context contract passes using the pinned project-local Node 24.18.1 bootstrap;
 - no known host/canonical path contamination was reported by the latest doctor run.
 
 Still pending:
