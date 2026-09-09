@@ -26,6 +26,9 @@ internal class NativeRuntimeInstaller(
 ) {
     companion object {
         private const val MOBILE_CONTEXT_PLUGIN_VERSION = "0.2.1"
+        private const val NODE_PTY_MODULE_ABI = "137"
+        private const val NODE_PTY_ASSET = "runtime/native-modules/node24-arm64-musl/pty.node"
+        private const val NODE_PTY_ASSET_SHA256 = "3e9cb29670c2cac1f7d54302099af8b0f998b9acc79891666b3136db575f18c3"
         private const val PROBE_BYTES = 64 * 1024
         private val MOBILE_CONTEXT_PLUGIN_ASSETS = listOf(
             "package.json",
@@ -204,25 +207,38 @@ internal class NativeRuntimeInstaller(
                 installDshWith(officialNpm)
             }.getOrThrow()
 
-            // node-pty 1.2.0-beta.15 does not currently ship a usable Alpine/musl arm64
-            // prebuild in the DSH dependency tree. Build it inside the target rootfs, then remove
-            // the temporary compiler toolchain so the installed Runtime remains reasonably small.
-            progress(RuntimeInstallProgress("native", "编译 DSH 原生终端组件", 83, sourceId = npmMirror.id, sourceName = npmMirror.name))
-            runInsideRootfs(
-                rootfs,
-                "apk add --no-cache --virtual .dsh-build-deps build-base linux-headers",
-                timeoutMillis = 15 * 60_000L,
-                idleTimeoutMillis = 4 * 60_000L,
-            ) { line ->
-                progress(RuntimeInstallProgress("native", "准备原生组件编译环境", 84, sourceId = npmMirror.id, sourceName = npmMirror.name, logLine = line))
+            // node-pty 1.2.0-beta.15 has no reliable Alpine/musl arm64 prebuild in the
+            // current DSH tree. Prefer the tiny, pinned Node-24 ABI 137 module bundled in the
+            // APK; this avoids fragile/slow compilation under Android PRoot. If the Runtime
+            // Node ABI ever differs, fall back to an in-rootfs source rebuild.
+            progress(RuntimeInstallProgress("native", "准备 DSH 原生终端组件", 83, sourceId = npmMirror.id, sourceName = npmMirror.name))
+            var buildDepsInstalled = false
+            val bundledNodePtyInstalled = runCatching {
+                installBundledNodePty(rootfs) { line ->
+                    progress(RuntimeInstallProgress("native", "安装内置终端组件", 85, sourceId = npmMirror.id, sourceName = npmMirror.name, logLine = line))
+                }
+            }.getOrElse { bundledFailure ->
+                progress(RuntimeInstallProgress("native", "内置终端组件不可用，切换源码编译", 84, sourceId = npmMirror.id, sourceName = npmMirror.name, logLine = bundledFailure.message))
+                false
             }
-            runInsideRootfs(
-                rootfs,
-                "cd /opt/dsh && npm_config_build_from_source=true npm rebuild node-pty",
-                timeoutMillis = 15 * 60_000L,
-                idleTimeoutMillis = 4 * 60_000L,
-            ) { line ->
-                progress(RuntimeInstallProgress("native", "编译 DSH 原生终端组件", 86, sourceId = npmMirror.id, sourceName = npmMirror.name, logLine = line))
+            if (!bundledNodePtyInstalled) {
+                runInsideRootfs(
+                    rootfs,
+                    "apk add --no-cache --virtual .dsh-build-deps build-base linux-headers",
+                    timeoutMillis = 15 * 60_000L,
+                    idleTimeoutMillis = 4 * 60_000L,
+                ) { line ->
+                    progress(RuntimeInstallProgress("native", "准备原生组件编译环境", 84, sourceId = npmMirror.id, sourceName = npmMirror.name, logLine = line))
+                }
+                buildDepsInstalled = true
+                runInsideRootfs(
+                    rootfs,
+                    "cd /opt/dsh && npm_config_build_from_source=true npm rebuild node-pty",
+                    timeoutMillis = 15 * 60_000L,
+                    idleTimeoutMillis = 4 * 60_000L,
+                ) { line ->
+                    progress(RuntimeInstallProgress("native", "编译 DSH 原生终端组件", 86, sourceId = npmMirror.id, sourceName = npmMirror.name, logLine = line))
+                }
             }
             runInsideRootfs(
                 rootfs,
@@ -231,17 +247,19 @@ internal class NativeRuntimeInstaller(
             ) { line ->
                 progress(RuntimeInstallProgress("native", "校验 DSH 原生组件", 87, logLine = line))
             }
-            runCatching {
-                runInsideRootfs(
-                    rootfs,
-                    "apk del .dsh-build-deps",
-                    timeoutMillis = 5 * 60_000L,
-                    idleTimeoutMillis = 2 * 60_000L,
-                ) { line ->
-                    progress(RuntimeInstallProgress("native", "清理临时编译依赖", 87, logLine = line))
+            if (buildDepsInstalled) {
+                runCatching {
+                    runInsideRootfs(
+                        rootfs,
+                        "apk del .dsh-build-deps",
+                        timeoutMillis = 5 * 60_000L,
+                        idleTimeoutMillis = 2 * 60_000L,
+                    ) { line ->
+                        progress(RuntimeInstallProgress("native", "清理临时编译依赖", 87, logLine = line))
+                    }
+                }.onFailure { cleanupFailure ->
+                    progress(RuntimeInstallProgress("native", "临时编译依赖清理未完成，不影响 Runtime 使用", 87, logLine = cleanupFailure.message))
                 }
-            }.onFailure { cleanupFailure ->
-                progress(RuntimeInstallProgress("native", "临时编译依赖清理未完成，不影响 Runtime 使用", 87, logLine = cleanupFailure.message))
             }
 
             progress(RuntimeInstallProgress("launcher", "配置 DSH 启动器", 88))
@@ -300,6 +318,36 @@ internal class NativeRuntimeInstaller(
     fun ensureMobileContextIntegration(slot: RuntimeSlot) {
         ensureNativeLauncher()
         ensureMobileContextIntegrationForRootfs(layout.rootfs(slot))
+    }
+
+    private fun installBundledNodePty(
+        rootfs: File,
+        onLog: (String) -> Unit = {},
+    ): Boolean {
+        val abi = runInsideRootfs(
+            rootfs,
+            "node -p \"process.versions.modules\"",
+            timeoutMillis = 60_000L,
+        ).lineSequence().map(String::trim).lastOrNull { it.isNotBlank() }.orEmpty()
+        onLog("Node module ABI=$abi")
+        if (abi != NODE_PTY_MODULE_ABI) return false
+
+        val packageDir = File(rootfs, "opt/dsh/node_modules/node-pty")
+        if (!packageDir.isDirectory) return false
+        val destination = File(packageDir, "build/Release/pty.node")
+        destination.parentFile?.let { check(it.exists() || it.mkdirs()) }
+        val tmp = File(destination.parentFile, ".pty.node.tmp")
+        if (tmp.exists()) tmp.delete()
+        appContext.assets.open(NODE_PTY_ASSET).use { input ->
+            FileOutputStream(tmp).use { output -> input.copyTo(output) }
+        }
+        check(sha256(tmp) == NODE_PTY_ASSET_SHA256) { "Bundled node-pty checksum mismatch" }
+        check(tmp.setReadable(true, true)) { "Unable to mark bundled node-pty readable" }
+        if (destination.exists()) check(destination.delete())
+        check(tmp.renameTo(destination)) { "Unable to install bundled node-pty module" }
+        check(sha256(destination) == NODE_PTY_ASSET_SHA256) { "Installed node-pty checksum mismatch" }
+        onLog("bundled node-pty ready · ABI $NODE_PTY_MODULE_ABI")
+        return true
     }
 
     private fun ensureDshLauncher(rootfs: File) {

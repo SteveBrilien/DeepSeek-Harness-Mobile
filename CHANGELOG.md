@@ -143,3 +143,20 @@ Files:
 - `release/update.json`
 - `docs/HANDOFF.md`
 - `docs/NEXT_ACTIONS.md`
+
+## 2026-09-09T17:02:20.364279Z — RELEASE: Prepare 0.3.0-alpha.5 after OriginOS node-pty install failure
+
+Device feedback from alpha.4 showed Runtime installation still failed at 87% while validating node-pty: the Android PRoot source rebuild path could complete without leaving a loadable pty.node. Alpha.5 now bundles the verified Alpine 3.24 / arm64 / musl Node-24 ABI 137 pty.node (79 KB, SHA-256 3e9cb29670c2cac1f7d54302099af8b0f998b9acc79891666b3136db575f18c3) and installs it directly after DSH npm install. The previous source-build path remains only as an ABI-mismatch fallback. Runtime logs now retain up to 250 lines, are text-selectable, and expose a one-tap copy action for device bug reports. Validation: clean runtime_alpine_e2e passed both bundled fast path and source fallback, real PTY, Mobile Context and authenticated DSH Web; mobile_context_contract passed; final alpha.5 android_debug and android_lint passed; stable signing certificate verified. Physical OriginOS alpha.5 regression remains manual.
+
+Files:
+- `app/build.gradle.kts`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/runtime/RuntimeInstallTelemetry.kt`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/OnboardingScreen.kt`
+- `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/NativeRuntimeInstaller.kt`
+- `core/runtime-android/src/main/assets/runtime/native-modules/node24-arm64-musl/pty.node`
+- `scripts/test-runtime-alpine-e2e.sh`
+- `release/DeepSeek-Harness-Mobile-0.3.0-alpha.5.apk`
+- `release/SHA256SUMS`
+- `release/update.json`
+- `docs/HANDOFF.md`
+- `docs/NEXT_ACTIONS.md`

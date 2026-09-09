@@ -1,7 +1,7 @@
 # DeepSeek Harness Mobile — Project Handoff
 
 Last updated: 2026-09-09
-Current app release: `0.3.0-alpha.4` (`versionCode = 5`)
+Current app release: `0.3.0-alpha.5` (`versionCode = 6`)
 Current documented Git HEAD before this handoff update: `f9c3d12ebce873aefd34cfb7d9bd0660189bb814`
 Primary branch: `main`
 Remote: `ssh://git@ssh.github.com:443/SteveBrilien/DeepSeek-Harness-Mobile.git`
@@ -60,7 +60,7 @@ One Terminal UI exposes distinct execution domains rather than pretending every 
 
 Never silently downgrade a privileged command into a weaker execution domain.
 
-## 3. 0.3.0-alpha.4 implementation state
+## 3. 0.3.0-alpha.5 implementation state
 
 The following changes are already implemented and validated on the OrangePi development host:
 
@@ -112,36 +112,37 @@ A previous Runtime-install failure path could allow an exception to escape the f
 
 This fix still requires device-side reproduction/regression verification because no ADB device was connected during the alpha.3 release build.
 
-### Runtime/DSH reliability added in alpha.4
+### Runtime/DSH reliability added in alpha.4 / alpha.5
 
 - Runtime downloads support resumable partial files, retry and source fallback instead of hanging indefinitely.
-- DSH installation uses the Alpine/musl-safe dependency path; `koffi` loads correctly and `node-pty` is rebuilt from source when the packaged GNU prebuild is unusable.
+- DSH installation uses the Alpine/musl-safe dependency path. After alpha.4 device testing showed that Android PRoot could report a successful `node-pty` rebuild yet still leave no loadable `pty.node`, alpha.5 bundles the verified 79 KB Alpine/musl arm64 Node-24 ABI 137 module and installs it directly; source rebuild remains only as an ABI-mismatch fallback.
 - DSH is launched through a wrapper that enables the Node internals required by its loader on Alpine/musl.
 - Runtime readiness no longer depends on a nonexistent `/healthz` endpoint.
 - DSH Web startup token is carried into the first WebView navigation, then normal authenticated cookie flow takes over.
 - Runtime logs redact token-bearing launch URLs.
 - `runtime_alpine_e2e` validates Node 24.18.1, DSH 0.1.2-rc.1, native modules, a real PTY command, Mobile Context integration, and the 401 -> token -> authenticated 200 Web flow.
 - Terminal UI is terminal-first; recent and explicitly pinned commands live behind a history surface instead of explanatory chrome.
+- Runtime installation logs are selectable and provide one-tap copy; telemetry retains up to the latest 250 lines for device-side bug reports.
 
 ## 4. Release artifact
 
 Current manual-test package:
 
-- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.4.apk`
-- SHA-256: `043c9ecc64784f09da1782607c8b8e25df7a1db5f55e637e16dccfb25c95f109`
+- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.5.apk`
+- SHA-256: `fba698d581a64240aa225ed51fbe15e8637515341ebd3e9497fee57af2443ca6`
 - update manifest: `release/update.json`
 
 The current update manifest advertises:
 
-- `versionCode`: 4
-- `versionName`: `0.3.0-alpha.3`
-- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.4.apk`
+- `versionCode`: 6
+- `versionName`: `0.3.0-alpha.5`
+- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.5.apk`
 
 The project uses a stable development signing identity for alpha cover-install testing. Do not replace the signing identity casually; doing so breaks seamless upgrade/cover-install behavior.
 
 ## 5. Validation status
 
-Verified on the development host for alpha.4:
+Verified on the development host for alpha.5:
 
 - `android_debug` succeeded;
 - `android_lint` succeeded;
@@ -150,7 +151,7 @@ Verified on the development host for alpha.4:
 - XML/resource parse checks passed;
 - project path contamination check reports no known contamination.
 
-Not yet completed for alpha.4:
+Not yet completed for alpha.5:
 
 - physical-device install E2E after this exact release;
 - reproduction and regression validation of the previously observed Runtime-install app crash;
@@ -265,4 +266,4 @@ Do not regress these constraints:
 
 ## 11. Current top priorities
 
-See `docs/NEXT_ACTIONS.md` for the active queue. The immediate priority is device E2E of alpha.4, especially the Runtime-install crash regression and resource-reuse/update-choice flows. After that, stabilize the first-run UX from real screenshots before expanding into new feature work.
+See `docs/NEXT_ACTIONS.md` for the active queue. The immediate priority is device E2E of alpha.5, especially the Runtime-install crash regression and resource-reuse/update-choice flows. After that, stabilize the first-run UX from real screenshots before expanding into new feature work.

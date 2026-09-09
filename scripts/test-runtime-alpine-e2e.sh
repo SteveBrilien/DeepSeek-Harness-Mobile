@@ -14,6 +14,8 @@ DSH_VERSION="0.1.2-rc.1"
 PNPM_VERSION="12.3.4"
 NPM_REGISTRY=${DSHM_E2E_NPM_REGISTRY:-https://registry.npmmirror.com}
 ALPINE_BASE=${DSHM_E2E_ALPINE_BASE:-https://mirrors.ustc.edu.cn/alpine/v3.24}
+BUNDLED_PTY="$ROOT_DIR/core/runtime-android/src/main/assets/runtime/native-modules/node24-arm64-musl/pty.node"
+BUNDLED_PTY_SHA="3e9cb29670c2cac1f7d54302099af8b0f998b9acc79891666b3136db575f18c3"
 
 command -v bwrap >/dev/null
 command -v tar >/dev/null
@@ -67,11 +69,16 @@ inside "NPM_CONFIG_REGISTRY='$NPM_REGISTRY' npm install -g pnpm@$PNPM_VERSION"
 echo '[e2e] DSH dependency tree'
 inside "rm -rf /opt/dsh/node_modules /opt/dsh/package-lock.json /opt/dsh/pnpm-lock.yaml; printf '%s\\n' '{\"private\":true}' > /opt/dsh/package.json; NPM_CONFIG_REGISTRY='$NPM_REGISTRY' NPM_CONFIG_AUDIT=false NPM_CONFIG_FUND=false NPM_CONFIG_FETCH_RETRIES=3 NPM_CONFIG_FETCH_TIMEOUT=120000 NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=3000 NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=20000 npm install --omit=dev --include=optional --no-audit --no-fund @deepseek-ai/dsh@$DSH_VERSION"
 
-echo '[e2e] native build dependencies + node-pty rebuild'
-inside 'apk add --no-cache --virtual .dsh-build-deps build-base linux-headers'
-inside 'npm_config_build_from_source=true npm rebuild node-pty'
+echo '[e2e] bundled node-pty fast path'
+printf '%s  %s\n' "$BUNDLED_PTY_SHA" "$BUNDLED_PTY" | sha256sum -c -
+abi=$(inside 'node -p "process.versions.modules"' | tail -n 1 | tr -d '\r')
+[[ "$abi" == 137 ]] || { echo "Expected Node module ABI 137, got $abi" >&2; exit 2; }
+rm -rf "$TMP_ROOT/opt/dsh/node_modules/node-pty/build/Release"
+mkdir -p "$TMP_ROOT/opt/dsh/node_modules/node-pty/build/Release"
+cp "$BUNDLED_PTY" "$TMP_ROOT/opt/dsh/node_modules/node-pty/build/Release/pty.node"
+inside 'node -e "require(\"koffi\"); const p=require(\"node-pty\"); if(typeof p.spawn!==\"function\") process.exit(2); console.log(\"bundled-native-modules-ok\")"'
 
-echo '[e2e] native module + PTY behavior'
+echo '[e2e] bundled node-pty PTY behavior'
 inside 'node - <<'"'"'NODE'"'"'
 require("koffi");
 const pty = require("node-pty");
@@ -89,6 +96,13 @@ child.onExit(event => {
 });
 NODE'
 inside 'node -e "import(\"@deepseek-ai/dsh-subprocess-local\").then(m=>{ if(!m.LocalSubprocessRuntime) process.exit(2); console.log(\"subprocess-import-ok\") })"'
+
+echo '[e2e] source-build fallback path'
+rm -f "$TMP_ROOT/opt/dsh/node_modules/node-pty/build/Release/pty.node"
+inside 'apk add --no-cache --virtual .dsh-build-deps build-base linux-headers'
+inside 'npm_config_build_from_source=true npm rebuild node-pty'
+inside 'test -f /opt/dsh/node_modules/node-pty/build/Release/pty.node'
+inside 'node -e "const p=require(\"node-pty\"); if(typeof p.spawn!==\"function\") process.exit(2); console.log(\"source-rebuild-ok\")"'
 
 echo '[e2e] remove compiler-only packages and verify native modules still load'
 inside 'apk del .dsh-build-deps'

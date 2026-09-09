@@ -1,8 +1,11 @@
 package com.stevebrilien.dshmobile.ui
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.widget.Toast
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
@@ -16,7 +19,9 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -785,6 +790,7 @@ private fun InstallProgressPanel(
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalDshColors.current
+    val context = LocalContext.current
     val logScroll = rememberScrollState()
     LaunchedEffect(snapshot.logs.size) {
         delay(30)
@@ -841,21 +847,41 @@ private fun InstallProgressPanel(
                 )
             }
             if (snapshot.logs.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    Text(
+                        "复制日志",
+                        modifier = Modifier
+                            .clickable {
+                                val text = snapshot.logs.joinToString("\n") { it.substringAfter(" · ", it) }
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("Runtime install log", text))
+                                Toast.makeText(context, "安装日志已复制", Toast.LENGTH_SHORT).show()
+                            }
+                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.textPrimary,
+                    )
+                }
                 Surface(
-                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp).height(132.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp).height(150.dp),
                     color = colors.layer2,
                     shape = RoundedCornerShape(8.dp),
                     tonalElevation = 0.dp,
                 ) {
-                    Column(
-                        modifier = Modifier.fillMaxSize().verticalScroll(logScroll).padding(10.dp),
-                    ) {
-                        snapshot.logs.takeLast(80).forEach { line ->
-                            Text(
-                                line.substringAfter(" · ", line),
-                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                                color = colors.textSecondary,
-                            )
+                    SelectionContainer {
+                        Column(
+                            modifier = Modifier.fillMaxSize().verticalScroll(logScroll).padding(10.dp),
+                        ) {
+                            snapshot.logs.takeLast(80).forEach { line ->
+                                Text(
+                                    line.substringAfter(" · ", line),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                                    color = colors.textSecondary,
+                                )
+                            }
                         }
                     }
                 }

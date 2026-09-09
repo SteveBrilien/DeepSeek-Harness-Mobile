@@ -1,18 +1,18 @@
 # Immediate Next Actions
 
 Last updated: 2026-09-09
-Current release: `0.3.0-alpha.4` (`versionCode = 5`)
+Current release: `0.3.0-alpha.5` (`versionCode = 6`)
 
-## P0 — Validate alpha.4 on the target Android 11 / OriginOS device
+## P0 — Validate alpha.5 on the target Android 11 / OriginOS device
 
 The host build is green; the main blocker is now device-side validation.
 
 1. Connect the target phone over the controlled ADB HostCapability.
-2. Cover-install the exact alpha.4 APK and confirm package/version/signing identity.
+2. Cover-install the exact alpha.5 APK and confirm package/version/signing identity; the alpha.4 `node-pty` validation failure is the primary regression target.
 3. Verify cold start and first-run navigation.
 4. Reproduce the previous Runtime-install crash scenario and confirm failures are now surfaced as recoverable install errors instead of terminating the app.
-5. Run a complete Runtime install to healthy DSH service state.
-6. Verify notification progress, live install logs, elapsed time and ETA.
+5. Run a complete Runtime install to healthy DSH service state; confirm the log shows `bundled node-pty ready · ABI 137` and does not spend minutes installing the compiler toolchain.
+6. Verify notification progress, live install logs, elapsed time and ETA; verify long-press selection and the `复制日志` action both work.
 7. Verify mirror probing/automatic selection on the phone's actual network.
 8. Verify fallback when the preferred mirror is unavailable.
 9. Verify first-run layout, launcher icon safe area, DeepSeek Harness branding and page/button animations from screenshots.
@@ -50,7 +50,7 @@ Use the existing backup/probe TaskProfiles rather than ad-hoc destructive shell 
 
 ## P1 — First-run UX refinement from real-device feedback
 
-After alpha.4 screenshots are collected:
+After alpha.5 screenshots are collected:
 
 - reduce any remaining visually dense cards/text;
 - keep one obvious primary action per step;
@@ -82,7 +82,7 @@ The previously configured `https://dsh.wmy-cloud.cn/dsh-mobile-download/` path w
 
 Immediate safe behavior:
 
-1. use the tracked GitHub raw APK as the alpha.4 update-manifest fallback;
+1. use the tracked GitHub raw APK as the alpha.5 update-manifest fallback;
 2. do not probe or copy contents from exposed private directories;
 3. on the Azure host, move the static server document root to a dedicated release-only directory;
 4. disable directory browsing and expose only intended APK/manifest artifacts;
@@ -91,7 +91,7 @@ Immediate safe behavior:
 
 ## P1 — Release promotion after device E2E
 
-Do not call alpha.4 fully validated until the target-device checks pass.
+Do not call alpha.5 fully validated until the target-device checks pass.
 
 When they do:
 
@@ -116,9 +116,9 @@ Once first-run and Runtime installation are stable on the actual phone, continue
 
 ## Current validation summary
 
-Already verified on the OrangePi development host for alpha.4:
+Already verified on the OrangePi development host for alpha.5:
 
-- clean Alpine ARM64 Runtime E2E passes for Node 24.18.1, DSH 0.1.2-rc.1, native modules, PTY execution, Mobile Context and authenticated DSH Web;
+- clean Alpine ARM64 Runtime E2E passes for Node 24.18.1, DSH 0.1.2-rc.1, the bundled ABI-137 `pty.node` fast path, source-build fallback, PTY execution, Mobile Context and authenticated DSH Web;
 
 - Android debug build passes;
 - Android lint passes;
@@ -129,7 +129,7 @@ Already verified on the OrangePi development host for alpha.4:
 
 Still pending:
 
-- exact alpha.4 target-device E2E;
+- exact alpha.5 target-device E2E;
 - Runtime-install crash regression on the user's OriginOS phone;
 - live mirror/resource-reuse behavior on that phone;
 - final visual acceptance of onboarding and animations.

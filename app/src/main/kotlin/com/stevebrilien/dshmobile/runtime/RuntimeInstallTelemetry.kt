@@ -121,7 +121,7 @@ class RuntimeInstallTelemetry(context: Context) {
     }
 
     @Synchronized
-    fun snapshot(maxLogLines: Int = 80): RuntimeInstallSnapshot {
+    fun snapshot(maxLogLines: Int = 250): RuntimeInstallSnapshot {
         val json = readStateJson()
         val logs = if (logFile.isFile) {
             runCatching { logFile.readLines(StandardCharsets.UTF_8).takeLast(maxLogLines) }.getOrDefault(emptyList())
