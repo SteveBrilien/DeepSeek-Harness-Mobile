@@ -100,3 +100,12 @@ Files:
 - `docs/NEXT_ACTIONS.md`
 - `README.md`
 - `CHANGELOG.md`
+
+## 2026-09-09T11:11:43.091059Z — DOCS: Record verified GitHub deploy-key push path
+
+Updated docs/HANDOFF.md to reflect the repository-scoped ED25519 GitHub Deploy Key, SSH-over-443 remote, strict host verification using GitHub's published Ed25519 host key, and successful authenticated push verification. Private key remains only in ignored .mcp/ssh state and must never be committed or logged.
+
+Files:
+- `docs/HANDOFF.md`
+- `.mcp/ssh/github_deploy_ed25519`
+- `.mcp/ssh/known_hosts`

@@ -4,7 +4,7 @@ Last updated: 2026-09-09
 Current app release: `0.3.0-alpha.3` (`versionCode = 4`)
 Current documented Git HEAD before this handoff update: `f9c3d12ebce873aefd34cfb7d9bd0660189bb814`
 Primary branch: `main`
-Remote: `https://github.com/SteveBrilien/DeepSeek-Harness-Mobile.git`
+Remote: `ssh://git@ssh.github.com:443/SteveBrilien/DeepSeek-Harness-Mobile.git`
 
 ## 1. Product goal
 
@@ -219,6 +219,8 @@ Known-good environment at handoff time:
 - OrangePi host: aarch64;
 - MCP: `2.1.4-orange.1`;
 - project branch: `main`;
+- repository-scoped ED25519 GitHub Deploy Key authentication is configured under ignored `.mcp/ssh/` state; the private key must never be committed or copied into ordinary logs/docs;
+- SSH host verification is pinned to GitHub's published Ed25519 host key and the repository deploy-key authentication/push path was verified on 2026-09-09;
 - network available in controlled project tasks;
 - JDK 17 HostCapability valid;
 - Android SDK HostCapability valid;
