@@ -1,0 +1,38 @@
+# Gradle / Android
+.gradle/
+build/
+**/build/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+.tools/
+.mcp/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets / signing
+*.jks
+*.keystore
+keystore.properties
+secrets.properties
+.env
+.env.*
+
+# Runtime/downloaded artifacts
+runtime-cache/
+downloads/runtime/
+*.apk
+!release/*.apk
+*.aab
+
+# Diagnostics that may contain local paths
+*.hprof
+logs/local/

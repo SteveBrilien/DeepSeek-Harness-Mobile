@@ -1,0 +1,2 @@
+# OrangePi host Android SDK path used by the pinned ARM64 build chain.
+sdk.dir=/home/orangepi/.local/share/android-sdk

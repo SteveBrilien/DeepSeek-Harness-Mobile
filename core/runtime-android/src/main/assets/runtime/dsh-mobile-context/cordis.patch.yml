@@ -1,0 +1,3 @@
+- insert:
+    - id: dsh-mobile-context
+      name: '@dsh-mobile/dsh-mobile-context'
