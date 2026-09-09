@@ -1,7 +1,7 @@
 {
-  "versionCode": 3,
-  "versionName": "0.3.0-alpha.2",
-  "apkUrl": "https://dsh.wmy-cloud.cn/dsh-mobile-download/DeepSeek-Harness-Mobile-0.3.0-alpha.2.apk",
-  "sha256": "e35ebb812adbc4f894b8d86300b53ee88859625d1d126314527403d7e6c78f89",
-  "notes": "0.3.0-alpha.2 manual-test build: DSH-native mobile UI, local A/B runtime, persistent DSH_HOME, Recovery/Secret Vault, narrow-screen DSH settings compatibility, in-app update checks, and cache-stable DSH Mobile system/session context injection."
+  "versionCode": 4,
+  "versionName": "0.3.0-alpha.3",
+  "apkUrl": "https://dsh.wmy-cloud.cn/dsh-mobile-download/DeepSeek-Harness-Mobile-0.3.0-alpha.3.apk",
+  "sha256": "a191a6988820a831b893e0338a736155ddbd2dc29988f09a59748eb8125054cb",
+  "notes": "0.3.0-alpha.3 manual-test build: refined first-run onboarding and launcher branding, Runtime install progress/log/elapsed/ETA telemetry, automatic multi-mirror source probing and fallback, reusable local/Recovery-Vault resources, existing Runtime version detection with non-destructive A/B update choice, and install crash containment."
 }

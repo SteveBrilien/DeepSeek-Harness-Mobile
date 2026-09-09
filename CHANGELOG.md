@@ -80,3 +80,13 @@ Files:
 - `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/RuntimeControlPlane.kt`
 - `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/RuntimeInstallModels.kt`
 - `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/RuntimePins.kt`
+
+## 2026-09-09T09:14:17.645305Z — RELEASE: Package 0.3.0-alpha.3 manual-test release
+
+Packaged the clean-commit Android debug artifact from commit 95cc9839a4427168e9b8b9f45a6d32b2d0d9d7f2 as DeepSeek-Harness-Mobile-0.3.0-alpha.3.apk. The clean build succeeded, Android lint succeeded, stable signing certificate verification succeeded, release SHA-256 is a191a6988820a831b893e0338a736155ddbd2dc29988f09a59748eb8125054cb, and release/update.json now advertises versionCode 4 / versionName 0.3.0-alpha.3. This remains a manual-test release because no ADB device is currently connected for final device/runtime E2E validation.
+
+Files:
+- `release/DeepSeek-Harness-Mobile-0.3.0-alpha.3.apk`
+- `release/SHA256SUMS`
+- `release/update.json`
+- `README.md`

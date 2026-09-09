@@ -4,13 +4,13 @@ DeepSeek Harness Mobile is a personal Android host for running the official Deep
 
 ## Current release
 
-**0.3.0-alpha.2 — manual-test build**
+**0.3.0-alpha.3 — manual-test build**
 
 - Android target: fixed Android 11 self-hosting device profile.
-- APK: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.2.apk`
+- APK: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.3.apk`
 - Update manifest: `release/update.json`
 - The APK uses the project stable development signing certificate so later alpha builds can cover-install without silently changing identity.
-- This alpha is intended for manual installation/feedback. Build, lint, signing, bundle-contract, and artifact-integrity checks pass; final device/runtime E2E promotion remains feedback-gated.
+- This alpha is intended for manual installation/feedback. Clean-commit Android build, lint, stable signing, and artifact-integrity checks pass; final device/runtime E2E promotion remains feedback-gated because no ADB device was connected for this release build.
 
 ## Implemented surfaces
 
