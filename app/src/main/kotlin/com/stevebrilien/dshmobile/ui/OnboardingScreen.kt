@@ -11,16 +11,10 @@ import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -97,7 +91,8 @@ internal fun OnboardingScreen(
     val recoveryBackups = remember(appContext) { RecoveryBackupManager(appContext, vault) }
     val installSources = remember(runtime) { runtime.installSources() }
 
-    var step by remember { mutableIntStateOf(0) }
+    val pagerState = rememberPagerState(pageCount = { 5 })
+    val step = pagerState.currentPage
     var refreshKey by remember { mutableIntStateOf(0) }
     var discovery by remember { mutableStateOf<RecoveryDiscovery?>(null) }
     var runtimeHealth by remember { mutableStateOf<RuntimeHealth?>(null) }
@@ -112,6 +107,10 @@ internal fun OnboardingScreen(
     var recoveryPasswordConfirm by remember { mutableStateOf("") }
     var showUpdateDialog by remember { mutableStateOf(false) }
     var updatePromptedVersion by remember { mutableStateOf<String?>(null) }
+
+    fun goTo(page: Int) {
+        scope.launch { pagerState.animateScrollToPage(page.coerceIn(0, 4)) }
+    }
 
     val storagePermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -235,7 +234,7 @@ internal fun OnboardingScreen(
                 }
                 error = null
                 refreshKey += 1
-                step = 2
+                goTo(2)
             }.onFailure { error = it.message ?: it::class.java.simpleName }
         }
     }
@@ -253,6 +252,14 @@ internal fun OnboardingScreen(
         }.onFailure { error = it.message ?: it::class.java.simpleName }
     }
 
+    fun startRuntime() {
+        if (installSnapshot.running) return
+        error = null
+        runCatching {
+            RuntimeForegroundService.dispatch(appContext, RuntimeForegroundService.ACTION_START)
+        }.onFailure { error = it.message ?: it::class.java.simpleName }
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(colors.base)) {
         Column(
             modifier = Modifier
@@ -261,20 +268,13 @@ internal fun OnboardingScreen(
                 .navigationBarsPadding(),
         ) {
             OnboardingTop(step = step)
-            AnimatedContent(
-                targetState = step,
+            HorizontalPager(
+                state = pagerState,
                 modifier = Modifier.weight(1f),
-                transitionSpec = {
-                    val forward = targetState >= initialState
-                    val enterOffset: (Int) -> Int = { width -> if (forward) width / 10 else -width / 10 }
-                    val exitOffset: (Int) -> Int = { width -> if (forward) -width / 14 else width / 14 }
-                    (fadeIn(tween(180)) + slideInHorizontally(tween(220), initialOffsetX = enterOffset)) togetherWith
-                        (fadeOut(tween(120)) + slideOutHorizontally(tween(170), targetOffsetX = exitOffset))
-                },
-                label = "onboarding-step",
+                beyondViewportPageCount = 1,
             ) { currentStep ->
                 when (currentStep) {
-                    0 -> WelcomeStep(onNext = { step = 1 })
+                    0 -> WelcomeStep(onNext = { goTo(1) })
                     1 -> RecoveryStep(
                         discovery = discovery,
                         secretStatus = secretStatus,
@@ -286,7 +286,7 @@ internal fun OnboardingScreen(
                         onGrantStorage = ::grantStorage,
                         onRefresh = { refreshKey += 1 },
                         onContinue = ::prepareVaultAndContinue,
-                        onBack = { step = 0 },
+                        onBack = { goTo(0) },
                         message = message,
                         error = error,
                     )
@@ -301,8 +301,8 @@ internal fun OnboardingScreen(
                             }
                         },
                         onRefresh = { refreshKey += 1 },
-                        onContinue = { step = 3 },
-                        onBack = { step = 1 },
+                        onContinue = { goTo(3) },
+                        onBack = { goTo(1) },
                     )
                     3 -> RuntimeStep(
                         health = runtimeHealth,
@@ -312,15 +312,16 @@ internal fun OnboardingScreen(
                         selectedSourceId = selectedSourceId,
                         onSourceChange = { selectedSourceId = it },
                         onInstall = ::installRuntime,
+                        onStartRuntime = ::startRuntime,
                         onRefresh = { refreshKey += 1 },
-                        onContinue = { step = 4 },
-                        onBack = { step = 2 },
+                        onContinue = { goTo(4) },
+                        onBack = { goTo(2) },
                     )
                     else -> FinishStep(
                         discovery = discovery,
                         health = runtimeHealth,
                         inventory = inventory,
-                        onBack = { step = 3 },
+                        onBack = { goTo(3) },
                         onComplete = onComplete,
                     )
                 }
@@ -641,6 +642,7 @@ private fun RuntimeStep(
     selectedSourceId: String,
     onSourceChange: (String) -> Unit,
     onInstall: () -> Unit,
+    onStartRuntime: () -> Unit,
     onRefresh: () -> Unit,
     onContinue: () -> Unit,
     onBack: () -> Unit,
@@ -653,6 +655,65 @@ private fun RuntimeStep(
     val older = inventory?.updateAvailable == true
     val installing = installSnapshot.running
     val failed = installSnapshot.failed
+    val startupPending = failed && (installSnapshot.runtimeInstalled || (active && installSnapshot.percent == 99))
+    val hasProgress = installing || installSnapshot.percent != null || failed
+
+    if (hasProgress) {
+        // Installation is intentionally a fixed viewport. Only the log body scrolls, so
+        // dragging through long output cannot move the entire onboarding page or push
+        // the bottom actions outside the visible safe area.
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp),
+        ) {
+            Spacer(Modifier.height(12.dp))
+            DshPageHeader(
+                title = if (startupPending) "启动 Runtime" else "安装 Runtime",
+                subtitle = when {
+                    startupPending -> "Runtime 已安装，只需重新启动 DSH。"
+                    installing -> "正在准备本机运行环境。"
+                    else -> "安装未完成，可保留现有资源后重试。"
+                },
+            )
+
+            if (failed && !startupPending) {
+                RuntimeSourceSelector(
+                    sources = sources,
+                    selectedSourceId = selectedSourceId,
+                    enabled = true,
+                    onSourceChange = onSourceChange,
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                )
+            }
+
+            InstallProgressPanel(
+                snapshot = installSnapshot,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(top = 10.dp),
+                immersive = true,
+            )
+
+            Surface(color = colors.base, tonalElevation = 0.dp) {
+                Box(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+                    BottomActions {
+                        DshButton("返回", onBack)
+                        when {
+                            installing -> DshButton("转后台继续", onContinue, style = DshButtonStyle.PRIMARY)
+                            startupPending -> DshButton("重试启动", onStartRuntime, style = DshButtonStyle.PRIMARY)
+                            failed -> DshButton("重试安装", onInstall, style = DshButtonStyle.PRIMARY)
+                            exactRecommended -> DshButton("使用已有环境", onContinue, style = DshButtonStyle.PRIMARY)
+                            active -> DshButton("继续", onContinue, style = DshButtonStyle.PRIMARY)
+                            else -> DshButton("安装推荐环境", onInstall, style = DshButtonStyle.PRIMARY)
+                        }
+                    }
+                }
+            }
+        }
+        return
+    }
 
     OnboardingStage(
         title = "安装 Runtime",
@@ -661,13 +722,11 @@ private fun RuntimeStep(
             BottomActions {
                 DshButton("返回", onBack)
                 when {
-                    installing -> DshButton("转后台继续", onContinue, style = DshButtonStyle.PRIMARY)
                     exactRecommended -> DshButton("使用已有环境", onContinue, style = DshButtonStyle.PRIMARY)
                     older -> {
                         DshButton("更新推荐环境", onInstall)
                         DshButton("使用当前版本", onContinue, style = DshButtonStyle.PRIMARY)
                     }
-                    failed -> DshButton("重试安装", onInstall, style = DshButtonStyle.PRIMARY)
                     active -> DshButton("继续", onContinue, style = DshButtonStyle.PRIMARY)
                     else -> DshButton("安装推荐环境", onInstall, style = DshButtonStyle.PRIMARY)
                 }
@@ -709,17 +768,12 @@ private fun RuntimeStep(
         RuntimeSourceSelector(
             sources = sources,
             selectedSourceId = selectedSourceId,
-            enabled = !installing,
+            enabled = true,
             onSourceChange = onSourceChange,
             modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
         )
 
-        if (installing || installSnapshot.percent != null || failed) {
-            InstallProgressPanel(
-                snapshot = installSnapshot,
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-            )
-        } else if (!active) {
+        if (!active) {
             Text(
                 "新环境写入 A/B slot；已校验资源不会重复下载。",
                 modifier = Modifier.padding(top = 13.dp),
@@ -788,69 +842,86 @@ private fun RuntimeSourceSelector(
 private fun InstallProgressPanel(
     snapshot: RuntimeInstallSnapshot,
     modifier: Modifier = Modifier,
+    immersive: Boolean = false,
 ) {
     val colors = LocalDshColors.current
     val context = LocalContext.current
     val logScroll = rememberScrollState()
     LaunchedEffect(snapshot.logs.size) {
-        delay(30)
-        logScroll.scrollTo(logScroll.maxValue)
+        val wasNearBottom = logScroll.maxValue - logScroll.value <= 80
+        delay(40)
+        if (wasNearBottom) logScroll.scrollTo(logScroll.maxValue)
     }
+
+    val startupPending = snapshot.failed && (snapshot.runtimeInstalled || snapshot.percent == 99)
+    val statusTitle = when {
+        startupPending -> "Runtime 已安装"
+        snapshot.failed -> "安装中断"
+        snapshot.running && snapshot.phase == "start" -> "正在启动 DSH"
+        snapshot.running -> "正在安装"
+        else -> "安装状态"
+    }
+    val statusColor = when {
+        snapshot.failed && !startupPending -> colors.danger
+        startupPending -> colors.warning
+        else -> colors.textSecondary
+    }
+    val progressColor = if (snapshot.failed && !startupPending) colors.danger else colors.textPrimary
+
     DshPanel(modifier = modifier, elevated = snapshot.running) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Column(
+            modifier = if (immersive) Modifier.fillMaxSize().padding(14.dp) else Modifier.padding(14.dp),
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        if (snapshot.failed) "安装中断" else if (snapshot.running) "正在安装" else "安装状态",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = colors.textPrimary,
-                    )
+                    Text(statusTitle, style = MaterialTheme.typography.titleSmall, color = colors.textPrimary)
                     Text(
                         snapshot.message,
                         modifier = Modifier.padding(top = 2.dp),
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (snapshot.failed) colors.danger else colors.textSecondary,
+                        color = statusColor,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 snapshot.percent?.let {
                     Text("$it%", style = MaterialTheme.typography.titleMedium, color = colors.textPrimary)
                 }
             }
+
             val p = (snapshot.percent ?: 0).coerceIn(0, 100) / 100f
             LinearProgressIndicator(
                 progress = { p },
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp).height(4.dp),
-                color = if (snapshot.failed) colors.danger else colors.textPrimary,
+                modifier = Modifier.fillMaxWidth().padding(top = 9.dp).height(4.dp),
+                color = progressColor,
                 trackColor = colors.border1,
             )
+
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 9.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text("已用 ${formatDuration(snapshot.elapsedMillis)}", style = MaterialTheme.typography.labelMedium, color = colors.textTertiary)
                 snapshot.etaMillis?.let {
-                    Text("预计剩余 ${formatDuration(it)}", style = MaterialTheme.typography.labelMedium, color = colors.textTertiary)
+                    Text("剩余 ${formatDuration(it)}", style = MaterialTheme.typography.labelMedium, color = colors.textTertiary)
                 }
-                snapshot.sourceName?.let {
-                    Text(it, style = MaterialTheme.typography.labelMedium, color = colors.textTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
-            if (snapshot.downloadedBytes != null) {
                 Text(
                     buildString {
-                        append(formatBytes(snapshot.downloadedBytes))
-                        snapshot.totalBytes?.takeIf { it > 0L }?.let { append(" / ${formatBytes(it)}") }
+                        snapshot.sourceName?.let(::append)
+                        snapshot.downloadedBytes?.let { downloaded ->
+                            if (isNotEmpty()) append(" · ")
+                            append(formatBytes(downloaded))
+                            snapshot.totalBytes?.takeIf { it > 0L }?.let { append("/${formatBytes(it)}") }
+                        }
                     },
-                    modifier = Modifier.padding(top = 5.dp),
-                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelMedium,
                     color = colors.textTertiary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-            }
-            if (snapshot.logs.isNotEmpty()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.End,
-                ) {
+                if (snapshot.logs.isNotEmpty()) {
                     Text(
                         "复制日志",
                         modifier = Modifier
@@ -860,22 +931,29 @@ private fun InstallProgressPanel(
                                 clipboard.setPrimaryClip(ClipData.newPlainText("Runtime install log", text))
                                 Toast.makeText(context, "安装日志已复制", Toast.LENGTH_SHORT).show()
                             }
-                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                            .padding(vertical = 5.dp),
                         style = MaterialTheme.typography.labelMedium,
                         color = colors.textPrimary,
                     )
                 }
+            }
+
+            if (snapshot.logs.isNotEmpty()) {
                 Surface(
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp).height(150.dp),
+                    modifier = if (immersive) {
+                        Modifier.fillMaxWidth().weight(1f).padding(top = 6.dp)
+                    } else {
+                        Modifier.fillMaxWidth().padding(top = 6.dp).height(150.dp)
+                    },
                     color = colors.layer2,
                     shape = RoundedCornerShape(8.dp),
                     tonalElevation = 0.dp,
                 ) {
                     SelectionContainer {
                         Column(
-                            modifier = Modifier.fillMaxSize().verticalScroll(logScroll).padding(10.dp),
+                            modifier = Modifier.fillMaxSize().verticalScroll(logScroll).padding(horizontal = 10.dp, vertical = 8.dp),
                         ) {
-                            snapshot.logs.takeLast(80).forEach { line ->
+                            snapshot.logs.takeLast(250).forEach { line ->
                                 Text(
                                     line.substringAfter(" · ", line),
                                     style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
@@ -885,6 +963,8 @@ private fun InstallProgressPanel(
                         }
                     }
                 }
+            } else if (immersive) {
+                Spacer(Modifier.weight(1f))
             }
         }
     }

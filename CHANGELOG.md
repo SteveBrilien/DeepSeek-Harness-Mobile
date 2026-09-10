@@ -160,3 +160,23 @@ Files:
 - `release/update.json`
 - `docs/HANDOFF.md`
 - `docs/NEXT_ACTIONS.md`
+
+## 2026-09-10T03:01:10.048872Z — RELEASE: 0.3.0-alpha.6: DSH startup recovery, immersive installer, swipe onboarding, exact upstream wordmark
+
+Promoted the manual-test build to versionCode 7. Runtime installation now preserves a verified slot when DSH Web startup is delayed, exposes retry-start without reinstall, extends loopback readiness polling to 180 seconds, and appends DSH startup diagnostics to the copyable install log. The Runtime installer uses a fixed immersive viewport with an independently scrollable log, and onboarding uses a synchronized five-page horizontal pager. DeepSeek Harness branding no longer uses Android text/font reconstruction: whale, deepseek lettering, HARNESS badge and HARNESS glyph outlines are mechanically synchronized from the official upstream BrandWordmark.tsx 182x24 artwork, blob a9df992179c7cc8f0792142f2dde66dbbb3b5464; all 10 primary paths and 7 inverted glyph paths were checked for exact equality. Final android_debug, android_lint, stable signing verification, XML/resource validation, release manifest SHA validation and mobile_context_contract pass. Runtime Alpine ARM64 E2E had already passed on the same alpha.6 runtime code before the branding-only final change.
+
+Files:
+- `app/build.gradle.kts`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/runtime/RuntimeForegroundService.kt`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/runtime/RuntimeInstallTelemetry.kt`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/Branding.kt`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/OnboardingScreen.kt`
+- `app/src/main/res/drawable/ic_deepseek_harness_wordmark_primary.xml`
+- `app/src/main/res/drawable/ic_deepseek_harness_wordmark_inverted.xml`
+- `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/AndroidRuntimeManager.kt`
+- `docs/HANDOFF.md`
+- `docs/NEXT_ACTIONS.md`
+- `docs/adr/0005-target-sdk-28-for-local-runtime-exec.md`
+- `release/update.json`
+- `release/SHA256SUMS`
+- `release/DeepSeek-Harness-Mobile-0.3.0-alpha.6.apk`

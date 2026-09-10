@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets
 data class RuntimeInstallSnapshot(
     val running: Boolean = false,
     val failed: Boolean = false,
+    val runtimeInstalled: Boolean = false,
     val startedAtMillis: Long = 0L,
     val updatedAtMillis: Long = 0L,
     val phase: String = "idle",
@@ -47,6 +48,7 @@ class RuntimeInstallTelemetry(context: Context) {
         val state = JSONObject()
             .put("running", true)
             .put("failed", false)
+            .put("runtimeInstalled", false)
             .put("startedAtMillis", now)
             .put("updatedAtMillis", now)
             .put("phase", "starting")
@@ -97,6 +99,7 @@ class RuntimeInstallTelemetry(context: Context) {
         current
             .put("running", false)
             .put("failed", false)
+            .put("runtimeInstalled", true)
             .put("updatedAtMillis", System.currentTimeMillis())
             .put("phase", "complete")
             .put("message", message)
@@ -106,18 +109,64 @@ class RuntimeInstallTelemetry(context: Context) {
     }
 
     @Synchronized
-    fun fail(error: Throwable) {
+    fun markRuntimeInstalled(message: String = "Runtime 已安装，正在启动 DSH") {
+        val current = writerState ?: readStateJson().also { writerState = it }
+        appendLog(message)
+        current
+            .put("running", true)
+            .put("failed", false)
+            .put("runtimeInstalled", true)
+            .put("updatedAtMillis", System.currentTimeMillis())
+            .put("phase", "start")
+            .put("message", message)
+            .put("percent", 99)
+        writeState(current)
+        lastStateWriteAt = System.currentTimeMillis()
+    }
+
+    @Synchronized
+    fun beginRuntimeStart(message: String = "正在启动 DSH") {
+        val current = writerState ?: readStateJson().also { writerState = it }
+        val now = System.currentTimeMillis()
+        if (current.optLong("startedAtMillis", 0L) <= 0L) current.put("startedAtMillis", now)
+        appendLog(message)
+        current
+            .put("running", true)
+            .put("failed", false)
+            .put("runtimeInstalled", true)
+            .put("updatedAtMillis", now)
+            .put("phase", "start")
+            .put("message", message)
+            .put("percent", 99)
+        writeState(current)
+        lastStateWriteAt = now
+    }
+
+    @Synchronized
+    fun fail(error: Throwable, runtimeInstalled: Boolean? = null) {
         val detail = (error.message ?: error::class.java.simpleName).lineSequence().firstOrNull()?.take(240) ?: "未知错误"
         val current = writerState ?: readStateJson().also { writerState = it }
-        appendLog("安装失败 · $detail")
+        val installed = runtimeInstalled ?: current.optBoolean("runtimeInstalled", false)
+        appendLog(if (installed) "DSH 启动未就绪 · $detail" else "安装失败 · $detail")
         current
             .put("running", false)
             .put("failed", true)
+            .put("runtimeInstalled", installed)
             .put("updatedAtMillis", System.currentTimeMillis())
             .put("phase", "failed")
             .put("message", detail)
         writeState(current)
         lastStateWriteAt = System.currentTimeMillis()
+    }
+
+    @Synchronized
+    fun appendDiagnostic(title: String, text: String, maxLines: Int = 100) {
+        appendLog(title)
+        text.lineSequence()
+            .filter { it.isNotBlank() }
+            .toList()
+            .takeLast(maxLines.coerceIn(1, 200))
+            .forEach(::appendLog)
     }
 
     @Synchronized
@@ -129,6 +178,7 @@ class RuntimeInstallTelemetry(context: Context) {
         return RuntimeInstallSnapshot(
             running = json.optBoolean("running", false),
             failed = json.optBoolean("failed", false),
+            runtimeInstalled = json.optBoolean("runtimeInstalled", false),
             startedAtMillis = json.optLong("startedAtMillis", 0L),
             updatedAtMillis = json.optLong("updatedAtMillis", 0L),
             phase = json.optString("phase", "idle"),

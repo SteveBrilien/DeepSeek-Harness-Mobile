@@ -25,6 +25,8 @@ class AndroidRuntimeManager(
 ) : RuntimeManager {
     companion object {
         private const val WEB_AUTH_REQUIRED_MARKER = "dsh web authentication required"
+        private const val WEB_STARTUP_POLL_MILLIS = 250L
+        private const val WEB_STARTUP_TIMEOUT_MILLIS = 180_000L
         private val WEB_LAUNCH_URL = Regex(
             """dsh web:\s+(http://(?:127\.0\.0\.1|localhost):${RuntimePins.DSH_HTTP_PORT}/\?token=[^\s()]+)""",
         )
@@ -107,14 +109,15 @@ class AndroidRuntimeManager(
                     "--host 127.0.0.1 --port ${RuntimePins.DSH_HTTP_PORT} --no-open"
             val logFile = File(stateStore.layout.logsDir, "dsh-web.log")
             RuntimeProcessRegistry.start(installer.buildProcess(active, command), logFile)
-            repeat(120) {
+            val deadline = System.currentTimeMillis() + WEB_STARTUP_TIMEOUT_MILLIS
+            while (System.currentTimeMillis() < deadline) {
                 if (probeWebReady()) return@runCatching
                 if (!RuntimeProcessRegistry.isAlive()) {
-                    error("DSH process exited before health endpoint became ready. See ${logFile.absolutePath}")
+                    error("DSH process exited before the local Web endpoint became reachable. See ${logFile.absolutePath}")
                 }
-                Thread.sleep(250)
+                Thread.sleep(WEB_STARTUP_POLL_MILLIS)
             }
-            error("DSH process started but health endpoint did not become ready in time")
+            error("DSH process is still running, but the local Web endpoint did not become reachable within ${WEB_STARTUP_TIMEOUT_MILLIS / 1_000}s")
         }
     }
 
@@ -238,7 +241,13 @@ class AndroidRuntimeManager(
                 val read = reader.read(chars)
                 if (read > 0) String(chars, 0, read) else ""
             }.orEmpty()
-            code == HttpURLConnection.HTTP_UNAUTHORIZED && body.contains(WEB_AUTH_REQUIRED_MARKER)
+            // DSH developer previews have used both an unauthenticated 401 challenge and
+            // an already-authenticated/redirecting response during startup. Reaching the
+            // loopback HTTP server is the readiness signal; the WebView token exchange
+            // still performs the actual session authentication afterwards.
+            code in 200..399 ||
+                code == HttpURLConnection.HTTP_UNAUTHORIZED ||
+                (body.contains(WEB_AUTH_REQUIRED_MARKER) && code >= 400)
         } finally {
             connection.disconnect()
         }

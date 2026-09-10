@@ -1,7 +1,7 @@
 # DeepSeek Harness Mobile — Project Handoff
 
-Last updated: 2026-09-09
-Current app release: `0.3.0-alpha.5` (`versionCode = 6`)
+Last updated: 2026-09-10
+Current app release: `0.3.0-alpha.6` (`versionCode = 7`)
 Current documented Git HEAD before this handoff update: `f9c3d12ebce873aefd34cfb7d9bd0660189bb814`
 Primary branch: `main`
 Remote: `ssh://git@ssh.github.com:443/SteveBrilien/DeepSeek-Harness-Mobile.git`
@@ -60,14 +60,14 @@ One Terminal UI exposes distinct execution domains rather than pretending every 
 
 Never silently downgrade a privileged command into a weaker execution domain.
 
-## 3. 0.3.0-alpha.5 implementation state
+## 3. 0.3.0-alpha.6 implementation state
 
 The following changes are already implemented and validated on the OrangePi development host:
 
 ### First-run UI / branding
 
 - launcher icon safe-area/cropping corrected;
-- DeepSeek Harness fish branding integrated from the public Harness source asset/path rather than a hand-drawn approximation;
+- DeepSeek Harness branding is sourced directly from the official upstream `BrandWordmark.tsx` vector artwork rather than recreated with Android text/fonts;
 - onboarding information hierarchy simplified;
 - content can scroll while the main action area remains visually stable;
 - page transitions and button press feedback added.
@@ -123,26 +123,33 @@ This fix still requires device-side reproduction/regression verification because
 - `runtime_alpine_e2e` validates Node 24.18.1, DSH 0.1.2-rc.1, native modules, a real PTY command, Mobile Context integration, and the 401 -> token -> authenticated 200 Web flow.
 - Terminal UI is terminal-first; recent and explicitly pinned commands live behind a history surface instead of explanatory chrome.
 - Runtime installation logs are selectable and provide one-tap copy; telemetry retains up to the latest 250 lines for device-side bug reports.
+- Alpha.5 target-device evidence confirms the bundled Node-24 ABI 137 `node-pty` fast path works through Runtime verification; the remaining 99% failure was DSH Web startup readiness detection, not Runtime installation.
+- Alpha.6 separates `Runtime installed` from `DSH started`: a startup failure preserves the verified A/B slot and exposes `重试启动` instead of forcing another install.
+- DSH Web readiness now waits up to 180 seconds and treats a reachable loopback HTTP endpoint (2xx/3xx/401) as process readiness; token/cookie authentication remains a separate WebView step.
+- DSH startup log tail is appended to the same copyable install diagnostics on startup failure.
+- Onboarding is a five-page horizontal pager; button navigation and left/right swipe use the same page state.
+- Runtime progress uses a fixed immersive viewport: header/actions remain fixed, only the log body scrolls, and the log auto-follows only while the user is already near its end.
+- Compact onboarding branding uses the exact official Harness `BrandWordmark.tsx` outline geometry (182:24 at 24dp). The whale, `deepseek` lettering, HARNESS badge shape and HARNESS glyphs are mechanically synchronized from upstream blob `a9df992179c7cc8f0792142f2dde66dbbb3b5464`; no Android `Text`, font approximation, or locally redrawn wordmark is permitted.
 
 ## 4. Release artifact
 
 Current manual-test package:
 
-- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.5.apk`
-- SHA-256: `fba698d581a64240aa225ed51fbe15e8637515341ebd3e9497fee57af2443ca6`
+- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.6.apk`
+- SHA-256: `3f7d8305435c9143d6538998a4f19ed7facca49523455ecf69ea895678224080`
 - update manifest: `release/update.json`
 
 The current update manifest advertises:
 
-- `versionCode`: 6
-- `versionName`: `0.3.0-alpha.5`
-- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.5.apk`
+- `versionCode`: 7
+- `versionName`: `0.3.0-alpha.6`
+- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.6.apk`
 
 The project uses a stable development signing identity for alpha cover-install testing. Do not replace the signing identity casually; doing so breaks seamless upgrade/cover-install behavior.
 
 ## 5. Validation status
 
-Verified on the development host for alpha.5:
+Verified on the development host for alpha.6:
 
 - `android_debug` succeeded;
 - `android_lint` succeeded;
@@ -151,11 +158,11 @@ Verified on the development host for alpha.5:
 - XML/resource parse checks passed;
 - project path contamination check reports no known contamination.
 
-Not yet completed for alpha.5:
+Not yet completed for alpha.6:
 
-- physical-device install E2E after this exact release;
-- reproduction and regression validation of the previously observed Runtime-install app crash;
-- full Runtime download/install/start/health loop on the target OriginOS device;
+- physical-device cover-install and exact alpha.6 UI/startup regression verification;
+- verification that the alpha.5 prepared Runtime can use `重试启动` without reinstalling;
+- full Runtime-to-DSH-Web startup loop on the target OriginOS device;
 - real-world mirror selection under the target phone's network;
 - UI inspection for onboarding/installer layout and animation on the target display.
 
@@ -185,7 +192,9 @@ Do not delete user data just to create a clean test unless a backup/recovery pat
 - `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/OnboardingScreen.kt`
   - first-run flow, hierarchy, Runtime installation presentation.
 - `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/Branding.kt`
-  - native brand presentation.
+  - renders the exact upstream BrandWordmark vector geometry; never substitute Android text/font reconstruction.
+- `app/src/main/res/drawable/ic_deepseek_harness_wordmark_primary.xml` / `ic_deepseek_harness_wordmark_inverted.xml`
+  - mechanically converted layers from official `BrandWordmark.tsx` blob `a9df992179c7cc8f0792142f2dde66dbbb3b5464`; preserve source geometry exactly.
 - `app/src/main/kotlin/com/stevebrilien/dshmobile/runtime/RuntimeForegroundService.kt`
   - foreground Runtime install/control service and exception containment.
 - `app/src/main/kotlin/com/stevebrilien/dshmobile/runtime/RuntimeInstallTelemetry.kt`
@@ -266,4 +275,4 @@ Do not regress these constraints:
 
 ## 11. Current top priorities
 
-See `docs/NEXT_ACTIONS.md` for the active queue. The immediate priority is device E2E of alpha.5, especially the Runtime-install crash regression and resource-reuse/update-choice flows. After that, stabilize the first-run UX from real screenshots before expanding into new feature work.
+See `docs/NEXT_ACTIONS.md` for the active queue. The immediate priority is target-device verification of alpha.6, especially DSH startup from the already prepared alpha.5 Runtime and the fixed immersive onboarding layout. After that, stabilize the first-run UX from real screenshots before expanding into new feature work.

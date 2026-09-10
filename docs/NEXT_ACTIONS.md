@@ -1,21 +1,22 @@
 # Immediate Next Actions
 
-Last updated: 2026-09-09
-Current release: `0.3.0-alpha.5` (`versionCode = 6`)
+Last updated: 2026-09-10
+Current release: `0.3.0-alpha.6` (`versionCode = 7`)
 
-## P0 — Validate alpha.5 on the target Android 11 / OriginOS device
+## P0 — Validate alpha.6 on the target Android 11 / OriginOS device
 
-The host build is green; the main blocker is now device-side validation.
+The alpha.5 device run proved Runtime installation and the bundled `node-pty` module now complete successfully. The remaining failure was the DSH Web startup readiness gate at 99%. Alpha.6 addresses that boundary and should reuse the already prepared Runtime rather than reinstalling it.
 
-1. Connect the target phone over the controlled ADB HostCapability.
-2. Cover-install the exact alpha.5 APK and confirm package/version/signing identity; the alpha.4 `node-pty` validation failure is the primary regression target.
-3. Verify cold start and first-run navigation.
-4. Reproduce the previous Runtime-install crash scenario and confirm failures are now surfaced as recoverable install errors instead of terminating the app.
-5. Run a complete Runtime install to healthy DSH service state; confirm the log shows `bundled node-pty ready · ABI 137` and does not spend minutes installing the compiler toolchain.
-6. Verify notification progress, live install logs, elapsed time and ETA; verify long-press selection and the `复制日志` action both work.
-7. Verify mirror probing/automatic selection on the phone's actual network.
-8. Verify fallback when the preferred mirror is unavailable.
-9. Verify first-run layout, launcher icon safe area, DeepSeek Harness branding and page/button animations from screenshots.
+1. Cover-install alpha.6 over alpha.5; do not clear app data or delete the Recovery Vault.
+2. On Runtime page, confirm the alpha.5 99% failure is recognized as `Runtime 已安装` and the primary recovery action is `重试启动`, not `重试安装`.
+3. Retry DSH startup and verify it reaches the local Web client within the new 180-second readiness window.
+4. If startup still fails, use `复制日志`; confirm the copied output now includes the appended `DSH 启动日志` tail.
+5. Verify the Runtime page is immersive: dragging the log vertically must not move the page/header/actions, the bottom buttons stay fully visible, and the log occupies the available space without the previous blank gap.
+6. Swipe all five onboarding pages left/right and confirm button navigation remains synchronized with the pager.
+7. Verify the compact top wordmark visually against upstream: it now uses the exact official `BrandWordmark.tsx` 182:24 vector outlines at 24dp. Do not replace any glyph with Android `Text`, a local font, or hand-reconstructed lettering.
+8. Verify cached Alpine reuse and mirror selection remain intact on a fresh install only if a later test actually requires reinstalling Runtime.
+9. Confirm notification progress and copied logs remain usable while the app goes to background.
+
 
 Existing controlled TaskProfiles that should be preferred where applicable:
 
@@ -50,7 +51,7 @@ Use the existing backup/probe TaskProfiles rather than ad-hoc destructive shell 
 
 ## P1 — First-run UX refinement from real-device feedback
 
-After alpha.5 screenshots are collected:
+After alpha.6 screenshots are collected:
 
 - reduce any remaining visually dense cards/text;
 - keep one obvious primary action per step;
@@ -82,7 +83,7 @@ The previously configured `https://dsh.wmy-cloud.cn/dsh-mobile-download/` path w
 
 Immediate safe behavior:
 
-1. use the tracked GitHub raw APK as the alpha.5 update-manifest fallback;
+1. use the tracked GitHub raw APK as the alpha.6 update-manifest fallback;
 2. do not probe or copy contents from exposed private directories;
 3. on the Azure host, move the static server document root to a dedicated release-only directory;
 4. disable directory browsing and expose only intended APK/manifest artifacts;
@@ -91,7 +92,7 @@ Immediate safe behavior:
 
 ## P1 — Release promotion after device E2E
 
-Do not call alpha.5 fully validated until the target-device checks pass.
+Do not call alpha.6 fully validated until the target-device checks pass.
 
 When they do:
 
@@ -116,7 +117,7 @@ Once first-run and Runtime installation are stable on the actual phone, continue
 
 ## Current validation summary
 
-Already verified on the OrangePi development host for alpha.5:
+Already verified on the OrangePi development host for alpha.6:
 
 - clean Alpine ARM64 Runtime E2E passes for Node 24.18.1, DSH 0.1.2-rc.1, the bundled ABI-137 `pty.node` fast path, source-build fallback, PTY execution, Mobile Context and authenticated DSH Web;
 
@@ -129,9 +130,9 @@ Already verified on the OrangePi development host for alpha.5:
 
 Still pending:
 
-- exact alpha.5 target-device E2E;
-- Runtime-install crash regression on the user's OriginOS phone;
-- live mirror/resource-reuse behavior on that phone;
+- exact alpha.6 target-device E2E;
+- DSH Web startup regression from the alpha.5 prepared Runtime on the user's OriginOS phone;
+- immersive Runtime log scrolling and five-page horizontal pager behavior on that phone;
 - final visual acceptance of onboarding and animations.
 
 For full project state and invariants, read `docs/HANDOFF.md` before continuing implementation.

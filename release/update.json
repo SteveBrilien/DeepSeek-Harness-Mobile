@@ -1,7 +1,7 @@
 {
-  "versionCode": 6,
-  "versionName": "0.3.0-alpha.5",
-  "apkUrl": "https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.5.apk",
-  "sha256": "fba698d581a64240aa225ed51fbe15e8637515341ebd3e9497fee57af2443ca6",
-  "notes": "0.3.0-alpha.5 manual-test build: fixes OriginOS Runtime installation stopping at node-pty validation by bundling the verified Alpine/musl arm64 Node-24 ABI 137 pty.node fast path with source-build fallback; adds selectable Runtime logs and one-tap copy of up to the latest 250 log lines."
+  "versionCode": 7,
+  "versionName": "0.3.0-alpha.6",
+  "apkUrl": "https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.6.apk",
+  "sha256": "3f7d8305435c9143d6538998a4f19ed7facca49523455ecf69ea895678224080",
+  "notes": "0.3.0-alpha.6 manual-test build: fixes the immersive Runtime log layout and horizontal onboarding pager, preserves a verified Runtime when DSH Web startup is delayed, adds retry-start without reinstall, extends loopback readiness detection, appends startup diagnostics to copyable logs, and renders the DeepSeek Harness wordmark from the exact official upstream 182x24 vector outlines (no Android text/font reconstruction). targetSdk 28 remains intentionally pinned until the self-hosted executable runtime is redesigned."
 }

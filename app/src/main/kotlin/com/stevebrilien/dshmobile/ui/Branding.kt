@@ -1,33 +1,29 @@
 package com.stevebrilien.dshmobile.ui
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.stevebrilien.dshmobile.R
 
 /**
- * The fish geometry is sourced from DeepSeek Harness' public FishLogo.tsx (MIT):
- * packages/client/ui-primitives/src/FishLogo.tsx.
+ * Exact DeepSeek Harness BrandWordmark geometry.
+ *
+ * The two vector layers are generated mechanically from the official upstream
+ * `packages/client/ui-primitives/src/BrandWordmark.tsx` artwork (182 x 24),
+ * blob `a9df992179c7cc8f0792142f2dde66dbbb3b5464`.
+ *
+ * No Android font, Text composable, hand-redrawn glyph, or locally reconstructed
+ * wordmark is used. The primary layer contains the official whale, `deepseek`
+ * outlines and badge shape; the inverted layer contains the official HARNESS
+ * glyph outlines. Splitting the layers only allows the exact monochrome artwork
+ * to follow the active DSH theme colors.
  */
 @Composable
 fun DeepSeekHarnessBrand(
@@ -35,40 +31,25 @@ fun DeepSeekHarnessBrand(
     compact: Boolean = false,
 ) {
     val colors = LocalDshColors.current
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
+    val height = if (compact) 24.dp else 30.dp
+    val width = height * (182f / 24f)
+
+    Box(
+        modifier = modifier.size(width = width, height = height),
+        contentAlignment = Alignment.Center,
     ) {
         Image(
-            painter = painterResource(R.drawable.ic_deepseek_fish_mark),
-            contentDescription = "DeepSeek",
+            painter = painterResource(R.drawable.ic_deepseek_harness_wordmark_primary),
+            contentDescription = "DeepSeek Harness",
             colorFilter = ColorFilter.tint(colors.textPrimary),
-            modifier = if (compact) Modifier.size(width = 42.dp, height = 31.dp) else Modifier.size(width = 54.dp, height = 40.dp),
+            modifier = Modifier.fillMaxSize(),
         )
-        Spacer(Modifier.width(if (compact) 8.dp else 10.dp))
-        Text(
-            text = "deepseek",
-            style = if (compact) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.headlineMedium,
-            color = colors.textPrimary,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = (-0.8).sp,
+        Image(
+            painter = painterResource(R.drawable.ic_deepseek_harness_wordmark_inverted),
+            contentDescription = null,
+            colorFilter = ColorFilter.tint(colors.base),
+            modifier = Modifier.fillMaxSize(),
         )
-        Spacer(Modifier.width(if (compact) 8.dp else 10.dp))
-        Surface(
-            color = colors.textPrimary,
-            shape = RoundedCornerShape(if (compact) 4.dp else 5.dp),
-            tonalElevation = 0.dp,
-        ) {
-            Text(
-                text = "HARNESS",
-                modifier = Modifier.padding(horizontal = if (compact) 7.dp else 9.dp, vertical = if (compact) 4.dp else 5.dp),
-                style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
-                color = colors.base,
-                fontWeight = FontWeight.Medium,
-                letterSpacing = 1.2.sp,
-            )
-        }
     }
 }
 
