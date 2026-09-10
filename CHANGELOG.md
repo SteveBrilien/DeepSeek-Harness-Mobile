@@ -197,3 +197,33 @@ Files:
 - `release/update.json`
 - `release/SHA256SUMS`
 - `release/DeepSeek-Harness-Mobile-0.3.0-alpha.7.apk`
+
+## 2026-09-10T16:59:26.098242Z — RELEASE: 0.3.0-alpha.8: accelerate Runtime install, harden loopback startup and encrypted SSH recovery
+
+Promoted the manual-test candidate to versionCode 9. The normal fresh-install path now uses SHA-pinned embedded ARM64/musl seeds for DSH 0.1.2-rc.1 + pnpm 12.3.4 and the validated DSH Web/Mobile Context profile, eliminating the target-device 523-package DSH npm download from the happy path while retaining online npm as fallback. DSH startup now probes literal 127.0.0.1:3080 with a raw IPv4 HTTP socket before URLConnection fallbacks, preserves the literal token URL, restarts stale app-owned processes, and emits Android-side plus Runtime-side probe diagnostics on timeout. Valid active Runtime slots are reused rather than reinstalled. Recovery checkpoints exclude .ssh and rebuildable caches; SSH identity now has separate AES-GCM encrypted backup/restore. Terminal hides the unfinished ADB mode and AUTO routes implemented Linux/Android domains only. Narrow-screen onboarding actions wrap, adaptive launcher resources were restored, and the official DeepSeek Harness wordmark remains exact upstream vector geometry. Validation: runtime_alpine_e2e PASS; mobile_context_contract PASS; android_debug PASS; android_lint PASS; android_signing_verify PASS; strict seed/tracked sensitive-path audit PASS. APK SHA-256 75f4ed5f3320bfe11354f17d0b5d9ecc6830f6befc315091a108ccc6215cfa7e, size 80,364,450 bytes. Physical OriginOS validation remains manual because no ADB device is connected.
+
+Files:
+- `app/build.gradle.kts`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/runtime/RuntimeForegroundService.kt`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/ChatScreen.kt`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/OnboardingScreen.kt`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/TerminalScreen.kt`
+- `app/src/main/res/mipmap-anydpi/ic_launcher.xml`
+- `app/src/main/res/mipmap-anydpi/ic_launcher_round.xml`
+- `app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml`
+- `app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml`
+- `core/recovery/src/main/kotlin/com/stevebrilien/dshmobile/core/recovery/RecoveryBackupManager.kt`
+- `core/recovery/src/main/kotlin/com/stevebrilien/dshmobile/core/recovery/SecretVaultManager.kt`
+- `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/AndroidRuntimeManager.kt`
+- `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/NativeRuntimeInstaller.kt`
+- `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/RuntimeControlPlane.kt`
+- `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/RuntimePins.kt`
+- `core/runtime-android/src/main/assets/runtime/seeds/dsh-0.1.2-rc.1-node24-arm64-musl.tgz`
+- `core/runtime-android/src/main/assets/runtime/seeds/web-profile-0.1.2-rc.1-mobile-context-0.2.1.tgz`
+- `scripts/build-embedded-dsh-seed.sh`
+- `scripts/test-runtime-alpine-e2e.sh`
+- `docs/HANDOFF.md`
+- `docs/NEXT_ACTIONS.md`
+- `release/DeepSeek-Harness-Mobile-0.3.0-alpha.8.apk`
+- `release/SHA256SUMS`
+- `release/update.json`

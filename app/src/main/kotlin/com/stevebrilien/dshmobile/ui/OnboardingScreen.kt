@@ -19,9 +19,10 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -196,6 +197,10 @@ internal fun OnboardingScreen(
                     if (!credential.isFile && secretVault.status().encryptedCredentialsPresent) {
                         secretVault.restoreDshCredentials(credential).getOrThrow()
                     }
+                    val sshDir = File(appContext.filesDir, "persistent/dsh-home/.ssh")
+                    if (sshDir.listFiles()?.isNotEmpty() != true && secretVault.status().encryptedSshIdentityPresent) {
+                        secretVault.restoreSshIdentity(sshDir).getOrThrow()
+                    }
                 }
             }
             password.fill('\u0000')
@@ -203,9 +208,9 @@ internal fun OnboardingScreen(
             recoveryPasswordConfirm = ""
             result.onSuccess {
                 message = if (secretStatus?.configured == true) {
-                    "秘密保险库已解锁，已有凭据将在需要时恢复"
+                    "秘密保险库已解锁，已有凭据与 SSH 身份已恢复"
                 } else {
-                    "恢复密码已设置；API Key 将以加密形式备份"
+                    "恢复密码已设置；凭据与 SSH 身份将加密备份"
                 }
                 error = null
                 refreshKey += 1
@@ -381,9 +386,9 @@ private fun OnboardingTop(step: Int) {
 @Composable
 private fun OnboardingStage(
     title: String?,
-    subtitle: String? = null,
     actions: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    subtitle: String? = null,
     message: String? = null,
     error: String? = null,
     content: @Composable ColumnScope.() -> Unit,
@@ -424,11 +429,12 @@ private fun OnboardingStage(
 }
 
 @Composable
-private fun BottomActions(content: @Composable RowScope.() -> Unit) {
-    Row(
+@OptIn(ExperimentalLayoutApi::class)
+private fun BottomActions(content: @Composable androidx.compose.foundation.layout.FlowRowScope.() -> Unit) {
+    FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
         content = content,
     )
 }
@@ -529,14 +535,14 @@ private fun RecoveryStep(
                     DshSectionTitle(
                         title = if (secretStatus?.configured == true) "秘密保险库" else "设置恢复密码",
                         description = if (secretStatus?.configured == true) {
-                            "用于重装后的凭据恢复；日常仍由 Android Keystore 自动解锁。"
+                            "用于重装后的凭据与 SSH 身份恢复；日常仍由 Android Keystore 自动解锁。"
                         } else {
-                            "用于跨卸载恢复 API Key / OAuth 凭据，密码不会写入日志。"
+                            "用于跨卸载恢复 API Key / OAuth 与 SSH 身份，密码不会写入日志。"
                         },
                     )
                     if (secretStatus?.deviceUnlocked == true) {
                         Text(
-                            "设备已解锁 · 加密凭据：${if (secretStatus.encryptedCredentialsPresent) "已备份" else "尚未生成"}",
+                            "设备已解锁 · 凭据 ${if (secretStatus.encryptedCredentialsPresent) "已备份" else "待备份"} · SSH ${if (secretStatus.encryptedSshIdentityPresent) "已备份" else "待备份"}",
                             modifier = Modifier.padding(top = 9.dp),
                             style = MaterialTheme.typography.bodySmall,
                             color = colors.success,

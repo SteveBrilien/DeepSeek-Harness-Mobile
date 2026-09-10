@@ -7,6 +7,8 @@ import android.system.Os
 import android.util.AtomicFile
 import android.util.Base64
 import org.json.JSONObject
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.KeyStore
 import java.security.MessageDigest
@@ -18,6 +20,9 @@ import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 
 /**
  * Encrypted recovery wrapper for DSH-owned secrets.
@@ -37,12 +42,14 @@ class SecretVaultManager(
         private const val KEY_ALIAS = "dsh-mobile-recovery-master-v1"
         private const val PBKDF2_ITERATIONS = 310_000
         private const val CREDENTIAL_FILE = "dsh-credentials.enc.json"
+        private const val SSH_IDENTITY_FILE = "ssh-identity.enc.json"
     }
 
     data class Status(
         val configured: Boolean,
         val deviceUnlocked: Boolean,
         val encryptedCredentialsPresent: Boolean,
+        val encryptedSshIdentityPresent: Boolean,
     )
 
     private val appContext = context.applicationContext
@@ -54,6 +61,7 @@ class SecretVaultManager(
             configured = metadataFile().isFile,
             deviceUnlocked = loadDeviceMasterKey().isSuccess,
             encryptedCredentialsPresent = File(dir, CREDENTIAL_FILE).isFile,
+            encryptedSshIdentityPresent = File(dir, SSH_IDENTITY_FILE).isFile,
         )
     }
 
@@ -95,6 +103,107 @@ class SecretVaultManager(
             target
         } finally {
             plaintext.fill(0)
+            master.fill(0)
+        }
+    }
+
+    /** Encrypt the complete DSH-home .ssh directory into the cross-uninstall vault. */
+    fun backupSshIdentity(sourceDir: File): Result<File?> = runCatching {
+        if (!sourceDir.isDirectory) return@runCatching null
+        val root = sourceDir.canonicalFile
+        val files = sourceDir.walkTopDown()
+            .filter { file ->
+                file.isFile &&
+                    !java.nio.file.Files.isSymbolicLink(file.toPath()) &&
+                    runCatching { file.canonicalPath.startsWith(root.path + File.separator) }.getOrDefault(false)
+            }
+            .toList()
+        // Never replace a good cross-uninstall SSH backup with an empty archive merely
+        // because an editor/cleanup operation temporarily removed the local files. An
+        // explicit future "forget SSH backup" action should own destructive tombstones.
+        if (files.isEmpty()) return@runCatching null
+        val plaintext = ByteArrayOutputStream().use { bytes ->
+            ZipOutputStream(bytes).use { zip ->
+                files.forEach { file ->
+                    val relative = file.canonicalFile.relativeTo(root).invariantSeparatorsPath
+                    require(isSafeRelativePath(relative)) { "Unsafe SSH identity path: $relative" }
+                    zip.putNextEntry(ZipEntry(relative).apply { time = file.lastModified() })
+                    file.inputStream().buffered().use { it.copyTo(zip) }
+                    zip.closeEntry()
+                }
+            }
+            bytes.toByteArray()
+        }
+        val master = loadDeviceMasterKey().getOrThrow()
+        try {
+            val sealed = encrypt(master, plaintext)
+            val json = JSONObject()
+                .put("schemaVersion", SCHEMA)
+                .put("kind", "ssh-identity")
+                .put("updatedAtEpochMillis", System.currentTimeMillis())
+                .put("entryCount", files.size)
+                .put("sourceSha256", sha256(plaintext))
+                .put("iv", b64(sealed.iv))
+                .put("ciphertext", b64(sealed.ciphertext))
+            val target = File(encryptedDir(), SSH_IDENTITY_FILE)
+            atomicWrite(target, json.toString(2).toByteArray(Charsets.UTF_8))
+            target
+        } finally {
+            plaintext.fill(0)
+            master.fill(0)
+        }
+    }
+
+    /** Restore encrypted SSH identity files without replacing files the user already has. */
+    fun restoreSshIdentity(destinationDir: File, recoveryPassword: CharArray? = null): Result<Int> = runCatching {
+        val encrypted = File(encryptedDir(), SSH_IDENTITY_FILE)
+        if (!encrypted.isFile) return@runCatching 0
+        val master = if (recoveryPassword != null) unwrapRecoveryMaster(recoveryPassword) else loadDeviceMasterKey().getOrThrow()
+        try {
+            val json = JSONObject(encrypted.readText())
+            check(json.optInt("schemaVersion", -1) == SCHEMA && json.optString("kind") == "ssh-identity") {
+                "不支持的 SSH 身份备份格式"
+            }
+            val plaintext = decrypt(master, b64d(json.getString("iv")), b64d(json.getString("ciphertext")))
+            try {
+                check(sha256(plaintext) == json.getString("sourceSha256")) { "SSH 身份恢复完整性校验失败" }
+                check(destinationDir.exists() || destinationDir.mkdirs()) { "无法创建 SSH 身份目录" }
+                Os.chmod(destinationDir.absolutePath, 0x1C0) // 0700
+                val root = destinationDir.canonicalFile
+                var restored = 0
+                ZipInputStream(ByteArrayInputStream(plaintext)).use { zip ->
+                    while (true) {
+                        val entry = zip.nextEntry ?: break
+                        if (entry.isDirectory) {
+                            zip.closeEntry()
+                            continue
+                        }
+                        val relative = entry.name.replace('\\', '/')
+                        require(isSafeRelativePath(relative)) { "Unsafe SSH restore entry: $relative" }
+                        val destination = File(root, relative).canonicalFile
+                        check(destination.path.startsWith(root.path + File.separator)) { "SSH restore path escapes identity root" }
+                        destination.parentFile?.let {
+                            check(it.exists() || it.mkdirs())
+                            runCatching { Os.chmod(it.absolutePath, 0x1C0) } // 0700
+                        }
+                        if (!destination.exists()) {
+                            val bytes = zip.readBytes()
+                            try {
+                                atomicWrite(destination, bytes)
+                                Os.chmod(destination.absolutePath, 0x180) // 0600, safe for all SSH files
+                                restored += 1
+                            } finally {
+                                bytes.fill(0)
+                            }
+                        }
+                        zip.closeEntry()
+                    }
+                }
+                restored
+            } finally {
+                plaintext.fill(0)
+            }
+        } finally {
             master.fill(0)
         }
     }
@@ -239,6 +348,9 @@ class SecretVaultManager(
             throw t
         }
     }
+
+    private fun isSafeRelativePath(path: String): Boolean =
+        path.isNotBlank() && !path.startsWith('/') && path.split('/').none { it.isBlank() || it == "." || it == ".." }
 
     private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
     private fun b64(bytes: ByteArray): String = Base64.encodeToString(bytes, Base64.NO_WRAP)

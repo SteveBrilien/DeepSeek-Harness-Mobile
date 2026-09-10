@@ -44,6 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.edit
 import com.stevebrilien.dshmobile.core.dshapi.CapabilityAvailability
 import com.stevebrilien.dshmobile.core.recovery.NativeFileManager
 import com.stevebrilien.dshmobile.core.recovery.NativeRecoveryShell
@@ -59,13 +60,11 @@ private enum class TerminalMode(val label: String) {
     AUTO("自动"),
     LINUX("Linux"),
     ANDROID("Android"),
-    ADB("ADB"),
 }
 
 private enum class TerminalDomain(val label: String) {
     LINUX("Linux"),
     ANDROID("Android"),
-    ADB("ADB"),
 }
 
 private enum class CommandShelf(val label: String) {
@@ -125,7 +124,7 @@ fun TerminalScreen(
     }
 
     fun persistPinned() {
-        prefs.edit().putString(PINNED_COMMANDS_KEY, JSONArray(pinnedCommands).toString()).apply()
+        prefs.edit { putString(PINNED_COMMANDS_KEY, JSONArray(pinnedCommands).toString()) }
     }
 
     fun togglePinned(command: String) {
@@ -153,12 +152,11 @@ fun TerminalScreen(
     fun chooseDomain(command: String, linuxAvailable: Boolean): TerminalDomain = when (mode) {
         TerminalMode.LINUX -> TerminalDomain.LINUX
         TerminalMode.ANDROID -> TerminalDomain.ANDROID
-        TerminalMode.ADB -> TerminalDomain.ADB
         TerminalMode.AUTO -> {
             val first = command.trim().substringBefore(' ').substringBefore('\t')
             when {
-                first in setOf("pm", "am", "dumpsys", "settings", "input", "cmd", "svc") -> TerminalDomain.ADB
-                first in setOf("getprop", "setprop") || command.startsWith("/system/bin/") -> TerminalDomain.ANDROID
+                first in setOf("pm", "am", "dumpsys", "settings", "input", "cmd", "svc", "getprop", "setprop") ||
+                    command.startsWith("/system/bin/") -> TerminalDomain.ANDROID
                 linuxAvailable -> TerminalDomain.LINUX
                 else -> TerminalDomain.ANDROID
             }
@@ -183,9 +181,7 @@ fun TerminalScreen(
             try {
                 val capabilities = withContext(Dispatchers.IO) { capabilityProvider.currentCapabilities() }
                 val linuxCapability = capabilities.first { it.capabilityId == AndroidMobileEnvironmentContextProvider.CAP_LINUX_SHELL }
-                val adbCapability = capabilities.first { it.capabilityId == AndroidMobileEnvironmentContextProvider.CAP_ADB_SHELL }
                 val linuxAvailable = linuxCapability.availability != CapabilityAvailability.UNAVAILABLE
-                val adbAvailable = adbCapability.availability == CapabilityAvailability.AVAILABLE
                 val domain = chooseDomain(trimmed, linuxAvailable)
                 lastDomain = domain
 
@@ -259,15 +255,6 @@ fun TerminalScreen(
                         }
                     }
 
-                    TerminalDomain.ADB -> {
-                        val message = if (adbAvailable) {
-                            "ADB 已连接；当前版本尚未启用终端传输适配器。"
-                        } else {
-                            adbCapability.detail ?: "ADB 尚未连接"
-                        }
-                        records += TerminalRecord(trimmed, "android://shell", domain, error = message)
-                        status = "ADB · 不可用"
-                    }
                 }
             } finally {
                 running = false
@@ -278,10 +265,8 @@ fun TerminalScreen(
     val shownCwd = when (mode) {
         TerminalMode.LINUX -> linuxCwd
         TerminalMode.ANDROID -> androidCwd.absolutePath
-        TerminalMode.ADB -> "android://shell"
         TerminalMode.AUTO -> when (lastDomain) {
             TerminalDomain.LINUX -> linuxCwd
-            TerminalDomain.ADB -> "android://shell"
             else -> androidCwd.absolutePath
         }
     }
@@ -296,7 +281,7 @@ fun TerminalScreen(
             title = { Text("执行环境") },
             text = {
                 Text(
-                    "自动：优先 Linux，并按命令边界路由。\nLinux：本地 Runtime。\nAndroid：App 权限环境。\nADB：shell UID；未连接时不会降级执行。",
+                    "自动：优先 Linux，Android 系统命令使用 App 权限环境。\nLinux：本地 Runtime。\nAndroid：App 权限环境。",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             },

@@ -15,6 +15,8 @@ import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.HttpURLConnection
+import java.net.InetSocketAddress
+import java.net.Socket
 import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
@@ -109,6 +111,11 @@ class AndroidRuntimeManager(
                 "exec /usr/local/bin/dsh web " +
                     "--host 127.0.0.1 --port ${RuntimePins.DSH_HTTP_PORT} --no-open"
             val logFile = File(stateStore.layout.logsDir, "dsh-web.log")
+            // A previous start attempt can remain alive without ever binding the Web port.
+            // Restart that owned process instead of waiting another full startup window on it.
+            if (RuntimeProcessRegistry.isAlive()) RuntimeProcessRegistry.stop()
+            logFile.parentFile?.let { check(it.exists() || it.mkdirs()) }
+            logFile.appendText("\n=== DSH start ${System.currentTimeMillis()} ===\n", StandardCharsets.UTF_8)
             RuntimeProcessRegistry.start(installer.buildProcess(active, command), logFile)
             val deadline = System.currentTimeMillis() + WEB_STARTUP_TIMEOUT_MILLIS
             while (System.currentTimeMillis() < deadline) {
@@ -118,9 +125,11 @@ class AndroidRuntimeManager(
                 }
                 Thread.sleep(WEB_STARTUP_POLL_MILLIS)
             }
+            val runtimeProbe = probeWebInsideRuntime(active)
             error(
                 "DSH process is still running, but the local Web endpoint did not become reachable within " +
-                    "${WEB_STARTUP_TIMEOUT_MILLIS / 1_000}s. Last probe: $lastWebProbeDetail",
+                    "${WEB_STARTUP_TIMEOUT_MILLIS / 1_000}s. Last Android probe: $lastWebProbeDetail. " +
+                    "Runtime-side probe: $runtimeProbe",
             )
         }
     }
@@ -186,7 +195,6 @@ class AndroidRuntimeManager(
         val start = (bytes.size - 128 * 1024).coerceAtLeast(0)
         val tail = String(bytes, start, bytes.size - start, StandardCharsets.UTF_8)
         return WEB_LAUNCH_URL.findAll(tail).lastOrNull()?.groupValues?.getOrNull(1)
-            ?.replace("http://127.0.0.1:", "http://localhost:")
     }
 
     suspend fun executeShell(
@@ -231,36 +239,88 @@ class AndroidRuntimeManager(
     }
 
     private fun probeWebReady(): Boolean {
-        return try {
-            // Android's network security config permits local cleartext only for localhost.
-            // DSH binds to 127.0.0.1, and localhost resolves to the same loopback socket.
-            val connection = (URL("http://localhost:${RuntimePins.DSH_HTTP_PORT}/").openConnection() as HttpURLConnection).apply {
-                connectTimeout = 2_000
-                readTimeout = 2_000
-                requestMethod = "GET"
-                useCaches = false
-                instanceFollowRedirects = false
-            }
-            try {
-                val code = connection.responseCode
-                val stream = if (code >= 400) connection.errorStream else connection.inputStream
-                val body = stream?.bufferedReader(StandardCharsets.UTF_8)?.use { reader ->
-                    val chars = CharArray(512)
-                    val read = reader.read(chars)
-                    if (read > 0) String(chars, 0, read) else ""
-                }.orEmpty()
-                lastWebProbeDetail = "HTTP $code via localhost"
-                code in 200..399 ||
-                    code == HttpURLConnection.HTTP_UNAUTHORIZED ||
-                    (body.contains(WEB_AUTH_REQUIRED_MARKER) && code >= 400)
-            } finally {
-                connection.disconnect()
-            }
-        } catch (t: Throwable) {
-            lastWebProbeDetail = "${t::class.java.simpleName}: ${t.message ?: "no detail"}"
-            false
+        // Prefer a literal IPv4 loopback probe. On Android devices with an active VPN,
+        // URLConnection/DNS handling for `localhost` can diverge from the actual socket
+        // DSH bound on 127.0.0.1. A raw HTTP probe avoids that false-negative path.
+        probeRawLoopbackHttp()?.let { statusLine ->
+            lastWebProbeDetail = "$statusLine via raw 127.0.0.1"
+            return true
         }
+
+        // Keep URLConnection fallbacks for OEM stacks where raw sockets are restricted.
+        for (host in listOf("127.0.0.1", "localhost")) {
+            val result = runCatching {
+                val connection = (URL("http://$host:${RuntimePins.DSH_HTTP_PORT}/").openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 1_500
+                    readTimeout = 1_500
+                    requestMethod = "GET"
+                    useCaches = false
+                    instanceFollowRedirects = false
+                    setRequestProperty("Connection", "close")
+                }
+                try {
+                    val code = connection.responseCode
+                    val stream = if (code >= 400) connection.errorStream else connection.inputStream
+                    val body = stream?.bufferedReader(StandardCharsets.UTF_8)?.use { reader ->
+                        val chars = CharArray(512)
+                        val read = reader.read(chars)
+                        if (read > 0) String(chars, 0, read) else ""
+                    }.orEmpty()
+                    val ready = code in 200..399 ||
+                        code == HttpURLConnection.HTTP_UNAUTHORIZED ||
+                        (body.contains(WEB_AUTH_REQUIRED_MARKER) && code >= 400)
+                    ready to "HTTP $code via $host"
+                } finally {
+                    connection.disconnect()
+                }
+            }
+            result.onSuccess { (ready, detail) ->
+                lastWebProbeDetail = detail
+                if (ready) return true
+            }.onFailure { failure ->
+                lastWebProbeDetail = "$host ${failure::class.java.simpleName}: ${failure.message ?: "no detail"}"
+            }
+        }
+        return false
     }
+
+    private fun probeWebInsideRuntime(slot: RuntimeSlot): String = runCatching {
+        val command =
+            "code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 4 " +
+                "http://127.0.0.1:${RuntimePins.DSH_HTTP_PORT}/ 2>/tmp/dshm-probe.err || true); " +
+                "printf 'curl=%s' \"\$code\"; " +
+                "if [ -s /tmp/dshm-probe.err ]; then printf ' stderr='; head -c 240 /tmp/dshm-probe.err; fi"
+        val process = installer.buildProcess(slot, command).redirectErrorStream(true).start()
+        val finished = process.waitFor(6, TimeUnit.SECONDS)
+        if (!finished) {
+            process.destroyForcibly()
+            return@runCatching "probe timed out"
+        }
+        process.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }.trim().take(360)
+            .ifBlank { "no output" }
+    }.getOrElse { failure ->
+        "${failure::class.java.simpleName}: ${failure.message ?: "no detail"}"
+    }
+
+    private fun probeRawLoopbackHttp(): String? = runCatching {
+        Socket().use { socket ->
+            socket.tcpNoDelay = true
+            socket.soTimeout = 1_500
+            socket.connect(InetSocketAddress("127.0.0.1", RuntimePins.DSH_HTTP_PORT), 1_500)
+            val request = buildString {
+                append("GET / HTTP/1.1\r\n")
+                append("Host: 127.0.0.1:${RuntimePins.DSH_HTTP_PORT}\r\n")
+                append("Connection: close\r\n\r\n")
+            }
+            socket.getOutputStream().apply {
+                write(request.toByteArray(StandardCharsets.US_ASCII))
+                flush()
+            }
+            val firstLine = socket.getInputStream().bufferedReader(StandardCharsets.US_ASCII).readLine().orEmpty()
+            check(firstLine.startsWith("HTTP/")) { "No HTTP status line" }
+            firstLine.take(96)
+        }
+    }.getOrNull()
 
     private fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 

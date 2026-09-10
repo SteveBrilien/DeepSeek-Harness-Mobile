@@ -33,11 +33,21 @@ class RuntimeControlPlane(context: Context) {
             if (
                 active != null &&
                 inventory.reusableInstalledRuntime &&
-                inventory.installedDshVersion == inventory.targetDshVersion
+                !inventory.updateAvailable
             ) {
-                progress(RuntimeInstallProgress("reuse-runtime", "发现完整本地 Runtime，跳过重新安装", 98))
-                manager.verify(active).getOrThrow()
-                return@runCatching active
+                val verified = manager.verify(active)
+                if (verified.isSuccess) {
+                    progress(RuntimeInstallProgress("reuse-runtime", "发现完整本地 Runtime，跳过重新安装", 98))
+                    return@runCatching active
+                }
+                progress(
+                    RuntimeInstallProgress(
+                        "reuse-runtime",
+                        "现有 Runtime 校验未通过，将在备用 slot 重新构建",
+                        3,
+                        logLine = verified.exceptionOrNull()?.message,
+                    ),
+                )
             }
 
             val target = manager.inactiveSlot()

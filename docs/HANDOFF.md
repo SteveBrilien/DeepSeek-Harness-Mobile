@@ -1,8 +1,8 @@
 # DeepSeek Harness Mobile — Project Handoff
 
 Last updated: 2026-09-10
-Current app release: `0.3.0-alpha.7` (`versionCode = 8`)
-Base Git HEAD before alpha.7 changes: `2a6a1cee1fa84a28e7595ec1a3259243c9dd4a80`
+Current app release: `0.3.0-alpha.8` (`versionCode = 9`)
+Base Git HEAD before alpha.8 changes: `f4f0344fed75186115d9e1e4b0ff3e6a7f6073c9`
 Primary branch: `main`
 Remote: `ssh://git@ssh.github.com:443/SteveBrilien/DeepSeek-Harness-Mobile.git`
 
@@ -60,7 +60,7 @@ One Terminal UI exposes distinct execution domains rather than pretending every 
 
 Never silently downgrade a privileged command into a weaker execution domain.
 
-## 3. 0.3.0-alpha.7 implementation state
+## 3. 0.3.0-alpha.8 implementation state
 
 The following changes are already implemented and validated on the OrangePi development host:
 
@@ -135,25 +135,41 @@ This fix still requires device-side reproduction/regression verification because
 - npm package tarballs are cached under `Recovery/Runtime/npm-cache` so a genuine reinstall/update can reuse public package data across app updates/uninstalls when the Recovery Vault survives. Credentials are not stored in this cache.
 - Alpine mirror probes no longer send a tiny HTTP Range request, because TUNA/Aliyun can reject those probes with 403 while serving normal GETs. The app now performs a normal GET, reads only a bounded prefix, and closes the response.
 
+### Alpha.8 hardening and install acceleration
+
+- Normal first-run no longer downloads the 523-package DSH tree from npm. The APK contains SHA-pinned ARM64/musl seeds for DSH `0.1.2-rc.1` + pnpm `12.3.4` and the prevalidated DSH Web/Mobile Context profile. Online npm installation remains a fallback only.
+- Embedded seed SHA-256 values are pinned in `RuntimePins` and verified before extraction. The seed archive contains no user `.ssh`, `.credentials.yaml`, `.env`, or secret files.
+- The Runtime E2E covers the embedded fast path, the online fallback, bundled `pty.node`, real PTY execution, source rebuild fallback, Mobile Context integration, and authenticated DSH Web.
+- Startup readiness now probes literal `127.0.0.1:3080` with a raw IPv4 socket before URLConnection fallbacks. This avoids false negatives caused by OEM/VPN handling of `localhost`; tokenized DSH URLs remain on the literal loopback address. Failure diagnostics include both Android-side and Runtime-side probes.
+- A stale app-owned DSH process is stopped before a new start attempt. Startup failure preserves a verified Runtime so `重试启动` does not reinstall Alpine/DSH. Invalid active Runtime verification falls back to rebuilding the inactive A/B slot.
+- Foreground-service restart recovery resumes an interrupted install only when install telemetry says the Runtime was not yet prepared; otherwise it attempts DSH start.
+- Recovery checkpoints exclude Runtime/npm caches and all `.ssh` content. SSH identity now has a separate AES-GCM encrypted Secret Vault backup and restore path; an empty local `.ssh` cannot overwrite a valid encrypted backup.
+- Terminal exposes only implemented execution choices: `自动`, `Linux`, `Android`. The unfinished ADB terminal mode is intentionally hidden until a real transport/provider exists; AUTO no longer misroutes Android commands into a placeholder ADB path.
+- Narrow-screen onboarding actions use a wrapping layout. Android 11 uses restored adaptive-icon resources with the smaller official whale foreground safe area.
+- Official DeepSeek Harness wordmark paths remain the exact upstream vector geometry; no Android text/font reconstruction is allowed.
+- `targetSdk` intentionally remains 28 while `compileSdk` is 35 because the current self-hosted PRoot/Node architecture executes files from app-private writable storage. Target-SDK modernization requires first moving executable bootstrap components to an Android-compliant packaged executable location.
+- Remote DSH-version discovery (for example newer 0.1.5 candidates) is still future work; updates must install into the inactive slot and pass compatibility checks before switching.
+
 ## 4. Release artifact
 
 Current manual-test package:
 
-- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.7.apk`
-- SHA-256: `bdd0113f79fd3fa11606cc53c1e3a3fbe7d5d90b186e92c282149a5ed8b4aff5`
+- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.8.apk`
+- SHA-256: `75f4ed5f3320bfe11354f17d0b5d9ecc6830f6befc315091a108ccc6215cfa7e`
+- size: `80,364,450` bytes
 - update manifest: `release/update.json`
 
 The current update manifest advertises:
 
-- `versionCode`: 8
-- `versionName`: `0.3.0-alpha.7`
-- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.7.apk`
+- `versionCode`: 9
+- `versionName`: `0.3.0-alpha.8`
+- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.8.apk`
 
 The project uses a stable development signing identity for alpha cover-install testing. Do not replace the signing identity casually; doing so breaks seamless upgrade/cover-install behavior.
 
 ## 5. Validation status
 
-Verified on the development host for alpha.7:
+Verified on the development host for alpha.8:
 
 - `android_debug` succeeded;
 - `android_lint` succeeded;
@@ -162,13 +178,13 @@ Verified on the development host for alpha.7:
 - XML/resource parse checks passed;
 - project path contamination check reports no known contamination.
 
-Not yet completed for alpha.7:
+Not yet completed for alpha.8:
 
-- physical-device cover-install and exact alpha.7 startup regression verification;
-- verification that the already prepared alpha.6 Runtime is reused without extraction/npm/DSH reinstall;
-- full Runtime-to-DSH-Web startup loop on the target OriginOS device using the localhost probe/token URL;
-- real-world mirror selection under the target phone's network;
-- UI inspection for onboarding/installer layout and animation on the target display.
+- physical-device cover-install and exact alpha.8 startup regression verification;
+- verification that an already prepared healthy Runtime is reused without extraction/package installation;
+- target-device confirmation that the embedded DSH/pnpm fast path avoids the 523-package npm install when a fresh slot is required;
+- full Runtime-to-DSH-Web startup loop on the target OriginOS device using the raw `127.0.0.1` readiness probe/token URL, including VPN-on conditions;
+- UI inspection for onboarding/installer layout, launcher icon scale and Terminal execution on the target display.
 
 These are release-gating manual-test items, not host-build blockers.
 

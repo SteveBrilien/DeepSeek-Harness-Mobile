@@ -1,7 +1,7 @@
 {
-  "versionCode": 8,
-  "versionName": "0.3.0-alpha.7",
-  "apkUrl": "https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.7.apk",
-  "sha256": "bdd0113f79fd3fa11606cc53c1e3a3fbe7d5d90b186e92c282149a5ed8b4aff5",
-  "notes": "0.3.0-alpha.7 manual-test build: fixes DSH Web startup detection on Android by using the permitted localhost loopback path instead of the blocked 127.0.0.1 cleartext probe, normalizes the token launch URL to localhost, reuses an already verified matching Runtime without reinstalling, persists npm package cache in the Recovery Vault, and changes mirror speed probes to normal bounded GETs so TUNA/Aliyun are not falsely rejected with HTTP 403. Exact upstream DeepSeek Harness wordmark remains unchanged."
+  "versionCode": 9,
+  "versionName": "0.3.0-alpha.8",
+  "apkUrl": "https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.8.apk",
+  "sha256": "75f4ed5f3320bfe11354f17d0b5d9ecc6830f6befc315091a108ccc6215cfa7e",
+  "notes": "Alpha.8 accelerates first-run with embedded verified DSH/pnpm and Web-profile seeds, hardens 127.0.0.1 startup probing under VPN/OEM stacks, restores valid Runtime slots without reinstall, adds encrypted SSH identity recovery, fixes narrow-screen onboarding actions, and removes the unfinished ADB terminal mode until a real transport is available."
 }

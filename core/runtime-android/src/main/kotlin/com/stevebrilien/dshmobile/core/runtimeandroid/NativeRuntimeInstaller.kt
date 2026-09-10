@@ -155,90 +155,123 @@ internal class NativeRuntimeInstaller(
             }.getOrThrow()
 
             val npmCacheEnv = persistentNpmCacheEnv(progress)
-            var npmMirror = selectNpmMirror(progress)
-            progress(RuntimeInstallProgress("pnpm", "安装 pnpm ${RuntimePins.PNPM_VERSION}", 61, sourceId = npmMirror.id, sourceName = npmMirror.name))
-            runCatching {
-                runInsideRootfs(
-                    rootfs,
-                    npmCacheEnv + "NPM_CONFIG_REGISTRY=${shellQuote(npmMirror.registryUrl)} npm install -g pnpm@${RuntimePins.PNPM_VERSION}",
-                    timeoutMillis = 15 * 60_000L,
-                    idleTimeoutMillis = 4 * 60_000L,
-                ) { line ->
-                    progress(RuntimeInstallProgress("pnpm", "安装 pnpm ${RuntimePins.PNPM_VERSION}", 66, sourceId = npmMirror.id, sourceName = npmMirror.name, logLine = line))
-                }
-            }.recoverCatching { firstFailure ->
-                val officialNpm = RuntimePins.NPM_MIRRORS.first { it.id == "npm-official" }
-                if (npmMirror.id == officialNpm.id) throw firstFailure
-                npmMirror = officialNpm
-                progress(RuntimeInstallProgress("pnpm", "npm 镜像不可用，自动回退官方 registry", 63, sourceId = officialNpm.id, sourceName = officialNpm.name, logLine = firstFailure.message))
-                runInsideRootfs(
-                    rootfs,
-                    npmCacheEnv + "NPM_CONFIG_REGISTRY=${shellQuote(officialNpm.registryUrl)} npm install -g pnpm@${RuntimePins.PNPM_VERSION}",
-                    timeoutMillis = 15 * 60_000L,
-                    idleTimeoutMillis = 4 * 60_000L,
-                ) { line ->
-                    progress(RuntimeInstallProgress("pnpm", "从 npm 官方源继续安装", 67, sourceId = officialNpm.id, sourceName = officialNpm.name, logLine = line))
-                }
-            }.getOrThrow()
+            var dependencySourceId = "bundled"
+            var dependencySourceName = "内置资源"
 
-            progress(RuntimeInstallProgress("dsh", "安装 DSH ${RuntimePins.DSH_VERSION}", 72, sourceId = npmMirror.id, sourceName = npmMirror.name))
-            fun installDshWith(registry: NpmMirror) {
-                runInsideRootfs(
-                    rootfs,
-                    "rm -rf /opt/dsh/node_modules /opt/dsh/package-lock.json /opt/dsh/pnpm-lock.yaml && " +
-                        "mkdir -p /opt/dsh && cd /opt/dsh && " +
-                        "printf '%s\\n' '{\"private\":true}' > package.json && " +
-                        npmCacheEnv + "NPM_CONFIG_REGISTRY=${shellQuote(registry.registryUrl)} " +
-                        "NPM_CONFIG_AUDIT=false NPM_CONFIG_FUND=false NPM_CONFIG_FETCH_RETRIES=3 " +
-                        "NPM_CONFIG_FETCH_TIMEOUT=120000 NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=3000 " +
-                        "NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=20000 " +
-                        "npm install --omit=dev --include=optional --no-audit --no-fund " +
-                        "@deepseek-ai/dsh@${RuntimePins.DSH_VERSION}",
-                    timeoutMillis = 30 * 60_000L,
-                    idleTimeoutMillis = 4 * 60_000L,
-                ) { line ->
-                    progress(RuntimeInstallProgress("dsh", "安装 DSH ${RuntimePins.DSH_VERSION}", 80, sourceId = registry.id, sourceName = registry.name, logLine = line))
+            // Fast path: the APK carries a verified DSH + pnpm layer. Try it before any
+            // npm registry probing so first-run setup stays deterministic even on slow or
+            // filtered networks. The online path remains a verified fallback.
+            progress(RuntimeInstallProgress("dsh", "准备内置 DSH ${RuntimePins.DSH_VERSION}", 57, sourceId = dependencySourceId, sourceName = dependencySourceName))
+            val bundledDshReady = runCatching {
+                installBundledDshSeed(rootfs) { line ->
+                    progress(RuntimeInstallProgress("dsh", "安装内置 DSH ${RuntimePins.DSH_VERSION}", 76, sourceId = dependencySourceId, sourceName = dependencySourceName, logLine = line))
                 }
+            }.getOrElse { seedFailure ->
+                progress(
+                    RuntimeInstallProgress(
+                        "dsh",
+                        "内置 DSH 资源不可用，切换在线安装",
+                        58,
+                        sourceId = dependencySourceId,
+                        sourceName = dependencySourceName,
+                        logLine = seedFailure.message,
+                    ),
+                )
+                false
             }
-            runCatching { installDshWith(npmMirror) }.recoverCatching { firstFailure ->
-                val officialNpm = RuntimePins.NPM_MIRRORS.first { it.id == "npm-official" }
-                if (npmMirror.id == officialNpm.id) throw firstFailure
-                npmMirror = officialNpm
-                progress(RuntimeInstallProgress("dsh", "DSH 下载源不可用，自动回退 npm 官方源", 74, sourceId = officialNpm.id, sourceName = officialNpm.name, logLine = firstFailure.message))
-                installDshWith(officialNpm)
-            }.getOrThrow()
+
+            if (!bundledDshReady) {
+                var selected = selectNpmMirror(progress)
+                dependencySourceId = selected.id
+                dependencySourceName = selected.name
+                progress(RuntimeInstallProgress("pnpm", "安装 pnpm ${RuntimePins.PNPM_VERSION}", 61, sourceId = selected.id, sourceName = selected.name))
+                runCatching {
+                    runInsideRootfs(
+                        rootfs,
+                        npmCacheEnv + "NPM_CONFIG_REGISTRY=${shellQuote(selected.registryUrl)} npm install -g pnpm@${RuntimePins.PNPM_VERSION}",
+                        timeoutMillis = 15 * 60_000L,
+                        idleTimeoutMillis = 4 * 60_000L,
+                    ) { line ->
+                        progress(RuntimeInstallProgress("pnpm", "安装 pnpm ${RuntimePins.PNPM_VERSION}", 66, sourceId = selected.id, sourceName = selected.name, logLine = line))
+                    }
+                }.recoverCatching { firstFailure ->
+                    val officialNpm = RuntimePins.NPM_MIRRORS.first { it.id == "npm-official" }
+                    if (selected.id == officialNpm.id) throw firstFailure
+                    selected = officialNpm
+                    dependencySourceId = officialNpm.id
+                    dependencySourceName = officialNpm.name
+                    progress(RuntimeInstallProgress("pnpm", "npm 镜像不可用，自动回退官方 registry", 63, sourceId = officialNpm.id, sourceName = officialNpm.name, logLine = firstFailure.message))
+                    runInsideRootfs(
+                        rootfs,
+                        npmCacheEnv + "NPM_CONFIG_REGISTRY=${shellQuote(officialNpm.registryUrl)} npm install -g pnpm@${RuntimePins.PNPM_VERSION}",
+                        timeoutMillis = 15 * 60_000L,
+                        idleTimeoutMillis = 4 * 60_000L,
+                    ) { line ->
+                        progress(RuntimeInstallProgress("pnpm", "从 npm 官方源继续安装", 67, sourceId = officialNpm.id, sourceName = officialNpm.name, logLine = line))
+                    }
+                }.getOrThrow()
+
+                fun installDshWith(registry: NpmMirror) {
+                    runInsideRootfs(
+                        rootfs,
+                        "rm -rf /opt/dsh/node_modules /opt/dsh/package-lock.json /opt/dsh/pnpm-lock.yaml && " +
+                            "mkdir -p /opt/dsh && cd /opt/dsh && " +
+                            "printf '%s\\n' '{\"private\":true}' > package.json && " +
+                            npmCacheEnv + "NPM_CONFIG_REGISTRY=${shellQuote(registry.registryUrl)} " +
+                            "NPM_CONFIG_AUDIT=false NPM_CONFIG_FUND=false NPM_CONFIG_FETCH_RETRIES=3 " +
+                            "NPM_CONFIG_FETCH_TIMEOUT=120000 NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=3000 " +
+                            "NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=20000 " +
+                            "npm install --omit=dev --include=optional --no-audit --no-fund " +
+                            "@deepseek-ai/dsh@${RuntimePins.DSH_VERSION}",
+                        timeoutMillis = 30 * 60_000L,
+                        idleTimeoutMillis = 4 * 60_000L,
+                    ) { line ->
+                        progress(RuntimeInstallProgress("dsh", "安装 DSH ${RuntimePins.DSH_VERSION}", 80, sourceId = registry.id, sourceName = registry.name, logLine = line))
+                    }
+                }
+                runCatching { installDshWith(selected) }.recoverCatching { firstFailure ->
+                    val officialNpm = RuntimePins.NPM_MIRRORS.first { it.id == "npm-official" }
+                    if (selected.id == officialNpm.id) throw firstFailure
+                    selected = officialNpm
+                    dependencySourceId = officialNpm.id
+                    dependencySourceName = officialNpm.name
+                    progress(RuntimeInstallProgress("dsh", "DSH 下载源不可用，自动回退 npm 官方源", 74, sourceId = officialNpm.id, sourceName = officialNpm.name, logLine = firstFailure.message))
+                    installDshWith(officialNpm)
+                }.getOrThrow()
+            }
 
             // node-pty 1.2.0-beta.15 has no reliable Alpine/musl arm64 prebuild in the
             // current DSH tree. Prefer the tiny, pinned Node-24 ABI 137 module bundled in the
             // APK; this avoids fragile/slow compilation under Android PRoot. If the Runtime
             // Node ABI ever differs, fall back to an in-rootfs source rebuild.
-            progress(RuntimeInstallProgress("native", "准备 DSH 原生终端组件", 83, sourceId = npmMirror.id, sourceName = npmMirror.name))
+            progress(RuntimeInstallProgress("native", "准备 DSH 原生终端组件", 83, sourceId = dependencySourceId, sourceName = dependencySourceName))
             var buildDepsInstalled = false
             val bundledNodePtyInstalled = runCatching {
                 installBundledNodePty(rootfs) { line ->
-                    progress(RuntimeInstallProgress("native", "安装内置终端组件", 85, sourceId = npmMirror.id, sourceName = npmMirror.name, logLine = line))
+                    progress(RuntimeInstallProgress("native", "安装内置终端组件", 85, sourceId = dependencySourceId, sourceName = dependencySourceName, logLine = line))
                 }
             }.getOrElse { bundledFailure ->
-                progress(RuntimeInstallProgress("native", "内置终端组件不可用，切换源码编译", 84, sourceId = npmMirror.id, sourceName = npmMirror.name, logLine = bundledFailure.message))
+                progress(RuntimeInstallProgress("native", "内置终端组件不可用，切换源码编译", 84, sourceId = dependencySourceId, sourceName = dependencySourceName, logLine = bundledFailure.message))
                 false
             }
             if (!bundledNodePtyInstalled) {
                 runInsideRootfs(
                     rootfs,
-                    "apk add --no-cache --virtual .dsh-build-deps build-base linux-headers",
+                    "apk add --no-cache --virtual .dsh-build-deps build-base linux-headers nodejs-dev",
                     timeoutMillis = 15 * 60_000L,
                     idleTimeoutMillis = 4 * 60_000L,
                 ) { line ->
-                    progress(RuntimeInstallProgress("native", "准备原生组件编译环境", 84, sourceId = npmMirror.id, sourceName = npmMirror.name, logLine = line))
+                    progress(RuntimeInstallProgress("native", "准备原生组件编译环境", 84, sourceId = dependencySourceId, sourceName = dependencySourceName, logLine = line))
                 }
                 buildDepsInstalled = true
                 runInsideRootfs(
                     rootfs,
-                    "cd /opt/dsh && npm_config_build_from_source=true npm rebuild node-pty",
+                    "cd /opt/dsh/node_modules/node-pty && " +
+                        "node /usr/local/lib/node_modules/pnpm/dist/node_modules/node-gyp/bin/node-gyp.js rebuild --nodedir=/usr",
                     timeoutMillis = 15 * 60_000L,
                     idleTimeoutMillis = 4 * 60_000L,
                 ) { line ->
-                    progress(RuntimeInstallProgress("native", "编译 DSH 原生终端组件", 86, sourceId = npmMirror.id, sourceName = npmMirror.name, logLine = line))
+                    progress(RuntimeInstallProgress("native", "编译 DSH 原生终端组件", 86, sourceId = dependencySourceId, sourceName = dependencySourceName, logLine = line))
                 }
             }
             runInsideRootfs(
@@ -321,6 +354,73 @@ internal class NativeRuntimeInstaller(
         ensureMobileContextIntegrationForRootfs(layout.rootfs(slot))
     }
 
+
+    private fun installBundledDshSeed(
+        rootfs: File,
+        onLog: (String) -> Unit = {},
+    ): Boolean {
+        val seedFile = File(layout.tmpDir, "dsh-${RuntimePins.DSH_VERSION}-seed.tar.gz")
+        seedFile.parentFile?.let { check(it.exists() || it.mkdirs()) }
+        if (seedFile.exists()) seedFile.delete()
+        try {
+            appContext.assets.open(RuntimePins.DSH_SEED_ASSET).use { input ->
+                FileOutputStream(seedFile).use { output -> input.copyTo(output) }
+            }
+            check(sha256(seedFile) == RuntimePins.DSH_SEED_SHA256) { "Bundled DSH seed checksum mismatch" }
+            val target = File(rootfs, "opt/dsh")
+            if (target.exists()) target.deleteRecursively()
+            extractRootfs(seedFile, rootfs)
+            val manifest = File(rootfs, "opt/dsh/node_modules/@deepseek-ai/dsh/package.json")
+            check(manifest.isFile) { "Bundled DSH seed is missing package metadata" }
+            val version = JSONObject(manifest.readText(StandardCharsets.UTF_8)).optString("version")
+            check(version == RuntimePins.DSH_VERSION) { "Bundled DSH seed version mismatch: $version" }
+            val pnpmManifest = File(rootfs, "usr/local/lib/node_modules/pnpm/package.json")
+            check(pnpmManifest.isFile) { "Bundled DSH seed is missing pnpm" }
+            val pnpmVersion = JSONObject(pnpmManifest.readText(StandardCharsets.UTF_8)).optString("version")
+            check(pnpmVersion == RuntimePins.PNPM_VERSION) { "Bundled pnpm version mismatch: $pnpmVersion" }
+            check(File(rootfs, "usr/local/bin/pnpm").exists()) { "Bundled pnpm launcher is missing" }
+            onLog("bundled DSH + pnpm ready · DSH $version · pnpm $pnpmVersion")
+            return true
+        } finally {
+            seedFile.delete()
+        }
+    }
+
+    private fun installBundledWebProfileSeed(): Boolean {
+        val target = File(layout.persistentDshHome, "profiles/web")
+        if (target.isDirectory && target.listFiles()?.isNotEmpty() == true) return false
+        if (target.exists()) target.deleteRecursively()
+
+        val seedFile = File(layout.tmpDir, "web-profile-seed.tar.gz")
+        val stagingRoot = File(layout.tmpDir, "web-profile-seed-staging")
+        seedFile.parentFile?.let { check(it.exists() || it.mkdirs()) }
+        if (seedFile.exists()) seedFile.delete()
+        if (stagingRoot.exists()) stagingRoot.deleteRecursively()
+        check(stagingRoot.mkdirs()) { "Unable to create web profile seed staging directory" }
+        try {
+            appContext.assets.open(RuntimePins.DSH_WEB_PROFILE_SEED_ASSET).use { input ->
+                FileOutputStream(seedFile).use { output -> input.copyTo(output) }
+            }
+            check(sha256(seedFile) == RuntimePins.DSH_WEB_PROFILE_SEED_SHA256) {
+                "Bundled web profile seed checksum mismatch"
+            }
+            extractRootfs(seedFile, stagingRoot)
+            val stagedProfile = File(stagingRoot, "profiles/web")
+            val pluginManifest = File(stagedProfile, "node_modules/@dsh-mobile/dsh-mobile-context/package.json")
+            check(stagedProfile.isDirectory && pluginManifest.isFile) { "Bundled web profile seed is incomplete" }
+            val pluginVersion = JSONObject(pluginManifest.readText(StandardCharsets.UTF_8)).optString("version")
+            check(pluginVersion == MOBILE_CONTEXT_PLUGIN_VERSION) {
+                "Bundled web profile plugin version mismatch: $pluginVersion"
+            }
+            target.parentFile?.let { check(it.exists() || it.mkdirs()) }
+            check(stagedProfile.renameTo(target)) { "Unable to activate bundled web profile seed" }
+            return true
+        } finally {
+            seedFile.delete()
+            stagingRoot.deleteRecursively()
+        }
+    }
+
     private fun installBundledNodePty(
         rootfs: File,
         onLog: (String) -> Unit = {},
@@ -377,13 +477,26 @@ internal class NativeRuntimeInstaller(
 
         val marker = File(layout.persistentDshHome, "mobile/context-plugin.version")
         val installedPluginManifest = File(layout.persistentDshHome, "profiles/web/node_modules/@dsh-mobile/dsh-mobile-context/package.json")
-        if (marker.readTextIfExists() == MOBILE_CONTEXT_PLUGIN_VERSION && installedPluginManifest.isFile) return
-        runInsideRootfs(
-            rootfs,
-            "mkdir -p /dsh-home/mobile && " +
-                "/usr/local/bin/dsh plugin --profile web add file:/dsh-home/mobile-plugins/dsh-mobile-context",
-            timeoutMillis = 10 * 60_000L,
-        )
+        fun installedPluginVersion(): String? = installedPluginManifest.takeIf(File::isFile)?.let { file ->
+            runCatching { JSONObject(file.readText(StandardCharsets.UTF_8)).optString("version") }.getOrNull()
+        }
+        if (marker.readTextIfExists() == MOBILE_CONTEXT_PLUGIN_VERSION && installedPluginVersion() == MOBILE_CONTEXT_PLUGIN_VERSION) return
+
+        // A fresh install can restore the exact prevalidated web profile from the APK. This
+        // avoids a first-run pnpm registry transaction while never overwriting an existing
+        // user profile. If the seed cannot be used, fall back to DSH's official plugin path.
+        val seeded = runCatching { installBundledWebProfileSeed() }.getOrDefault(false)
+        if (!seeded) {
+            runInsideRootfs(
+                rootfs,
+                "mkdir -p /dsh-home/mobile && " +
+                    "/usr/local/bin/dsh plugin --profile web add file:/dsh-home/mobile-plugins/dsh-mobile-context",
+                timeoutMillis = 10 * 60_000L,
+            )
+        }
+        check(installedPluginVersion() == MOBILE_CONTEXT_PLUGIN_VERSION) {
+            "DSH Mobile context plugin verification failed"
+        }
         marker.parentFile?.let { check(it.exists() || it.mkdirs()) }
         marker.writeText(MOBILE_CONTEXT_PLUGIN_VERSION, StandardCharsets.UTF_8)
     }

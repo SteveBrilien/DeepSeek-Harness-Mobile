@@ -21,7 +21,13 @@ class RecoveryBackupManager(
 ) {
     data class BackupResult(val file: File, val sha256: String, val entries: Int, val createdAt: Long)
 
-    private val excludedPrefixes = listOf("Recovery/Snapshots/", "Exports/Backups/", ".Trash/")
+    private val excludedPrefixes = listOf(
+        "Recovery/Snapshots/",
+        "Exports/Backups/",
+        "Recovery/Runtime/cache/",
+        "Recovery/Runtime/npm-cache/",
+        ".Trash/",
+    )
     private val persistentDshHome = File(context.filesDir, "persistent/dsh-home")
     private val dshArchivePrefix = "AppPrivate/dsh-home/"
 
@@ -57,7 +63,8 @@ class RecoveryBackupManager(
                 val archivePath = row.getString("path")
                 if (!archivePath.startsWith(dshArchivePrefix)) continue
                 val relative = archivePath.removePrefix(dshArchivePrefix)
-                require(isSafeEntry(relative) && !isSensitiveDshPath(relative)) { "Unsafe DSH restore entry: $archivePath" }
+                require(isSafeEntry(relative)) { "Unsafe DSH restore entry: $archivePath" }
+                if (isSensitiveDshPath(relative)) continue
                 val root = persistentDshHome.canonicalFile
                 val destination = File(root, relative).canonicalFile
                 check(destination.path.startsWith(root.path + File.separator)) { "Restore path escapes DSH home: $relative" }
@@ -210,6 +217,7 @@ class RecoveryBackupManager(
     private fun isSensitiveDshPath(relative: String): Boolean {
         val normalized = relative.lowercase()
         val basename = normalized.substringAfterLast('/')
+        if (normalized == ".ssh" || normalized.startsWith(".ssh/") || normalized.contains("/.ssh/")) return true
         return basename == ".credentials.yaml" || basename == ".env" ||
             basename.endsWith(".pem") || basename.endsWith(".key") ||
             normalized.startsWith("secrets/") || normalized.contains("/secrets/")

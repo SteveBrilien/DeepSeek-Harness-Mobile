@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.net.toUri
 import com.stevebrilien.dshmobile.BuildConfig
 import com.stevebrilien.dshmobile.core.runtimeandroid.RuntimeControlPlane
 import com.stevebrilien.dshmobile.runtime.RuntimeForegroundService
@@ -120,11 +121,8 @@ private fun DshWebClient(
                     ): Boolean {
                         val uri = request?.url ?: return false
                         if (isLocalDshUri(uri)) {
-                            if (uri.host == "127.0.0.1") {
-                                val authority = if (uri.port > 0) "localhost:${uri.port}" else "localhost"
-                                view?.loadUrl(uri.buildUpon().encodedAuthority(authority).build().toString())
-                                return true
-                            }
+                            // Preserve DSH's literal 127.0.0.1 URL. Rewriting it to localhost
+                            // can interact badly with OEM VPN/DNS stacks on Android 11.
                             return false
                         }
                         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
@@ -133,7 +131,7 @@ private fun DshWebClient(
 
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
-                        if (view != null && url != null && runCatching { isLocalDshUri(Uri.parse(url)) }.getOrDefault(false)) {
+                        if (view != null && url != null && runCatching { isLocalDshUri(url.toUri()) }.getOrDefault(false)) {
                             view.evaluateJavascript(DSH_MOBILE_COMPAT_SCRIPT, null)
                         }
                     }

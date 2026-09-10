@@ -44,7 +44,9 @@ class RuntimeForegroundService : Service() {
     private lateinit var recoveryBackups: RecoveryBackupManager
     private lateinit var telemetry: RuntimeInstallTelemetry
     private lateinit var credentialFile: File
+    private lateinit var sshDir: File
     private var credentialObserver: FileObserver? = null
+    private var sshObserver: FileObserver? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -54,15 +56,27 @@ class RuntimeForegroundService : Service() {
         telemetry = RuntimeInstallTelemetry(applicationContext)
         credentialFile = File(filesDir, "persistent/dsh-home/.credentials.yaml")
         credentialFile.parentFile?.let { it.mkdirs() }
+        sshDir = File(filesDir, "persistent/dsh-home/.ssh")
         restorePersistentDshHomeBestEffort()
         restoreCredentialsBestEffort()
+        restoreSshIdentityBestEffort()
         startCredentialObserver()
+        startSshObserver()
+        if (credentialFile.isFile) backupCredentialsBestEffort()
+        if (sshDir.listFiles()?.isNotEmpty() == true) backupSshIdentityBestEffort()
         createNotificationChannel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val action = intent?.action ?: ACTION_START
-        val preferredSourceId = intent?.getStringExtra(EXTRA_SOURCE_ID) ?: "auto"
+        val recoveredSnapshot = telemetry.snapshot()
+        val action = intent?.action ?: if (recoveredSnapshot.running && !recoveredSnapshot.runtimeInstalled) {
+            ACTION_INSTALL
+        } else {
+            ACTION_START
+        }
+        val preferredSourceId = intent?.getStringExtra(EXTRA_SOURCE_ID)
+            ?: recoveredSnapshot.sourceId?.takeIf { it.isNotBlank() }
+            ?: "auto"
         startForeground(NOTIFICATION_ID, notification("本地 Runtime 服务已启动"))
         if (!busy.compareAndSet(false, true)) {
             updateNotification("已有 Runtime 操作正在进行", telemetry.snapshot())
@@ -96,7 +110,10 @@ class RuntimeForegroundService : Service() {
     override fun onDestroy() {
         credentialObserver?.stopWatching()
         credentialObserver = null
+        sshObserver?.stopWatching()
+        sshObserver = null
         backupCredentialsBestEffort()
+        backupSshIdentityBestEffort()
         executor.shutdownNow()
         super.onDestroy()
     }
@@ -183,6 +200,19 @@ class RuntimeForegroundService : Service() {
         }.also { it.startWatching() }
     }
 
+    private fun startSshObserver() {
+        if (!sshDir.exists()) sshDir.mkdirs()
+        val mask = FileObserver.CLOSE_WRITE or FileObserver.CREATE or FileObserver.MOVED_TO or
+            FileObserver.DELETE or FileObserver.MOVED_FROM
+        sshObserver?.stopWatching()
+        sshObserver = object : FileObserver(sshDir.absolutePath, mask) {
+            override fun onEvent(event: Int, path: String?) {
+                if (path.isNullOrBlank()) return
+                runCatching { executor.execute { backupSshIdentityBestEffort() } }
+            }
+        }.also { it.startWatching() }
+    }
+
     private fun restorePersistentDshHomeBestEffort() {
         runCatching {
             val home = File(filesDir, "persistent/dsh-home")
@@ -191,11 +221,30 @@ class RuntimeForegroundService : Service() {
         }
     }
 
+    private fun restoreSshIdentityBestEffort() {
+        runCatching {
+            val status = secretVault.status()
+            val hasLocalIdentity = sshDir.isDirectory && sshDir.listFiles()?.isNotEmpty() == true
+            if (!hasLocalIdentity && status.configured && status.deviceUnlocked && status.encryptedSshIdentityPresent) {
+                secretVault.restoreSshIdentity(sshDir).getOrThrow()
+            }
+        }
+    }
+
     private fun restoreCredentialsBestEffort() {
         runCatching {
             val status = secretVault.status()
             if (!credentialFile.exists() && status.configured && status.deviceUnlocked && status.encryptedCredentialsPresent) {
                 secretVault.restoreDshCredentials(credentialFile).getOrThrow()
+            }
+        }
+    }
+
+    private fun backupSshIdentityBestEffort() {
+        runCatching {
+            val status = secretVault.status()
+            if (sshDir.isDirectory && sshDir.walkTopDown().any { it.isFile } && status.configured && status.deviceUnlocked) {
+                secretVault.backupSshIdentity(sshDir).getOrThrow()
             }
         }
     }
@@ -211,6 +260,7 @@ class RuntimeForegroundService : Service() {
 
     private fun backupUserStateBestEffort() {
         backupCredentialsBestEffort()
+        backupSshIdentityBestEffort()
         runCatching { recoveryBackups.createCheckpoint() }
     }
 
