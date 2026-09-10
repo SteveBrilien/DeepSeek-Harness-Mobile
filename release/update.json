@@ -1,7 +1,7 @@
 {
-  "versionCode": 10,
-  "versionName": "0.3.0-alpha.9",
-  "apkUrl": "https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.9.apk",
-  "sha256": "d384e60c2c0af098991c1d1f1ab6bf4cebae625ae9cc8a0e6abe521a5a2a4134",
-  "notes": "Alpha.9 restores the approved DeepSeek Harness mobile shell: full-width DSH WebView with mobile viewport, vendored dsh-client-ui-mobile 0.1.9 Cordis adaptation, fixed Home/Workspace/Terminal/Settings navigation, grouped settings, and automatic DSH startup when a reusable Runtime exists. Embedded verified Runtime seeds and recovery hardening from alpha.8 remain in place."
+  "versionCode": 11,
+  "versionName": "0.3.0-alpha.10",
+  "apkUrl": "https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.10.apk",
+  "sha256": "ffc7e1f772feda2a1ee99c4b5fac5f039eb240dfe0ea9457734a7a700da15a8c",
+  "notes": "Alpha.10 fixes OriginOS embedded Runtime extraction by materializing tar hard links as ordinary files, avoiding the 523-package npm fallback. DSH startup now uses a lightweight host preflight, skips redundant PRoot migration work when mobile plugins are current, launches the verified DSH Node entrypoint directly, and records exact startup stages for diagnostics. Alpha.9 mobile UI remains unchanged."
 }

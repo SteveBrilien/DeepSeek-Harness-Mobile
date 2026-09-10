@@ -52,6 +52,27 @@ printf '%s\n' \
 printf '%s\n' 'nameserver 1.1.1.1' 'nameserver 8.8.8.8' > "$TMP_ROOT/etc/resolv.conf"
 mkdir -p "$TMP_ROOT/opt/dsh" "$TMP_ROOT/dsh-home" "$TMP_ROOT/workspace"
 
+materialize_seed_hardlinks() {
+  python3 - "$1" "$2" <<'PYHARD'
+import os, pathlib, stat, sys, tarfile
+archive, root = sys.argv[1], pathlib.Path(sys.argv[2])
+count = 0
+with tarfile.open(archive, "r:gz") as tf:
+    for member in tf:
+        if not member.islnk():
+            continue
+        destination = root / member.name.removeprefix("./")
+        target = root / member.linkname.removeprefix("./")
+        data = target.read_bytes()
+        destination.unlink(missing_ok=True)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(data)
+        os.chmod(destination, member.mode & 0o7777)
+        count += 1
+print(f"materialized-hardlinks={count} archive={pathlib.Path(archive).name}")
+PYHARD
+}
+
 inside() {
   bwrap --unshare-all --share-net --die-with-parent \
     --bind "$TMP_ROOT" / \
@@ -73,6 +94,7 @@ echo '[e2e] embedded DSH + pnpm fast path (no registry)'
 printf '%s  %s\n' "$DSH_SEED_SHA" "$DSH_SEED" | sha256sum -c -
 rm -rf "$TMP_ROOT/opt/dsh" "$TMP_ROOT/usr/local/lib/node_modules/pnpm" "$TMP_ROOT/usr/local/bin/pnpm" "$TMP_ROOT/usr/local/bin/pnpx"
 tar -xzf "$DSH_SEED" -C "$TMP_ROOT"
+materialize_seed_hardlinks "$DSH_SEED" "$TMP_ROOT"
 inside 'node -e "require(\"koffi\"); const p=require(\"node-pty\"); if(typeof p.spawn!==\"function\") process.exit(2); console.log(\"seed-native-ok\")"'
 seed_version=$(inside 'node --expose-internals /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js --version' | tail -n 1 | tr -d '\r')
 [[ "$seed_version" == "$DSH_VERSION" ]] || { echo "Embedded seed expected DSH $DSH_VERSION, got $seed_version" >&2; exit 2; }
@@ -84,6 +106,7 @@ printf '%s  %s\n' "$PROFILE_SEED_SHA" "$PROFILE_SEED" | sha256sum -c -
 rm -rf "$TMP_ROOT/dsh-home/profiles/web"
 mkdir -p "$TMP_ROOT/dsh-home"
 tar -xzf "$PROFILE_SEED" -C "$TMP_ROOT/dsh-home"
+materialize_seed_hardlinks "$PROFILE_SEED" "$TMP_ROOT/dsh-home"
 profile_version=$(python3 - "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-mobile-context/package.json" <<'PY2'
 import json,sys
 print(json.load(open(sys.argv[1]))['version'])
@@ -105,7 +128,7 @@ PY3
 grep -q 'dsh-client-ui-mobile' "$TMP_ROOT/dsh-home/profiles/web/package.json"
 
 echo '[e2e] embedded fast-path DSH web token exchange'
-inside 'set -e; : >/tmp/dsh-web-seed.log; /usr/local/bin/dsh web --host 127.0.0.1 --port 13080 --no-open >/tmp/dsh-web-seed.log 2>&1 & pid=$!; trap "kill $pid 2>/dev/null || true" EXIT; url=""; i=0; while [ $i -lt 120 ]; do url=$(sed -n "s#^dsh web: \(http://127.0.0.1:13080/?token=[^ ]*\).*#\1#p" /tmp/dsh-web-seed.log | tail -1); [ -n "$url" ] && break; if ! kill -0 $pid 2>/dev/null; then cat /tmp/dsh-web-seed.log >&2; exit 2; fi; i=$((i+1)); sleep 0.25; done; [ -n "$url" ] || { cat /tmp/dsh-web-seed.log >&2; exit 3; }; code=$(curl -sS -L -c /tmp/dsh-seed-cookies -o /tmp/dsh-seed-index.html -w "%{http_code}" "$url"); [ "$code" = 200 ]; grep -Eq "__DSH_BOOT__|<html" /tmp/dsh-seed-index.html; echo embedded-web-auth-ok'
+inside 'set -e; : >/tmp/dsh-web-seed.log; /usr/bin/node --expose-internals /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js web --host 127.0.0.1 --port 13080 --no-open >/tmp/dsh-web-seed.log 2>&1 & pid=$!; trap "kill $pid 2>/dev/null || true" EXIT; url=""; i=0; while [ $i -lt 120 ]; do url=$(sed -n "s#^dsh web: \(http://127.0.0.1:13080/?token=[^ ]*\).*#\1#p" /tmp/dsh-web-seed.log | tail -1); [ -n "$url" ] && break; if ! kill -0 $pid 2>/dev/null; then cat /tmp/dsh-web-seed.log >&2; exit 2; fi; i=$((i+1)); sleep 0.25; done; [ -n "$url" ] || { cat /tmp/dsh-web-seed.log >&2; exit 3; }; code=$(curl -sS -L -c /tmp/dsh-seed-cookies -o /tmp/dsh-seed-index.html -w "%{http_code}" "$url"); [ "$code" = 200 ]; grep -Eq "__DSH_BOOT__|<html" /tmp/dsh-seed-index.html; echo embedded-web-auth-ok'
 
 echo '[e2e] reset for online fallback coverage'
 rm -rf "$TMP_ROOT/opt/dsh" "$TMP_ROOT/usr/local/lib/node_modules/pnpm" "$TMP_ROOT/usr/local/bin/pnpm" "$TMP_ROOT/usr/local/bin/pnpx" "$TMP_ROOT/dsh-home/profiles/web"
@@ -169,7 +192,7 @@ inside '/usr/local/bin/dsh plugin --profile web add file:/dsh-home/mobile-plugin
 inside 'node -e "const p=require(\"/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile/package.json\"); if(p.version!==\"0.1.9\") process.exit(2); console.log(\"mobile-ui-plugin-ok\")"'
 
 echo '[e2e] DSH web token exchange + authenticated frontend'
-inside 'set -e; : >/tmp/dsh-web-e2e.log; /usr/local/bin/dsh web --host 127.0.0.1 --port 13080 --no-open >/tmp/dsh-web-e2e.log 2>&1 & pid=$!; trap "kill $pid 2>/dev/null || true" EXIT; url=""; i=0; while [ $i -lt 120 ]; do url=$(sed -n "s#^dsh web: \(http://127.0.0.1:13080/?token=[^ ]*\).*#\1#p" /tmp/dsh-web-e2e.log | tail -1); [ -n "$url" ] && break; if ! kill -0 $pid 2>/dev/null; then cat /tmp/dsh-web-e2e.log >&2; exit 2; fi; i=$((i+1)); sleep 0.25; done; [ -n "$url" ] || { cat /tmp/dsh-web-e2e.log >&2; exit 3; }; unauth=$(curl -sS -o /tmp/unauth.txt -w "%{http_code}" http://127.0.0.1:13080/); [ "$unauth" = 401 ]; grep -q "dsh web authentication required" /tmp/unauth.txt; code=$(curl -sS -L -c /tmp/dsh-cookies -o /tmp/dsh-index.html -w "%{http_code}" "$url"); [ "$code" = 200 ]; grep -Eq "__DSH_BOOT__|<html" /tmp/dsh-index.html; clean=$(curl -sS -b /tmp/dsh-cookies -o /dev/null -w "%{http_code}" http://127.0.0.1:13080/); [ "$clean" = 200 ]; echo web-auth-e2e-ok'
+inside 'set -e; : >/tmp/dsh-web-e2e.log; /usr/bin/node --expose-internals /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js web --host 127.0.0.1 --port 13080 --no-open >/tmp/dsh-web-e2e.log 2>&1 & pid=$!; trap "kill $pid 2>/dev/null || true" EXIT; url=""; i=0; while [ $i -lt 120 ]; do url=$(sed -n "s#^dsh web: \(http://127.0.0.1:13080/?token=[^ ]*\).*#\1#p" /tmp/dsh-web-e2e.log | tail -1); [ -n "$url" ] && break; if ! kill -0 $pid 2>/dev/null; then cat /tmp/dsh-web-e2e.log >&2; exit 2; fi; i=$((i+1)); sleep 0.25; done; [ -n "$url" ] || { cat /tmp/dsh-web-e2e.log >&2; exit 3; }; unauth=$(curl -sS -o /tmp/unauth.txt -w "%{http_code}" http://127.0.0.1:13080/); [ "$unauth" = 401 ]; grep -q "dsh web authentication required" /tmp/unauth.txt; code=$(curl -sS -L -c /tmp/dsh-cookies -o /tmp/dsh-index.html -w "%{http_code}" "$url"); [ "$code" = 200 ]; grep -Eq "__DSH_BOOT__|<html" /tmp/dsh-index.html; clean=$(curl -sS -b /tmp/dsh-cookies -o /dev/null -w "%{http_code}" http://127.0.0.1:13080/); [ "$clean" = 200 ]; echo web-auth-e2e-ok'
 
 actual=$(inside '/usr/local/bin/dsh --version' | tail -n 1 | tr -d '\r')
 [[ "$actual" == "$DSH_VERSION" ]] || { echo "Expected DSH $DSH_VERSION, got $actual" >&2; exit 2; }

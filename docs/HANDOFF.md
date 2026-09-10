@@ -160,36 +160,45 @@ This fix still requires device-side reproduction/regression verification because
 - Appearance controls use a wrapping layout on narrow screens. The exact upstream DeepSeek Harness wordmark geometry remains unchanged.
 - Embedded DSH/pnpm fast-install seeds, A/B Runtime recovery, raw loopback startup diagnostics, encrypted credential/SSH recovery and alpha.8 security hardening remain intact.
 
+### Alpha.10 OriginOS Runtime extraction and startup hardening
+
+- Target-device alpha.9 logs identified the embedded fast-path failure precisely: Android/OriginOS denied `link(2)` with `EACCES` while restoring tar hard-link entries. The DSH seed contains 2 hard links and the Web-profile seed contains 181; all targets are regular in-archive files. The Android extractor now materializes hard-link entries as ordinary file copies with the archived mode/timestamp instead of calling `Os.link`, preserving the same verified seed bytes while avoiding the OEM kernel restriction.
+- Because the alpha.9 embedded seed failed, the installer correctly fell back to npm and downloaded 523 DSH packages. Alpha.10 keeps that fallback for corruption/compatibility failures, but the normal target-device path should remain on the bundled seed and avoid the multi-minute registry install.
+- Alpha.9 then failed during the startup preflight with `Runtime command failed (127)` before `dsh-web.log` had useful output. Alpha.10 creates the startup log before preflight and records explicit `[startup]` stages. Cold start uses a host-side manifest/file prerequisite check rather than rerunning the full DSH command verification that already gates slot staging/activation.
+- Persistent Mobile Context/mobile-UI markers are checked before entering PRoot; an already-current Web profile no longer rewrites the launcher or runs a redundant plugin migration command on every app start.
+- The long-lived Web process launches the pinned DSH Node entrypoint directly: `/usr/bin/node --expose-internals /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js web ...`. The shell launcher remains available for interactive/plugin commands. Process-exit diagnostics now include the exit code.
+- The Runtime E2E explicitly materializes all seed hard links as ordinary files and uses the exact direct-Node production Web launch path. This passes embedded DSH/native loading, the mobile Web profile, authenticated Web startup, online fallback, source-built `node-pty`, cleanup and final version checks.
+
 ## 4. Release artifact
 
 Current manual-test package:
 
-- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.9.apk`
-- SHA-256: `d384e60c2c0af098991c1d1f1ab6bf4cebae625ae9cc8a0e6abe521a5a2a4134`
-- size: `86,641,653` bytes
+- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.10.apk`
+- SHA-256: `ffc7e1f772feda2a1ee99c4b5fac5f039eb240dfe0ea9457734a7a700da15a8c`
+- size: `86,641,657` bytes
 - update manifest: `release/update.json`
 
 The current update manifest advertises:
 
-- `versionCode`: 10
-- `versionName`: `0.3.0-alpha.9`
-- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.9.apk`
+- `versionCode`: 11
+- `versionName`: `0.3.0-alpha.10`
+- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.10.apk`
 
 The project uses a stable development signing identity for alpha cover-install testing. Do not replace the signing identity casually; doing so breaks seamless upgrade/cover-install behavior.
 
 ## 5. Validation status
 
-Verified on the development host for alpha.9:
+Verified on the development host for alpha.10:
 
 - `runtime_alpine_e2e` succeeded, including embedded DSH/pnpm fast path, embedded Web profile, `dsh-client-ui-mobile 0.1.9`, online fallback, bundled `pty.node`, real PTY execution, source-build fallback, Mobile Context and authenticated DSH Web;
 - `mobile_context_contract` succeeded;
-- final `android_debug` succeeded after the last narrow-screen Settings change;
-- final `android_lint` succeeded after the last narrow-screen Settings FlowRow change; lint reports 0 errors and 14 `VectorPath` performance warnings, retained because the exact upstream brand/vector geometry and existing vector icon geometry must not be degraded;
-- final stable signing verification succeeded against the alpha.9 candidate APK;
+- final `android_debug` succeeded on versionCode 11 after the OriginOS Runtime/startup fixes;
+- final `android_lint` succeeded after the Runtime/startup fixes; retained vector-path performance warnings do not alter the exact upstream brand geometry;
+- final stable signing verification succeeded against the alpha.10 candidate APK;
 - release SHA-256 generated and recorded;
 - project path contamination check reports no known contamination.
 
-Physical-device validation remains manual because no ADB device is connected. The target test should focus on full-size Home WebView/mobile drawer/composer layout, four-item bottom navigation, cold-start automatic DSH startup, grouped Settings, Terminal execution and embedded-seed fresh installation.
+Physical-device validation remains manual because no ADB device is connected. The target test should first confirm that the existing alpha.9 slot starts without reinstall; a fresh install should then confirm that `link failed: EACCES` and the 523-package npm fallback are gone. UI validation from alpha.9 remains required after DSH Web reaches ready state.
 
 ## 6. Target-device validation sequence
 

@@ -104,24 +104,46 @@ class AndroidRuntimeManager(
         runCatching {
             if (probeWebReady()) return@runCatching
             val active = stateStore.read().activeSlot ?: error("No active runtime slot. Install a runtime first.")
-            installer.verify(active)
-            contextSnapshotWriter.writeStableBootSnapshot()
-            installer.ensureMobileContextIntegration(active)
-            val command =
-                "exec /usr/local/bin/dsh web " +
-                    "--host 127.0.0.1 --port ${RuntimePins.DSH_HTTP_PORT} --no-open"
             val logFile = File(stateStore.layout.logsDir, "dsh-web.log")
+            logFile.parentFile?.let { check(it.exists() || it.mkdirs()) }
+            logFile.appendText("\n=== DSH start ${System.currentTimeMillis()} slot=${active.name} ===\n", StandardCharsets.UTF_8)
+
+            fun <T> startupStep(name: String, block: () -> T): T {
+                logFile.appendText("[startup] $name\n", StandardCharsets.UTF_8)
+                return try {
+                    block().also { logFile.appendText("[startup] $name: ok\n", StandardCharsets.UTF_8) }
+                } catch (t: Throwable) {
+                    val detail = t.message?.lineSequence()?.firstOrNull().orEmpty().take(320)
+                    logFile.appendText("[startup] $name: failed${if (detail.isNotBlank()) ": $detail" else ""}\n", StandardCharsets.UTF_8)
+                    throw IllegalStateException("DSH startup preflight '$name' failed: ${t.message ?: t::class.java.simpleName}", t)
+                }
+            }
+
+            startupStep("verify-start-prerequisites") { installer.verifyStartPrerequisites(active) }
+            startupStep("write-mobile-context") { contextSnapshotWriter.writeStableBootSnapshot() }
+            startupStep("ensure-mobile-plugins") { installer.ensureMobileContextIntegration(active) }
+
+            // Launch the pinned DSH entrypoint directly with the verified Node binary. This
+            // removes an extra shell-wrapper lookup from the long-lived Web process while
+            // keeping /usr/local/bin/dsh for interactive/runtime commands.
+            val command =
+                "exec /usr/bin/node --expose-internals /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js web " +
+                    "--host 127.0.0.1 --port ${RuntimePins.DSH_HTTP_PORT} --no-open"
+
             // A previous start attempt can remain alive without ever binding the Web port.
             // Restart that owned process instead of waiting another full startup window on it.
             if (RuntimeProcessRegistry.isAlive()) RuntimeProcessRegistry.stop()
-            logFile.parentFile?.let { check(it.exists() || it.mkdirs()) }
-            logFile.appendText("\n=== DSH start ${System.currentTimeMillis()} ===\n", StandardCharsets.UTF_8)
+            logFile.appendText("[startup] spawn-dsh-web\n", StandardCharsets.UTF_8)
             RuntimeProcessRegistry.start(installer.buildProcess(active, command), logFile)
             val deadline = System.currentTimeMillis() + WEB_STARTUP_TIMEOUT_MILLIS
             while (System.currentTimeMillis() < deadline) {
-                if (probeWebReady()) return@runCatching
+                if (probeWebReady()) {
+                    logFile.appendText("[startup] web-ready: $lastWebProbeDetail\n", StandardCharsets.UTF_8)
+                    return@runCatching
+                }
                 if (!RuntimeProcessRegistry.isAlive()) {
-                    error("DSH process exited before the local Web endpoint became reachable. See ${logFile.absolutePath}")
+                    val exit = RuntimeProcessRegistry.exitCodeOrNull()?.toString() ?: "unknown"
+                    error("DSH process exited (code=$exit) before the local Web endpoint became reachable. See ${logFile.absolutePath}")
                 }
                 Thread.sleep(WEB_STARTUP_POLL_MILLIS)
             }
@@ -370,6 +392,11 @@ private object RuntimeProcessRegistry {
     }
 
     fun isAlive(): Boolean = synchronized(lock) { process?.isAlive == true }
+
+    fun exitCodeOrNull(): Int? = synchronized(lock) {
+        val current = process ?: return@synchronized null
+        if (current.isAlive) null else runCatching { current.exitValue() }.getOrNull()
+    }
 
     fun stop() = synchronized(lock) {
         val current = process ?: return

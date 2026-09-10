@@ -352,6 +352,21 @@ internal class NativeRuntimeInstaller(
         )
     }
 
+    fun verifyStartPrerequisites(slot: RuntimeSlot) {
+        ensureNativeLauncher()
+        val rootfs = layout.rootfs(slot)
+        check(rootfs.isDirectory) { "Runtime slot ${slot.name} is not installed" }
+        val manifestFile = layout.slotManifest(slot)
+        check(manifestFile.isFile) { "Runtime slot ${slot.name} has no manifest" }
+        val manifest = JSONObject(manifestFile.readText(StandardCharsets.UTF_8))
+        check(manifest.optInt("schemaVersion", -1) == RuntimePins.RUNTIME_MANIFEST_VERSION)
+        check(manifest.optString("alpineVersion") == RuntimePins.ALPINE_VERSION)
+        check(manifest.optString("dshVersion") == RuntimePins.DSH_VERSION)
+        check(File(rootfs, "bin/sh").isFile) { "Runtime shell is missing" }
+        check(File(rootfs, "usr/bin/node").isFile) { "Runtime Node binary is missing" }
+        check(File(rootfs, "opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js").isFile) { "DSH entrypoint is missing" }
+    }
+
     fun buildProcess(slot: RuntimeSlot, shellCommand: String): ProcessBuilder {
         ensureNativeLauncher()
         return buildProcessForRootfs(layout.rootfs(slot), shellCommand)
@@ -470,7 +485,6 @@ internal class NativeRuntimeInstaller(
 
     private fun ensureMobileContextIntegrationForRootfs(rootfs: File) {
         check(rootfs.isDirectory) { "Runtime rootfs is missing: ${rootfs.absolutePath}" }
-        ensureDshLauncher(rootfs)
         val pluginDir = File(layout.persistentDshHome, "mobile-plugins/dsh-mobile-context")
         MOBILE_CONTEXT_PLUGIN_ASSETS.forEach { relative ->
             val destination = File(pluginDir, relative)
@@ -514,6 +528,11 @@ internal class NativeRuntimeInstaller(
             uiMarker.readTextIfExists() == MOBILE_UI_PLUGIN_VERSION &&
             installedUiVersion() == MOBILE_UI_PLUGIN_VERSION
         ) return
+
+        // Only enter the Runtime when the persistent Web profile actually needs migration.
+        // Normal cold starts should not rewrite the launcher or execute a redundant PRoot
+        // command before spawning DSH Web.
+        ensureDshLauncher(rootfs)
 
         // A fresh install can restore the exact prevalidated web profile from the APK. This
         // avoids a first-run pnpm registry transaction while never overwriting an existing
@@ -828,7 +847,12 @@ internal class NativeRuntimeInstaller(
     }
 
     private fun extractRootfs(archive: File, rootfs: File) {
-        data class PendingHardLink(val destination: File, val targetName: String)
+        data class PendingHardLink(
+            val destination: File,
+            val targetName: String,
+            val mode: Int,
+            val modifiedAtMillis: Long?,
+        )
         val pendingHardLinks = mutableListOf<PendingHardLink>()
         val rootPath = rootfs.toPath().toAbsolutePath().normalize()
 
@@ -850,7 +874,12 @@ internal class NativeRuntimeInstaller(
                                 if (destination.exists() || destination.isFile) destination.delete()
                                 Os.symlink(entry.linkName, destination.absolutePath)
                             }
-                            entry.isLink -> pendingHardLinks += PendingHardLink(destination, entry.linkName)
+                            entry.isLink -> pendingHardLinks += PendingHardLink(
+                                destination = destination,
+                                targetName = entry.linkName,
+                                mode = entry.mode,
+                                modifiedAtMillis = entry.modTime?.time,
+                            )
                             entry.isFile -> {
                                 destination.parentFile?.let { check(it.exists() || it.mkdirs()) }
                                 FileOutputStream(destination).use { output -> tar.copyTo(output) }
@@ -869,7 +898,16 @@ internal class NativeRuntimeInstaller(
             check(targetPath.startsWith(rootPath)) { "Unsafe hardlink target: ${link.targetName}" }
             link.destination.parentFile?.let { check(it.exists() || it.mkdirs()) }
             if (link.destination.exists()) link.destination.delete()
-            Os.link(targetPath.toString(), link.destination.absolutePath)
+            // Android/OEM app sandboxes can deny hard-link creation even when both paths
+            // are app-owned (OriginOS returned EACCES here). Hard links in Alpine/DSH seeds
+            // are only storage optimisations, so materialise an ordinary file deterministically.
+            val target = targetPath.toFile()
+            check(target.isFile) { "Hardlink materialization target is not a regular file: ${link.targetName}" }
+            FileInputStream(target).use { input ->
+                FileOutputStream(link.destination).use { output -> input.copyTo(output) }
+            }
+            applyMode(link.destination, link.mode)
+            link.modifiedAtMillis?.let(link.destination::setLastModified)
         }
     }
 

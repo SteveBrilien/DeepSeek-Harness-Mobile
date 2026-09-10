@@ -247,3 +247,18 @@ Files:
 - `release/DeepSeek-Harness-Mobile-0.3.0-alpha.9.apk`
 - `release/SHA256SUMS`
 - `release/update.json`
+
+## 2026-09-10T19:23:11.876145Z — RELEASE: 0.3.0-alpha.10: fix OriginOS embedded-seed hardlinks and DSH startup rc127 diagnostics
+
+Target-device alpha.9 logs identified two concrete failures. Embedded DSH extraction called Android Os.link for tar hard-link entries and OriginOS returned EACCES, so the installer fell back to the slow 523-package npm path. Alpha.10 materializes every tar hard-link entry as an ordinary file copy with archived mode/timestamp, keeping the verified alpha.9 seed bytes and online fallback. Startup then failed with Runtime command failed (127) before dsh-web.log existed; alpha.10 creates the log before preflight, replaces redundant full runtime command verification with host-side start prerequisites, skips PRoot/plugin migration when mobile plugin markers are already current, launches the pinned DSH Node entrypoint directly, and records startup stages plus exit code. Runtime ARM64 E2E passes with 2 DSH-seed and 181 Web-profile hardlinks materialized, direct-Node DSH Web auth, online/source-build fallbacks, PTY and Mobile Context. Final android_debug, android_lint, stable signing and mobile_context_contract pass. Physical OriginOS verification remains manual because no ADB device is connected. APK SHA-256 ffc7e1f772feda2a1ee99c4b5fac5f039eb240dfe0ea9457734a7a700da15a8c; size 86,641,657 bytes.
+
+Files:
+- `app/build.gradle.kts`
+- `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/NativeRuntimeInstaller.kt`
+- `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/AndroidRuntimeManager.kt`
+- `scripts/test-runtime-alpine-e2e.sh`
+- `docs/HANDOFF.md`
+- `docs/NEXT_ACTIONS.md`
+- `release/DeepSeek-Harness-Mobile-0.3.0-alpha.10.apk`
+- `release/SHA256SUMS`
+- `release/update.json`

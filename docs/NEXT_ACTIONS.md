@@ -1,22 +1,19 @@
 # Immediate Next Actions
 
 Last updated: 2026-09-11
-Current release candidate: `0.3.0-alpha.9` (`versionCode = 10`)
+Current release candidate: `0.3.0-alpha.10` (`versionCode = 11`)
 
-## P0 — Validate alpha.9 mobile shell on the target Android 11 / OriginOS device
+## P0 — Validate alpha.10 Runtime fast path and startup on Android 11 / OriginOS
 
-Alpha.9 restores the approved DeepSeek Harness mobile UI baseline while preserving the alpha.8 Runtime hardening.
+Alpha.9 target logs gave two concrete failures: embedded seed extraction hit `link failed: EACCES`, forcing the 523-package npm fallback, and DSH startup then failed in preflight with `Runtime command failed (127)` before a useful DSH log was created. Alpha.10 addresses both paths.
 
-1. Cover-install alpha.9 without clearing app data or deleting `/storage/emulated/0/DeepSeekHarness`.
-2. Cold-launch the app and confirm an already installed healthy Runtime causes DSH to start automatically; no separate Runtime-start tap should be required.
-3. Confirm the Home WebView occupies the full usable width/height above the native bottom navigation. The DSH page must not appear as a small desktop page centered in a large WebView.
-4. Confirm `dsh-client-ui-mobile 0.1.9` takes effect: desktop rail/sidebar becomes a mobile overlay/drawer and the conversation/composer use the available phone width.
-5. Confirm the native bottom navigation is exactly `首页 / 工作区 / 终端 / 设置`, fixed at the bottom and without the old floating drag pill.
-6. Confirm `工作区` contains the `项目 / 文件` switch and neither page is hidden by the bottom navigation.
-7. Confirm Terminal remains terminal-first and `自动 / Linux / Android` execute the intended routes.
-8. Confirm Settings is a short grouped index (`基础 / 运行时 / 管理`), deeper diagnostics remain reachable, and appearance controls wrap rather than overflow on the target width.
-9. If DSH startup still fails, copy Runtime logs and preserve the installed Runtime. The app must not force a complete reinstall merely because Web startup failed.
-10. If a fresh Runtime install is required, confirm the embedded DSH/pnpm/Web-profile seeds are used and the 523-package DSH npm download does not occur on the happy path.
+1. Cover-install alpha.10 without clearing app data or deleting `/storage/emulated/0/DeepSeekHarness`. The already prepared alpha.9 Runtime slot A should be reusable; first test `重试启动`/cold launch without rebuilding the Runtime.
+2. Confirm startup logs contain explicit stages such as `[startup] verify-start-prerequisites`, `[startup] write-mobile-context`, `[startup] ensure-mobile-plugins`, and `[startup] spawn-dsh-web`. On success they should end with `[startup] web-ready: ...`.
+3. If the existing Runtime still fails, copy the new DSH log. It should identify the exact failed startup stage or the DSH process exit code instead of only returning an empty `Runtime command failed (127)`.
+4. After startup is proven, validate the alpha.9 UI baseline: full-size Home WebView, mobile drawer/composer layout, `首页 / 工作区 / 终端 / 设置`, grouped Settings, and terminal execution.
+5. Only when safe to do so, test a fresh Runtime slot. Embedded seed extraction must no longer log `link failed: EACCES`; tar hard-link entries are materialized as ordinary app-owned files.
+6. On the fresh-install happy path, expect `bundled DSH + pnpm ready` and no 523-package DSH npm install. Online npm remains fallback only.
+7. Preserve the existing working/recoverable slot and Recovery Vault throughout manual regression testing. Do not clear app data merely to force a fresh test.
 
 ## P0 — Preserve and recover user state
 
@@ -33,7 +30,7 @@ Before destructive regression tests, verify the Recovery Vault and do not delete
 
 Do not replace the pinned bootable DSH version by blindly running `npm install @deepseek-ai/dsh@latest` over the active slot.
 
-Implement remote DSH version discovery after alpha.9 device UI/startup validation is stable:
+Implement remote DSH version discovery after alpha.10 device Runtime/UI startup validation is stable:
 
 1. query official npm dist-tags/metadata with bounded timeout and cached results;
 2. show installed / recommended / latest versions separately;
@@ -58,14 +55,14 @@ Keep `docs/UI_BASELINE.md` authoritative. The exact upstream DeepSeek Harness wo
 
 ## Current automated validation
 
-For alpha.9 on the OrangePi/ARM64 development environment:
+For alpha.10 on the OrangePi/ARM64 development environment:
 
-- `runtime_alpine_e2e`: PASS, including embedded DSH/pnpm fast path, embedded Web profile, `dsh-client-ui-mobile 0.1.9`, bundled `pty.node`, real PTY execution, source-build fallback, Mobile Context and DSH Web token authentication;
+- `runtime_alpine_e2e`: PASS with all 2 DSH-seed and 181 Web-profile hard-link entries materialized as ordinary files, plus the exact direct-Node DSH Web launch path, embedded Web profile, `dsh-client-ui-mobile 0.1.9`, bundled `pty.node`, real PTY execution, online/source-build fallbacks, Mobile Context and token authentication;
 - `mobile_context_contract`: PASS;
-- final `android_debug`: PASS after restoring the compatible base + v26 launcher-resource split;
-- final `android_lint`: PASS after the last narrow-screen Settings FlowRow tweak; lint reports 0 errors and 14 `VectorPath` performance warnings retained to preserve exact/intentional vector geometry;
-- final `android_signing_verify`: PASS against the final alpha.9 candidate APK;
-- release candidate: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.9.apk`, SHA-256 `d384e60c2c0af098991c1d1f1ab6bf4cebae625ae9cc8a0e6abe521a5a2a4134`, size `86,641,653` bytes;
-- physical-device alpha.9 validation remains manual because no ADB device is connected.
+- final `android_debug`: PASS on `0.3.0-alpha.10` / versionCode 11 after the Runtime extractor/startup changes;
+- final `android_lint`: PASS after the Runtime extractor/startup changes;
+- final `android_signing_verify`: PASS against the final alpha.10 candidate APK;
+- release candidate: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.10.apk`, SHA-256 `ffc7e1f772feda2a1ee99c4b5fac5f039eb240dfe0ea9457734a7a700da15a8c`, size `86,641,657` bytes;
+- physical-device alpha.10 validation remains manual because no ADB device is connected.
 
 For full architecture, invariants and handoff state, read `docs/HANDOFF.md` first.
