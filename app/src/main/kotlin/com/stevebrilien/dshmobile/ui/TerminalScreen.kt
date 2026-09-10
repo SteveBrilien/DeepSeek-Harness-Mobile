@@ -473,7 +473,7 @@ fun TerminalScreen(
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 72.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(7.dp),
         ) {

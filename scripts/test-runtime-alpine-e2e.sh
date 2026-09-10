@@ -17,10 +17,11 @@ ALPINE_BASE=${DSHM_E2E_ALPINE_BASE:-https://mirrors.ustc.edu.cn/alpine/v3.24}
 BUNDLED_PTY="$ROOT_DIR/core/runtime-android/src/main/assets/runtime/native-modules/node24-arm64-musl/pty.node"
 BUNDLED_PTY_SHA="3e9cb29670c2cac1f7d54302099af8b0f998b9acc79891666b3136db575f18c3"
 DSH_SEED="$ROOT_DIR/core/runtime-android/src/main/assets/runtime/seeds/dsh-0.1.2-rc.1-node24-arm64-musl.tgz"
-DSH_SEED_SHA="62d45f11aaa2e543f99f9f811565ad70db92d2fcf271a6c65dccbf9d8efef66f"
+DSH_SEED_SHA="cf496f9e3151490b7aa18ada9bbfcce94ff38881adde177daf9320b218c91a5c"
 PROFILE_SEED="$ROOT_DIR/core/runtime-android/src/main/assets/runtime/seeds/web-profile-0.1.2-rc.1-mobile-context-0.2.1.tgz"
-PROFILE_SEED_SHA="e8587b69e389019d922b6797128b2493b4f982b8af654a690aad36ae31381408"
+PROFILE_SEED_SHA="02e46b929a5d9306ac0d907a524d55b73ae990e356705b8e455333687eb3b415"
 MOBILE_CONTEXT_VERSION="0.2.1"
+MOBILE_UI_VERSION="0.1.9"
 
 command -v bwrap >/dev/null
 command -v tar >/dev/null
@@ -91,7 +92,17 @@ PY2
 [[ "$profile_version" == "$MOBILE_CONTEXT_VERSION" ]] || { echo "Embedded profile expected mobile context $MOBILE_CONTEXT_VERSION, got $profile_version" >&2; exit 2; }
 mkdir -p "$TMP_ROOT/dsh-home/mobile-plugins/dsh-mobile-context"
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-mobile-context/." "$TMP_ROOT/dsh-home/mobile-plugins/dsh-mobile-context/"
+mkdir -p "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile"
+cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-client-ui-mobile/." "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile/"
 inside 'mkdir -p /usr/local/bin; printf "%s\n" "#!/bin/sh" "exec node --expose-internals /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js \"\$@\"" > /usr/local/bin/dsh; chmod 0755 /usr/local/bin/dsh'
+inside '/usr/local/bin/dsh plugin --profile web add file:/dsh-home/mobile-plugins/dsh-client-ui-mobile'
+ui_version=$(python3 - "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile/package.json" <<'PY3'
+import json,sys
+print(json.load(open(sys.argv[1]))['version'])
+PY3
+)
+[[ "$ui_version" == "$MOBILE_UI_VERSION" ]] || { echo "Embedded profile expected mobile UI $MOBILE_UI_VERSION, got $ui_version" >&2; exit 2; }
+grep -q 'dsh-client-ui-mobile' "$TMP_ROOT/dsh-home/profiles/web/package.json"
 
 echo '[e2e] embedded fast-path DSH web token exchange'
 inside 'set -e; : >/tmp/dsh-web-seed.log; /usr/local/bin/dsh web --host 127.0.0.1 --port 13080 --no-open >/tmp/dsh-web-seed.log 2>&1 & pid=$!; trap "kill $pid 2>/dev/null || true" EXIT; url=""; i=0; while [ $i -lt 120 ]; do url=$(sed -n "s#^dsh web: \(http://127.0.0.1:13080/?token=[^ ]*\).*#\1#p" /tmp/dsh-web-seed.log | tail -1); [ -n "$url" ] && break; if ! kill -0 $pid 2>/dev/null; then cat /tmp/dsh-web-seed.log >&2; exit 2; fi; i=$((i+1)); sleep 0.25; done; [ -n "$url" ] || { cat /tmp/dsh-web-seed.log >&2; exit 3; }; code=$(curl -sS -L -c /tmp/dsh-seed-cookies -o /tmp/dsh-seed-index.html -w "%{http_code}" "$url"); [ "$code" = 200 ]; grep -Eq "__DSH_BOOT__|<html" /tmp/dsh-seed-index.html; echo embedded-web-auth-ok'
@@ -148,10 +159,14 @@ inside 'node -e "require(\"koffi\"); const p=require(\"node-pty\"); if(typeof p.
 echo '[e2e] Alpine/musl-safe DSH launcher'
 inside 'mkdir -p /usr/local/bin; printf "%s\n" "#!/bin/sh" "exec node --expose-internals /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js \"\$@\"" > /usr/local/bin/dsh; chmod 0755 /usr/local/bin/dsh; /usr/local/bin/dsh --version'
 
-echo '[e2e] mobile context plugin integration'
+echo '[e2e] mobile context + mobile UI plugin integration'
 mkdir -p "$TMP_ROOT/dsh-home/mobile-plugins/dsh-mobile-context"
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-mobile-context/." "$TMP_ROOT/dsh-home/mobile-plugins/dsh-mobile-context/"
+mkdir -p "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile"
+cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-client-ui-mobile/." "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile/"
 inside '/usr/local/bin/dsh plugin --profile web add file:/dsh-home/mobile-plugins/dsh-mobile-context'
+inside '/usr/local/bin/dsh plugin --profile web add file:/dsh-home/mobile-plugins/dsh-client-ui-mobile'
+inside 'node -e "const p=require(\"/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile/package.json\"); if(p.version!==\"0.1.9\") process.exit(2); console.log(\"mobile-ui-plugin-ok\")"'
 
 echo '[e2e] DSH web token exchange + authenticated frontend'
 inside 'set -e; : >/tmp/dsh-web-e2e.log; /usr/local/bin/dsh web --host 127.0.0.1 --port 13080 --no-open >/tmp/dsh-web-e2e.log 2>&1 & pid=$!; trap "kill $pid 2>/dev/null || true" EXIT; url=""; i=0; while [ $i -lt 120 ]; do url=$(sed -n "s#^dsh web: \(http://127.0.0.1:13080/?token=[^ ]*\).*#\1#p" /tmp/dsh-web-e2e.log | tail -1); [ -n "$url" ] && break; if ! kill -0 $pid 2>/dev/null; then cat /tmp/dsh-web-e2e.log >&2; exit 2; fi; i=$((i+1)); sleep 0.25; done; [ -n "$url" ] || { cat /tmp/dsh-web-e2e.log >&2; exit 3; }; unauth=$(curl -sS -o /tmp/unauth.txt -w "%{http_code}" http://127.0.0.1:13080/); [ "$unauth" = 401 ]; grep -q "dsh web authentication required" /tmp/unauth.txt; code=$(curl -sS -L -c /tmp/dsh-cookies -o /tmp/dsh-index.html -w "%{http_code}" "$url"); [ "$code" = 200 ]; grep -Eq "__DSH_BOOT__|<html" /tmp/dsh-index.html; clean=$(curl -sS -b /tmp/dsh-cookies -o /dev/null -w "%{http_code}" http://127.0.0.1:13080/); [ "$clean" = 200 ]; echo web-auth-e2e-ok'

@@ -2,31 +2,26 @@ package com.stevebrilien.dshmobile.ui
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -41,7 +36,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -54,15 +48,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
-private enum class MainSection(
-    val label: String,
-    val icon: DshIconGlyph,
-) {
-    Chat("对话", DshIconGlyph.CHAT),
+private enum class MainSection(val label: String, val icon: DshIconGlyph) {
+    Home("首页", DshIconGlyph.HOME),
+    Workspace("工作区", DshIconGlyph.PROJECT),
+    Terminal("终端", DshIconGlyph.TERMINAL),
+    Settings("设置", DshIconGlyph.SETTINGS),
+}
+
+private enum class WorkspaceSection(val label: String, val icon: DshIconGlyph) {
     Projects("项目", DshIconGlyph.PROJECT),
     Files("文件", DshIconGlyph.FILE),
-    Terminal("终端", DshIconGlyph.TERMINAL),
-    More("更多", DshIconGlyph.MORE),
 }
 
 @Composable
@@ -75,7 +70,7 @@ fun DshMobileApp() {
     var showLaunchSplash by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
-        delay(620)
+        delay(520)
         showLaunchSplash = false
     }
 
@@ -84,8 +79,8 @@ fun DshMobileApp() {
         Box(Modifier.fillMaxSize().background(colors.base)) {
             AnimatedVisibility(
                 visible = !showLaunchSplash,
-                enter = fadeIn(tween(220)),
-                exit = fadeOut(tween(120)),
+                enter = fadeIn(tween(180)),
+                exit = fadeOut(tween(100)),
             ) {
                 if (!onboardingComplete) {
                     OnboardingScreen(
@@ -109,8 +104,8 @@ fun DshMobileApp() {
             }
             AnimatedVisibility(
                 visible = showLaunchSplash,
-                enter = fadeIn(tween(120)),
-                exit = fadeOut(tween(220)),
+                enter = fadeIn(tween(100)),
+                exit = fadeOut(tween(180)),
             ) {
                 DshLaunchSplash(Modifier.fillMaxSize())
             }
@@ -130,8 +125,8 @@ private fun DshMobileShell(
     val projectRegistry = remember(vault) { ProjectRegistry(vault) }
     val recoveryShell = remember(context) { NativeRecoveryShell(context, fileManager) }
     val recoveryController = remember(context) { NativeRecoveryController(context, vault) }
-    var selected by remember { mutableStateOf(MainSection.Chat) }
-    var navigationExpanded by remember { mutableStateOf(false) }
+    var selected by remember { mutableStateOf(MainSection.Home) }
+    var workspaceSection by remember { mutableStateOf(WorkspaceSection.Projects) }
     val colors = LocalDshColors.current
 
     LaunchedEffect(vault) {
@@ -146,22 +141,22 @@ private fun DshMobileShell(
         val contentModifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
+            .padding(bottom = 60.dp)
 
         AnimatedContent(
             targetState = selected,
             transitionSpec = {
-                (fadeIn(tween(170)) + slideInHorizontally(tween(190)) { it / 18 }) togetherWith
-                    (fadeOut(tween(120)) + slideOutHorizontally(tween(150)) { -it / 24 })
+                (fadeIn(tween(150)) + slideInHorizontally(tween(170)) { it / 24 }) togetherWith
+                    (fadeOut(tween(100)) + slideOutHorizontally(tween(130)) { -it / 30 })
             },
             label = "main-section",
         ) { section ->
             when (section) {
-                MainSection.Chat -> ChatScreen(modifier = contentModifier)
-                MainSection.Projects -> ProjectsScreen(
+                MainSection.Home -> ChatScreen(modifier = contentModifier)
+                MainSection.Workspace -> WorkspaceHubScreen(
+                    section = workspaceSection,
+                    onSectionChange = { workspaceSection = it },
                     registry = projectRegistry,
-                    modifier = contentModifier,
-                )
-                MainSection.Files -> FilesScreen(
                     fileManager = fileManager,
                     modifier = contentModifier,
                 )
@@ -170,7 +165,7 @@ private fun DshMobileShell(
                     fileManager = fileManager,
                     modifier = contentModifier,
                 )
-                MainSection.More -> RecoveryScreen(
+                MainSection.Settings -> SettingsScreen(
                     vault = vault,
                     controller = recoveryController,
                     themeMode = themeMode,
@@ -181,25 +176,9 @@ private fun DshMobileShell(
             }
         }
 
-        if (navigationExpanded) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = if (colors.isDark) .12f else .025f))
-                    .pointerInput(Unit) {
-                        detectTapGestures { navigationExpanded = false }
-                    },
-            )
-        }
-
-        SwipeNavigationTray(
+        DshBottomNavigation(
             selected = selected,
-            expanded = navigationExpanded,
-            onExpandedChange = { navigationExpanded = it },
-            onSelect = {
-                selected = it
-                navigationExpanded = false
-            },
+            onSelect = { selected = it },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding(),
@@ -208,109 +187,104 @@ private fun DshMobileShell(
 }
 
 @Composable
-private fun SwipeNavigationTray(
-    selected: MainSection,
-    expanded: Boolean,
-    onExpandedChange: (Boolean) -> Unit,
-    onSelect: (MainSection) -> Unit,
+private fun WorkspaceHubScreen(
+    section: WorkspaceSection,
+    onSectionChange: (WorkspaceSection) -> Unit,
+    registry: ProjectRegistry,
+    fileManager: NativeFileManager,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalDshColors.current
-    Column(
-        modifier = modifier.padding(horizontal = 12.dp, vertical = 5.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        AnimatedVisibility(
-            visible = expanded,
-            enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
+    Column(modifier = modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Surface(
-                color = colors.layer1,
-                shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.dp, colors.border1),
-                shadowElevation = 10.dp,
-                tonalElevation = 0.dp,
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+            WorkspaceSection.entries.forEach { item ->
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(38.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onSectionChange(item) },
+                    color = if (item == section) colors.selected else Color.Transparent,
+                    border = BorderStroke(0.5.dp, colors.border1),
+                    shape = RoundedCornerShape(10.dp),
+                    tonalElevation = 0.dp,
                 ) {
-                    MainSection.entries.forEach { section ->
-                        NavItem(
-                            section = section,
-                            selected = selected == section,
-                            onClick = { onSelect(section) },
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        DshIcon(
+                            glyph = item.icon,
+                            contentDescription = item.label,
+                            modifier = Modifier.size(17.dp),
+                            tint = if (item == section) colors.textPrimary else colors.textSecondary,
+                        )
+                        Text(
+                            item.label,
+                            modifier = Modifier.padding(start = 7.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (item == section) colors.textPrimary else colors.textSecondary,
                         )
                     }
                 }
             }
         }
-
-        val handleWidth by animateDpAsState(if (expanded) 76.dp else 68.dp, label = "nav-handle-width")
-        Surface(
-            color = colors.layer1,
-            shape = RoundedCornerShape(14.dp),
-            border = BorderStroke(1.dp, colors.border1),
-            shadowElevation = 6.dp,
-            tonalElevation = 0.dp,
-            modifier = Modifier
-                .width(handleWidth)
-                .height(28.dp)
-                .pointerInput(expanded) {
-                    var totalDrag = 0f
-                    detectVerticalDragGestures(
-                        onDragStart = { totalDrag = 0f },
-                        onVerticalDrag = { _, dragAmount -> totalDrag += dragAmount },
-                        onDragEnd = {
-                            when {
-                                totalDrag < -18f -> onExpandedChange(true)
-                                totalDrag > 18f -> onExpandedChange(false)
-                            }
-                        },
-                    )
-                }
-                .clickable { onExpandedChange(!expanded) },
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Box(
-                    modifier = Modifier
-                        .width(34.dp)
-                        .height(4.dp)
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(colors.textSecondary.copy(alpha = .78f)),
-                )
-            }
+        when (section) {
+            WorkspaceSection.Projects -> ProjectsScreen(registry = registry, modifier = Modifier.weight(1f))
+            WorkspaceSection.Files -> FilesScreen(fileManager = fileManager, modifier = Modifier.weight(1f))
         }
     }
 }
 
 @Composable
-private fun NavItem(
-    section: MainSection,
-    selected: Boolean,
-    onClick: () -> Unit,
+private fun DshBottomNavigation(
+    selected: MainSection,
+    onSelect: (MainSection) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = LocalDshColors.current
-    val tint = if (selected) colors.accent else colors.textSecondary
-    Column(
-        modifier = Modifier
-            .width(64.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(if (selected) colors.selected else Color.Transparent)
-            .clickable(onClick = onClick)
-            .padding(vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+    Surface(
+        modifier = modifier.fillMaxWidth().height(60.dp),
+        color = colors.base,
+        border = BorderStroke(0.5.dp, colors.border1),
+        tonalElevation = 0.dp,
     ) {
-        DshIcon(section.icon, section.label, Modifier.size(20.dp), tint)
-        Text(
-            section.label,
-            modifier = Modifier.padding(top = 4.dp),
-            style = MaterialTheme.typography.labelMedium,
-            color = tint,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-        )
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            MainSection.entries.forEach { section ->
+                val active = selected == section
+                val tint = if (active) colors.accent else colors.textTertiary
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxSize()
+                        .clickable { onSelect(section) },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    DshIcon(
+                        glyph = section.icon,
+                        contentDescription = section.label,
+                        modifier = Modifier.size(20.dp),
+                        tint = tint,
+                    )
+                    Text(
+                        section.label,
+                        modifier = Modifier.padding(top = 3.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = tint,
+                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                    )
+                }
+            }
+        }
     }
 }

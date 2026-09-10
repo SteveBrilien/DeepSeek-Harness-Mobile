@@ -133,11 +133,11 @@ fun ProjectsScreen(
                 title = "还没有项目",
                 detail = "可新建默认项目，或引用任意可访问的已有文件夹",
                 icon = DshIconGlyph.PROJECT,
-                modifier = Modifier.fillMaxSize().padding(bottom = 84.dp),
+                modifier = Modifier.fillMaxSize().padding(bottom = 12.dp),
             )
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(top = 12.dp, bottom = 72.dp),
+                modifier = Modifier.fillMaxSize().padding(top = 12.dp, bottom = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 items(projects, key = { it.id.value }) { project ->

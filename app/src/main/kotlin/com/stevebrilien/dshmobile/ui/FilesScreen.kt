@@ -210,11 +210,11 @@ fun FilesScreen(
             DshEmptyState(
                 title = "此文件夹为空",
                 detail = "可新建文件、文件夹，或从其他位置粘贴内容",
-                modifier = Modifier.fillMaxSize().padding(bottom = 92.dp),
+                modifier = Modifier.fillMaxSize().padding(bottom = 12.dp),
             )
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(top = 8.dp, bottom = 72.dp),
+                modifier = Modifier.fillMaxSize().padding(top = 8.dp, bottom = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 items(entries, key = { it.absolutePath }) { entry ->

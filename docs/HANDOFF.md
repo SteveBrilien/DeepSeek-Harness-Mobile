@@ -150,43 +150,46 @@ This fix still requires device-side reproduction/regression verification because
 - `targetSdk` intentionally remains 28 while `compileSdk` is 35 because the current self-hosted PRoot/Node architecture executes files from app-private writable storage. Target-SDK modernization requires first moving executable bootstrap components to an Android-compliant packaged executable location.
 - Remote DSH-version discovery (for example newer 0.1.5 candidates) is still future work; updates must install into the inactive slot and pass compatibility checks before switching.
 
+### Alpha.9 mobile shell and DSH responsive UI
+
+- The approved native shell is restored as `首页 / 工作区 / 终端 / 设置`; the old floating/drag navigation tray is removed. `工作区` contains `项目 / 文件`, and Settings is a grouped index with advanced Runtime/recovery material on a deeper page.
+- Home proactively starts DSH when a reusable installed Runtime is present. Missing Runtime and DSH startup timeout are separate states; a Web startup problem does not require reinstalling a verified Runtime.
+- The DSH WebView fills the usable phone content area and disables wide-viewport/overview scaling that could shrink the desktop-first page into a small centered surface. Zoom is disabled and text zoom remains 100%.
+- Android-side DOM/CSS compatibility injection has been removed. Mobile DSH layout is provided by vendored `dsh-client-ui-mobile 0.1.9`, installed as a normal Cordis/DSH Web plugin alongside Mobile Context. The vendored plugin is recorded in `THIRD_PARTY_NOTICES.md` under its MIT license.
+- The embedded Web profile was regenerated with the mobile UI plugin. Runtime ARM64 E2E verifies its installed version and completes authenticated DSH Web startup.
+- Appearance controls use a wrapping layout on narrow screens. The exact upstream DeepSeek Harness wordmark geometry remains unchanged.
+- Embedded DSH/pnpm fast-install seeds, A/B Runtime recovery, raw loopback startup diagnostics, encrypted credential/SSH recovery and alpha.8 security hardening remain intact.
+
 ## 4. Release artifact
 
 Current manual-test package:
 
-- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.8.apk`
-- SHA-256: `75f4ed5f3320bfe11354f17d0b5d9ecc6830f6befc315091a108ccc6215cfa7e`
-- size: `80,364,450` bytes
+- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.9.apk`
+- SHA-256: `d384e60c2c0af098991c1d1f1ab6bf4cebae625ae9cc8a0e6abe521a5a2a4134`
+- size: `86,641,653` bytes
 - update manifest: `release/update.json`
 
 The current update manifest advertises:
 
-- `versionCode`: 9
-- `versionName`: `0.3.0-alpha.8`
-- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.8.apk`
+- `versionCode`: 10
+- `versionName`: `0.3.0-alpha.9`
+- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.9.apk`
 
 The project uses a stable development signing identity for alpha cover-install testing. Do not replace the signing identity casually; doing so breaks seamless upgrade/cover-install behavior.
 
 ## 5. Validation status
 
-Verified on the development host for alpha.8:
+Verified on the development host for alpha.9:
 
-- `android_debug` succeeded;
-- `android_lint` succeeded;
-- stable signing certificate verification succeeded;
+- `runtime_alpine_e2e` succeeded, including embedded DSH/pnpm fast path, embedded Web profile, `dsh-client-ui-mobile 0.1.9`, online fallback, bundled `pty.node`, real PTY execution, source-build fallback, Mobile Context and authenticated DSH Web;
+- `mobile_context_contract` succeeded;
+- final `android_debug` succeeded after the last narrow-screen Settings change;
+- final `android_lint` succeeded after the last narrow-screen Settings FlowRow change; lint reports 0 errors and 14 `VectorPath` performance warnings, retained because the exact upstream brand/vector geometry and existing vector icon geometry must not be degraded;
+- final stable signing verification succeeded against the alpha.9 candidate APK;
 - release SHA-256 generated and recorded;
-- XML/resource parse checks passed;
 - project path contamination check reports no known contamination.
 
-Not yet completed for alpha.8:
-
-- physical-device cover-install and exact alpha.8 startup regression verification;
-- verification that an already prepared healthy Runtime is reused without extraction/package installation;
-- target-device confirmation that the embedded DSH/pnpm fast path avoids the 523-package npm install when a fresh slot is required;
-- full Runtime-to-DSH-Web startup loop on the target OriginOS device using the raw `127.0.0.1` readiness probe/token URL, including VPN-on conditions;
-- UI inspection for onboarding/installer layout, launcher icon scale and Terminal execution on the target display.
-
-These are release-gating manual-test items, not host-build blockers.
+Physical-device validation remains manual because no ADB device is connected. The target test should focus on full-size Home WebView/mobile drawer/composer layout, four-item bottom navigation, cold-start automatic DSH startup, grouped Settings, Terminal execution and embedded-seed fresh installation.
 
 ## 6. Target-device validation sequence
 

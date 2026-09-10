@@ -28,6 +28,7 @@ enum class DshIconGlyph {
     FILE,
     TERMINAL,
     MORE,
+    SETTINGS,
     ARROW_LEFT,
     HOME,
     REFRESH,
@@ -156,6 +157,16 @@ fun DshIcon(
                 listOf(.28f, .50f, .72f).forEach { x ->
                     drawCircle(tint, radius = s * .065f, center = p(x, .50f))
                 }
+            }
+            DshIconGlyph.SETTINGS -> {
+                drawCircle(tint, radius = s * .24f, center = p(.50f, .50f), style = stroke)
+                drawCircle(tint, radius = s * .075f, center = p(.50f, .50f), style = thin)
+                listOf(
+                    p(.50f, .08f) to p(.50f, .22f), p(.50f, .78f) to p(.50f, .92f),
+                    p(.08f, .50f) to p(.22f, .50f), p(.78f, .50f) to p(.92f, .50f),
+                    p(.20f, .20f) to p(.30f, .30f), p(.70f, .70f) to p(.80f, .80f),
+                    p(.80f, .20f) to p(.70f, .30f), p(.30f, .70f) to p(.20f, .80f),
+                ).forEach { (start, end) -> drawLine(tint, start, end, stroke.width) }
             }
             DshIconGlyph.ARROW_LEFT -> {
                 drawLine(tint, p(.18f, .50f), p(.82f, .50f), stroke.width)

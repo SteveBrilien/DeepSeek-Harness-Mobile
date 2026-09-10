@@ -227,3 +227,23 @@ Files:
 - `release/DeepSeek-Harness-Mobile-0.3.0-alpha.8.apk`
 - `release/SHA256SUMS`
 - `release/update.json`
+
+## 2026-09-10T18:41:58.399943Z — RELEASE: 0.3.0-alpha.9: restore approved mobile DSH shell and Cordis-native responsive UI
+
+Promote the approved mobile UI baseline to alpha.9/versionCode 10. Home hosts DSH Web at full usable phone width with wide-viewport/overview scaling disabled; the previous Android-side DOM/CSS compatibility injection is removed. The app vendors dsh-client-ui-mobile 0.1.9 under MIT and installs it through DSH/Cordis alongside Mobile Context, with the embedded Web profile regenerated and Runtime E2E verifying the mobile plugin and authenticated Web client. The native shell is restored to Home / Workspace / Terminal / Settings; Workspace contains Projects/Files, Settings is grouped into finite sections/subpages, and theme controls wrap on narrow screens. Opening the app with a reusable Runtime proactively starts DSH. Embedded DSH/pnpm seeds, A/B Runtime recovery and encrypted recovery hardening from alpha.8 remain. Final alpha.9 android_debug, android_lint, stable signing verification and mobile_context_contract all pass; the Runtime Alpine ARM64 E2E also passes with the vendored mobile UI plugin and authenticated Web client. Physical OriginOS inspection remains manual.
+
+Files:
+- `app/build.gradle.kts`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/AppShell.kt`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/ChatScreen.kt`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/SettingsScreen.kt`
+- `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/NativeRuntimeInstaller.kt`
+- `core/runtime-android/src/main/assets/runtime/dsh-client-ui-mobile/`
+- `core/runtime-android/src/main/assets/runtime/seeds/dsh-0.1.2-rc.1-node24-arm64-musl.tgz`
+- `core/runtime-android/src/main/assets/runtime/seeds/web-profile-0.1.2-rc.1-mobile-context-0.2.1.tgz`
+- `THIRD_PARTY_NOTICES.md`
+- `docs/UI_BASELINE.md`
+- `docs/adr/0008-dsh-cordis-mobile-layout.md`
+- `release/DeepSeek-Harness-Mobile-0.3.0-alpha.9.apk`
+- `release/SHA256SUMS`
+- `release/update.json`

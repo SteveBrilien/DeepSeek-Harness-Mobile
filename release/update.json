@@ -1,7 +1,7 @@
 {
-  "versionCode": 9,
-  "versionName": "0.3.0-alpha.8",
-  "apkUrl": "https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.8.apk",
-  "sha256": "75f4ed5f3320bfe11354f17d0b5d9ecc6830f6befc315091a108ccc6215cfa7e",
-  "notes": "Alpha.8 accelerates first-run with embedded verified DSH/pnpm and Web-profile seeds, hardens 127.0.0.1 startup probing under VPN/OEM stacks, restores valid Runtime slots without reinstall, adds encrypted SSH identity recovery, fixes narrow-screen onboarding actions, and removes the unfinished ADB terminal mode until a real transport is available."
+  "versionCode": 10,
+  "versionName": "0.3.0-alpha.9",
+  "apkUrl": "https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.9.apk",
+  "sha256": "d384e60c2c0af098991c1d1f1ab6bf4cebae625ae9cc8a0e6abe521a5a2a4134",
+  "notes": "Alpha.9 restores the approved DeepSeek Harness mobile shell: full-width DSH WebView with mobile viewport, vendored dsh-client-ui-mobile 0.1.9 Cordis adaptation, fixed Home/Workspace/Terminal/Settings navigation, grouped settings, and automatic DSH startup when a reusable Runtime exists. Embedded verified Runtime seeds and recovery hardening from alpha.8 remain in place."
 }

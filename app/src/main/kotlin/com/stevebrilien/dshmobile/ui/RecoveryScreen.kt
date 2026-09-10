@@ -59,6 +59,7 @@ fun RecoveryScreen(
     onThemeChange: (DshThemeMode) -> Unit,
     onRunOnboarding: () -> Unit,
     modifier: Modifier = Modifier,
+    onBack: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val appContext = context.applicationContext
@@ -133,7 +134,13 @@ fun RecoveryScreen(
     ) {
         item {
             Column(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-                DshPageHeader(title = "更多", subtitle = "主题、恢复与本地运行环境")
+                DshPageHeader(
+                    title = if (onBack == null) "设置" else "运行时与恢复",
+                    subtitle = "主题、恢复与本地运行环境",
+                    trailing = onBack?.let { back ->
+                        { DshButton("返回", back, icon = DshIconGlyph.ARROW_LEFT, style = DshButtonStyle.GHOST) }
+                    },
+                )
                 DshSectionTitle(
                     title = "外观",
                     description = "原生页面与 DSH Web Client 使用一致的视觉语义",
@@ -391,7 +398,7 @@ fun RecoveryScreen(
             RecoveryCheckRow(check)
         }
 
-        item { androidx.compose.foundation.layout.Spacer(Modifier.padding(bottom = 80.dp)) }
+        item { androidx.compose.foundation.layout.Spacer(Modifier.padding(bottom = 12.dp)) }
     }
 }
 
