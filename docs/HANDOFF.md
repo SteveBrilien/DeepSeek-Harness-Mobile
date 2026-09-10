@@ -1,8 +1,8 @@
 # DeepSeek Harness Mobile — Project Handoff
 
 Last updated: 2026-09-10
-Current app release: `0.3.0-alpha.6` (`versionCode = 7`)
-Current documented Git HEAD before this handoff update: `f9c3d12ebce873aefd34cfb7d9bd0660189bb814`
+Current app release: `0.3.0-alpha.7` (`versionCode = 8`)
+Base Git HEAD before alpha.7 changes: `2a6a1cee1fa84a28e7595ec1a3259243c9dd4a80`
 Primary branch: `main`
 Remote: `ssh://git@ssh.github.com:443/SteveBrilien/DeepSeek-Harness-Mobile.git`
 
@@ -60,7 +60,7 @@ One Terminal UI exposes distinct execution domains rather than pretending every 
 
 Never silently downgrade a privileged command into a weaker execution domain.
 
-## 3. 0.3.0-alpha.6 implementation state
+## 3. 0.3.0-alpha.7 implementation state
 
 The following changes are already implemented and validated on the OrangePi development host:
 
@@ -130,26 +130,30 @@ This fix still requires device-side reproduction/regression verification because
 - Onboarding is a five-page horizontal pager; button navigation and left/right swipe use the same page state.
 - Runtime progress uses a fixed immersive viewport: header/actions remain fixed, only the log body scrolls, and the log auto-follows only while the user is already near its end.
 - Compact onboarding branding uses the exact official Harness `BrandWordmark.tsx` outline geometry (182:24 at 24dp). The whale, `deepseek` lettering, HARNESS badge shape and HARNESS glyphs are mechanically synchronized from upstream blob `a9df992179c7cc8f0792142f2dde66dbbb3b5464`; no Android `Text`, font approximation, or locally redrawn wordmark is permitted.
+- Alpha.7 fixes the target-device 99% startup failure: Android network security permitted cleartext loopback for `localhost`, while alpha.6 readiness probing used `http://127.0.0.1:3080/`. The resulting cleartext-policy exception was swallowed by the boolean probe and looked like a 180-second server timeout even though DSH had already emitted its token URL. Readiness probing and the token launch URL now canonicalize to `localhost`; DSH itself remains safely bound to `127.0.0.1`.
+- Exact-match Runtime reuse is now a first-class fast path. If the active slot verifies and already contains the pinned DSH version, install requests skip extraction, apk package installation, pnpm and the 523-package DSH install, then proceed directly to DSH startup.
+- npm package tarballs are cached under `Recovery/Runtime/npm-cache` so a genuine reinstall/update can reuse public package data across app updates/uninstalls when the Recovery Vault survives. Credentials are not stored in this cache.
+- Alpine mirror probes no longer send a tiny HTTP Range request, because TUNA/Aliyun can reject those probes with 403 while serving normal GETs. The app now performs a normal GET, reads only a bounded prefix, and closes the response.
 
 ## 4. Release artifact
 
 Current manual-test package:
 
-- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.6.apk`
-- SHA-256: `3f7d8305435c9143d6538998a4f19ed7facca49523455ecf69ea895678224080`
+- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.7.apk`
+- SHA-256: `bdd0113f79fd3fa11606cc53c1e3a3fbe7d5d90b186e92c282149a5ed8b4aff5`
 - update manifest: `release/update.json`
 
 The current update manifest advertises:
 
-- `versionCode`: 7
-- `versionName`: `0.3.0-alpha.6`
-- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.6.apk`
+- `versionCode`: 8
+- `versionName`: `0.3.0-alpha.7`
+- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.7.apk`
 
 The project uses a stable development signing identity for alpha cover-install testing. Do not replace the signing identity casually; doing so breaks seamless upgrade/cover-install behavior.
 
 ## 5. Validation status
 
-Verified on the development host for alpha.6:
+Verified on the development host for alpha.7:
 
 - `android_debug` succeeded;
 - `android_lint` succeeded;
@@ -158,11 +162,11 @@ Verified on the development host for alpha.6:
 - XML/resource parse checks passed;
 - project path contamination check reports no known contamination.
 
-Not yet completed for alpha.6:
+Not yet completed for alpha.7:
 
-- physical-device cover-install and exact alpha.6 UI/startup regression verification;
-- verification that the alpha.5 prepared Runtime can use `重试启动` without reinstalling;
-- full Runtime-to-DSH-Web startup loop on the target OriginOS device;
+- physical-device cover-install and exact alpha.7 startup regression verification;
+- verification that the already prepared alpha.6 Runtime is reused without extraction/npm/DSH reinstall;
+- full Runtime-to-DSH-Web startup loop on the target OriginOS device using the localhost probe/token URL;
 - real-world mirror selection under the target phone's network;
 - UI inspection for onboarding/installer layout and animation on the target display.
 
@@ -275,4 +279,4 @@ Do not regress these constraints:
 
 ## 11. Current top priorities
 
-See `docs/NEXT_ACTIONS.md` for the active queue. The immediate priority is target-device verification of alpha.6, especially DSH startup from the already prepared alpha.5 Runtime and the fixed immersive onboarding layout. After that, stabilize the first-run UX from real screenshots before expanding into new feature work.
+See `docs/NEXT_ACTIONS.md` for the active queue. The immediate priority is target-device verification of alpha.7, especially direct DSH startup from the already prepared alpha.6 Runtime without reinstall and confirmation that localhost loopback probing reaches DSH Web. After that, stabilize the first-run UX from real screenshots before expanding into new feature work.

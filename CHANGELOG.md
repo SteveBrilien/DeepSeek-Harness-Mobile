@@ -180,3 +180,20 @@ Files:
 - `release/update.json`
 - `release/SHA256SUMS`
 - `release/DeepSeek-Harness-Mobile-0.3.0-alpha.6.apk`
+
+## 2026-09-10T07:57:49.817579Z — FIX: 0.3.0-alpha.7: fix Android localhost startup gate and make Runtime reuse fast
+
+Target-device alpha.6 evidence showed the verified Runtime and DSH process were healthy enough to emit `dsh web: http://127.0.0.1:3080/?token=...`, while app readiness polling stayed false for 180 seconds. The root cause is the Android network-security boundary: cleartext was explicitly allowed for `localhost`, but alpha.6 probed numeric `127.0.0.1`; the probe converted the resulting exception into `false`. Alpha.7 probes `http://localhost:3080/`, normalizes the token launch URL and any local WebView redirect to localhost, keeps DSH bound to 127.0.0.1, allows both loopback spellings in the local-only network config, and records the last probe result in any timeout diagnostic. Exact-match active Runtime is now reused directly instead of staging another slot, so the user's already verified alpha.6 Runtime should skip Alpine extraction, apk packages, pnpm and DSH reinstall. A persistent Recovery-Vault npm cache accelerates genuine reinstall/update. Alpine speed probes use bounded normal GET instead of a tiny Range request, fixing false 403 results observed for TUNA/Aliyun; host checks returned HTTP 200 for both with the new request shape. Version promoted to 0.3.0-alpha.7 / versionCode 8. Android debug build, lint, stable signing, Mobile Context contract, and clean Alpine ARM64 Runtime E2E all pass; target OriginOS verification remains manual.
+
+Files:
+- `app/build.gradle.kts`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/ChatScreen.kt`
+- `app/src/main/res/xml/network_security_config.xml`
+- `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/AndroidRuntimeManager.kt`
+- `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/NativeRuntimeInstaller.kt`
+- `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/RuntimeControlPlane.kt`
+- `docs/HANDOFF.md`
+- `docs/NEXT_ACTIONS.md`
+- `release/update.json`
+- `release/SHA256SUMS`
+- `release/DeepSeek-Harness-Mobile-0.3.0-alpha.7.apk`

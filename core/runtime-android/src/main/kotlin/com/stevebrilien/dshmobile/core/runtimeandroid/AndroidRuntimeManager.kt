@@ -44,6 +44,7 @@ class AndroidRuntimeManager(
     private val installer = NativeRuntimeInstaller(appContext, vault, stateStore)
     private val contextSnapshotWriter = MobileContextSnapshotWriter(stateStore)
     private val runtimeId = RuntimeId("local-phone")
+    @Volatile private var lastWebProbeDetail: String = "not probed"
 
     override suspend fun health(): RuntimeHealth = withContext(Dispatchers.IO) {
         stateStore.ensureLayout()
@@ -117,7 +118,10 @@ class AndroidRuntimeManager(
                 }
                 Thread.sleep(WEB_STARTUP_POLL_MILLIS)
             }
-            error("DSH process is still running, but the local Web endpoint did not become reachable within ${WEB_STARTUP_TIMEOUT_MILLIS / 1_000}s")
+            error(
+                "DSH process is still running, but the local Web endpoint did not become reachable within " +
+                    "${WEB_STARTUP_TIMEOUT_MILLIS / 1_000}s. Last probe: $lastWebProbeDetail",
+            )
         }
     }
 
@@ -182,6 +186,7 @@ class AndroidRuntimeManager(
         val start = (bytes.size - 128 * 1024).coerceAtLeast(0)
         val tail = String(bytes, start, bytes.size - start, StandardCharsets.UTF_8)
         return WEB_LAUNCH_URL.findAll(tail).lastOrNull()?.groupValues?.getOrNull(1)
+            ?.replace("http://127.0.0.1:", "http://localhost:")
     }
 
     suspend fun executeShell(
@@ -225,33 +230,37 @@ class AndroidRuntimeManager(
         }
     }
 
-    private fun probeWebReady(): Boolean = runCatching {
-        val connection = (URL("http://127.0.0.1:${RuntimePins.DSH_HTTP_PORT}/").openConnection() as HttpURLConnection).apply {
-            connectTimeout = 800
-            readTimeout = 800
-            requestMethod = "GET"
-            useCaches = false
-            instanceFollowRedirects = false
+    private fun probeWebReady(): Boolean {
+        return try {
+            // Android's network security config permits local cleartext only for localhost.
+            // DSH binds to 127.0.0.1, and localhost resolves to the same loopback socket.
+            val connection = (URL("http://localhost:${RuntimePins.DSH_HTTP_PORT}/").openConnection() as HttpURLConnection).apply {
+                connectTimeout = 2_000
+                readTimeout = 2_000
+                requestMethod = "GET"
+                useCaches = false
+                instanceFollowRedirects = false
+            }
+            try {
+                val code = connection.responseCode
+                val stream = if (code >= 400) connection.errorStream else connection.inputStream
+                val body = stream?.bufferedReader(StandardCharsets.UTF_8)?.use { reader ->
+                    val chars = CharArray(512)
+                    val read = reader.read(chars)
+                    if (read > 0) String(chars, 0, read) else ""
+                }.orEmpty()
+                lastWebProbeDetail = "HTTP $code via localhost"
+                code in 200..399 ||
+                    code == HttpURLConnection.HTTP_UNAUTHORIZED ||
+                    (body.contains(WEB_AUTH_REQUIRED_MARKER) && code >= 400)
+            } finally {
+                connection.disconnect()
+            }
+        } catch (t: Throwable) {
+            lastWebProbeDetail = "${t::class.java.simpleName}: ${t.message ?: "no detail"}"
+            false
         }
-        try {
-            val code = connection.responseCode
-            val stream = if (code >= 400) connection.errorStream else connection.inputStream
-            val body = stream?.bufferedReader(StandardCharsets.UTF_8)?.use { reader ->
-                val chars = CharArray(512)
-                val read = reader.read(chars)
-                if (read > 0) String(chars, 0, read) else ""
-            }.orEmpty()
-            // DSH developer previews have used both an unauthenticated 401 challenge and
-            // an already-authenticated/redirecting response during startup. Reaching the
-            // loopback HTTP server is the readiness signal; the WebView token exchange
-            // still performs the actual session authentication afterwards.
-            code in 200..399 ||
-                code == HttpURLConnection.HTTP_UNAUTHORIZED ||
-                (body.contains(WEB_AUTH_REQUIRED_MARKER) && code >= 400)
-        } finally {
-            connection.disconnect()
-        }
-    }.getOrDefault(false)
+    }
 
     private fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 

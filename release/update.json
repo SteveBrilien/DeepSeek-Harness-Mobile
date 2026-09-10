@@ -1,7 +1,7 @@
 {
-  "versionCode": 7,
-  "versionName": "0.3.0-alpha.6",
-  "apkUrl": "https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.6.apk",
-  "sha256": "3f7d8305435c9143d6538998a4f19ed7facca49523455ecf69ea895678224080",
-  "notes": "0.3.0-alpha.6 manual-test build: fixes the immersive Runtime log layout and horizontal onboarding pager, preserves a verified Runtime when DSH Web startup is delayed, adds retry-start without reinstall, extends loopback readiness detection, appends startup diagnostics to copyable logs, and renders the DeepSeek Harness wordmark from the exact official upstream 182x24 vector outlines (no Android text/font reconstruction). targetSdk 28 remains intentionally pinned until the self-hosted executable runtime is redesigned."
+  "versionCode": 8,
+  "versionName": "0.3.0-alpha.7",
+  "apkUrl": "https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.7.apk",
+  "sha256": "bdd0113f79fd3fa11606cc53c1e3a3fbe7d5d90b186e92c282149a5ed8b4aff5",
+  "notes": "0.3.0-alpha.7 manual-test build: fixes DSH Web startup detection on Android by using the permitted localhost loopback path instead of the blocked 127.0.0.1 cleartext probe, normalizes the token launch URL to localhost, reuses an already verified matching Runtime without reinstalling, persists npm package cache in the Recovery Vault, and changes mirror speed probes to normal bounded GETs so TUNA/Aliyun are not falsely rejected with HTTP 403. Exact upstream DeepSeek Harness wordmark remains unchanged."
 }

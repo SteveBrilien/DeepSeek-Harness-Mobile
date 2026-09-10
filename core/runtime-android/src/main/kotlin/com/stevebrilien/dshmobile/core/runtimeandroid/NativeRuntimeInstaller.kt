@@ -154,12 +154,13 @@ internal class NativeRuntimeInstaller(
                 }
             }.getOrThrow()
 
+            val npmCacheEnv = persistentNpmCacheEnv(progress)
             var npmMirror = selectNpmMirror(progress)
             progress(RuntimeInstallProgress("pnpm", "安装 pnpm ${RuntimePins.PNPM_VERSION}", 61, sourceId = npmMirror.id, sourceName = npmMirror.name))
             runCatching {
                 runInsideRootfs(
                     rootfs,
-                    "NPM_CONFIG_REGISTRY=${shellQuote(npmMirror.registryUrl)} npm install -g pnpm@${RuntimePins.PNPM_VERSION}",
+                    npmCacheEnv + "NPM_CONFIG_REGISTRY=${shellQuote(npmMirror.registryUrl)} npm install -g pnpm@${RuntimePins.PNPM_VERSION}",
                     timeoutMillis = 15 * 60_000L,
                     idleTimeoutMillis = 4 * 60_000L,
                 ) { line ->
@@ -172,7 +173,7 @@ internal class NativeRuntimeInstaller(
                 progress(RuntimeInstallProgress("pnpm", "npm 镜像不可用，自动回退官方 registry", 63, sourceId = officialNpm.id, sourceName = officialNpm.name, logLine = firstFailure.message))
                 runInsideRootfs(
                     rootfs,
-                    "NPM_CONFIG_REGISTRY=${shellQuote(officialNpm.registryUrl)} npm install -g pnpm@${RuntimePins.PNPM_VERSION}",
+                    npmCacheEnv + "NPM_CONFIG_REGISTRY=${shellQuote(officialNpm.registryUrl)} npm install -g pnpm@${RuntimePins.PNPM_VERSION}",
                     timeoutMillis = 15 * 60_000L,
                     idleTimeoutMillis = 4 * 60_000L,
                 ) { line ->
@@ -187,7 +188,7 @@ internal class NativeRuntimeInstaller(
                     "rm -rf /opt/dsh/node_modules /opt/dsh/package-lock.json /opt/dsh/pnpm-lock.yaml && " +
                         "mkdir -p /opt/dsh && cd /opt/dsh && " +
                         "printf '%s\\n' '{\"private\":true}' > package.json && " +
-                        "NPM_CONFIG_REGISTRY=${shellQuote(registry.registryUrl)} " +
+                        npmCacheEnv + "NPM_CONFIG_REGISTRY=${shellQuote(registry.registryUrl)} " +
                         "NPM_CONFIG_AUDIT=false NPM_CONFIG_FUND=false NPM_CONFIG_FETCH_RETRIES=3 " +
                         "NPM_CONFIG_FETCH_TIMEOUT=120000 NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=3000 " +
                         "NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=20000 " +
@@ -436,6 +437,7 @@ internal class NativeRuntimeInstaller(
                     instanceFollowRedirects = true
                     requestMethod = "GET"
                     setRequestProperty("Accept-Encoding", "identity")
+                    setRequestProperty("User-Agent", "DeepSeek-Harness-Mobile/0.3")
                     if (requestedOffset > 0L) setRequestProperty("Range", "bytes=$requestedOffset-")
                 }
                 val code = connection.responseCode
@@ -548,6 +550,17 @@ internal class NativeRuntimeInstaller(
     private fun persistentRootfsCacheFile(): File =
         File(vault.status().root, "Recovery/Runtime/cache/${RuntimePins.ALPINE_ROOTFS_FILE}")
 
+    private fun persistentNpmCacheEnv(progress: (RuntimeInstallProgress) -> Unit): String {
+        val vaultRoot = vault.status().root
+        if (!vaultRoot.exists()) return ""
+        val cache = File(vaultRoot, "Recovery/Runtime/npm-cache")
+        if (!(cache.exists() || cache.mkdirs())) return ""
+        progress(RuntimeInstallProgress("cache", "启用持久 npm 缓存", 56, logLine = cache.absolutePath))
+        // buildProcessForRootfs binds the Recovery Vault root to /workspace. npm stores only
+        // public package cache data here; credentials remain in the encrypted credential path.
+        return "NPM_CONFIG_CACHE=/workspace/Recovery/Runtime/npm-cache "
+    }
+
     private fun selectAlpineMirror(
         preferredSourceId: String,
         progress: (RuntimeInstallProgress) -> Unit,
@@ -618,8 +631,10 @@ internal class NativeRuntimeInstaller(
             readTimeout = 5_000
             instanceFollowRedirects = true
             requestMethod = "GET"
-            setRequestProperty("Range", "bytes=0-${maxBytes - 1}")
+            // Several Chinese mirrors reject tiny Range probes with 403 even though a
+            // normal GET works. Read only maxBytes locally instead of sending Range.
             setRequestProperty("Accept-Encoding", "identity")
+            setRequestProperty("User-Agent", "DeepSeek-Harness-Mobile/0.3")
             useCaches = false
         }
         return try {

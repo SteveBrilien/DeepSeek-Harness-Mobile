@@ -1,16 +1,16 @@
 # Immediate Next Actions
 
 Last updated: 2026-09-10
-Current release: `0.3.0-alpha.6` (`versionCode = 7`)
+Current release: `0.3.0-alpha.7` (`versionCode = 8`)
 
-## P0 — Validate alpha.6 on the target Android 11 / OriginOS device
+## P0 — Validate alpha.7 on the target Android 11 / OriginOS device
 
-The alpha.5 device run proved Runtime installation and the bundled `node-pty` module now complete successfully. The remaining failure was the DSH Web startup readiness gate at 99%. Alpha.6 addresses that boundary and should reuse the already prepared Runtime rather than reinstalling it.
+Alpha.6 target-device evidence proves the Runtime is installed and DSH itself reaches `dsh web: http://127.0.0.1:3080/?token=...`, but the app still times out at 99%. The root cause is now identified: Android cleartext policy allowed `localhost` while the readiness probe used `127.0.0.1`. Alpha.7 canonicalizes app-side loopback HTTP/WebView traffic to `localhost` and should reuse the already verified Runtime instead of reinstalling it.
 
-1. Cover-install alpha.6 over alpha.5; do not clear app data or delete the Recovery Vault.
-2. On Runtime page, confirm the alpha.5 99% failure is recognized as `Runtime 已安装` and the primary recovery action is `重试启动`, not `重试安装`.
-3. Retry DSH startup and verify it reaches the local Web client within the new 180-second readiness window.
-4. If startup still fails, use `复制日志`; confirm the copied output now includes the appended `DSH 启动日志` tail.
+1. Cover-install alpha.7 over alpha.6; do not clear app data or delete the Recovery Vault.
+2. On Runtime page, press `重试启动` (or an install action if that is what the current state exposes). The exact-match fast path must report `发现完整本地 Runtime，跳过重新安装` and must not run Alpine extraction, `apk add`, pnpm, or the 523-package DSH install again.
+3. Verify DSH startup reaches the local Web client. Readiness and token navigation should use `localhost:3080` on the Android side while DSH remains bound to `127.0.0.1`.
+4. If startup still fails, use `复制日志`; the terminal failure must include `Last probe: ...` so the exact HTTP/network-security failure is visible.
 5. Verify the Runtime page is immersive: dragging the log vertically must not move the page/header/actions, the bottom buttons stay fully visible, and the log occupies the available space without the previous blank gap.
 6. Swipe all five onboarding pages left/right and confirm button navigation remains synchronized with the pager.
 7. Verify the compact top wordmark visually against upstream: it now uses the exact official `BrandWordmark.tsx` 182:24 vector outlines at 24dp. Do not replace any glyph with Android `Text`, a local font, or hand-reconstructed lettering.
@@ -51,7 +51,7 @@ Use the existing backup/probe TaskProfiles rather than ad-hoc destructive shell 
 
 ## P1 — First-run UX refinement from real-device feedback
 
-After alpha.6 screenshots are collected:
+After alpha.7 screenshots are collected:
 
 - reduce any remaining visually dense cards/text;
 - keep one obvious primary action per step;
@@ -83,7 +83,7 @@ The previously configured `https://dsh.wmy-cloud.cn/dsh-mobile-download/` path w
 
 Immediate safe behavior:
 
-1. use the tracked GitHub raw APK as the alpha.6 update-manifest fallback;
+1. use the tracked GitHub raw APK as the alpha.7 update-manifest fallback;
 2. do not probe or copy contents from exposed private directories;
 3. on the Azure host, move the static server document root to a dedicated release-only directory;
 4. disable directory browsing and expose only intended APK/manifest artifacts;
@@ -92,7 +92,7 @@ Immediate safe behavior:
 
 ## P1 — Release promotion after device E2E
 
-Do not call alpha.6 fully validated until the target-device checks pass.
+Do not call alpha.7 fully validated until the target-device checks pass.
 
 When they do:
 
@@ -117,7 +117,7 @@ Once first-run and Runtime installation are stable on the actual phone, continue
 
 ## Current validation summary
 
-Already verified on the OrangePi development host for alpha.6:
+Already verified on the OrangePi development host for alpha.7:
 
 - clean Alpine ARM64 Runtime E2E passes for Node 24.18.1, DSH 0.1.2-rc.1, the bundled ABI-137 `pty.node` fast path, source-build fallback, PTY execution, Mobile Context and authenticated DSH Web;
 
@@ -130,8 +130,8 @@ Already verified on the OrangePi development host for alpha.6:
 
 Still pending:
 
-- exact alpha.6 target-device E2E;
-- DSH Web startup regression from the alpha.5 prepared Runtime on the user's OriginOS phone;
+- exact alpha.7 target-device E2E;
+- DSH Web startup regression from the alpha.6 prepared Runtime on the user's OriginOS phone;
 - immersive Runtime log scrolling and five-page horizontal pager behavior on that phone;
 - final visual acceptance of onboarding and animations.
 

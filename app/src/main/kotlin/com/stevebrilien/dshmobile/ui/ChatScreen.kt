@@ -54,7 +54,7 @@ fun ChatScreen(modifier: Modifier = Modifier) {
         runCatching {
             RuntimeForegroundService.dispatch(appContext, RuntimeForegroundService.ACTION_START)
         }
-        repeat(30) { attempt ->
+        repeat(90) { attempt ->
             val snapshot = withContext(Dispatchers.IO) {
                 val ready = runtime.isWebReady()
                 ready to if (ready) runtime.webLaunchUrl() else null
@@ -66,7 +66,7 @@ fun ChatScreen(modifier: Modifier = Modifier) {
             state = LocalDshState.Offline(
                 if (snapshot.first) "正在建立 DSH Web 会话…" else "本地 DSH Runtime 尚未就绪",
             )
-            if (attempt < 29) delay(2_000)
+            if (attempt < 89) delay(2_000)
         }
     }
 
@@ -119,7 +119,14 @@ private fun DshWebClient(
                         request: WebResourceRequest?,
                     ): Boolean {
                         val uri = request?.url ?: return false
-                        if (isLocalDshUri(uri)) return false
+                        if (isLocalDshUri(uri)) {
+                            if (uri.host == "127.0.0.1") {
+                                val authority = if (uri.port > 0) "localhost:${uri.port}" else "localhost"
+                                view?.loadUrl(uri.buildUpon().encodedAuthority(authority).build().toString())
+                                return true
+                            }
+                            return false
+                        }
                         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
                         return true
                     }

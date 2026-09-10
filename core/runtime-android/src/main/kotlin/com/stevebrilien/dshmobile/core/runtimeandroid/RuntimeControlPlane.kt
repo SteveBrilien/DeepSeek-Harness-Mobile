@@ -28,6 +28,18 @@ class RuntimeControlPlane(context: Context) {
         progress: (RuntimeInstallProgress) -> Unit = {},
     ): Result<RuntimeSlot> = runBlocking {
         runCatching {
+            val inventory = manager.inspectResources()
+            val active = inventory.activeSlot
+            if (
+                active != null &&
+                inventory.reusableInstalledRuntime &&
+                inventory.installedDshVersion == inventory.targetDshVersion
+            ) {
+                progress(RuntimeInstallProgress("reuse-runtime", "发现完整本地 Runtime，跳过重新安装", 98))
+                manager.verify(active).getOrThrow()
+                return@runCatching active
+            }
+
             val target = manager.inactiveSlot()
             manager.stageDefault(target, preferredSourceId, progress).getOrThrow()
             manager.verify(target).getOrThrow()
