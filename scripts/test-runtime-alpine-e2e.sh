@@ -52,6 +52,23 @@ printf '%s\n' \
 printf '%s\n' 'nameserver 1.1.1.1' 'nameserver 8.8.8.8' > "$TMP_ROOT/etc/resolv.conf"
 mkdir -p "$TMP_ROOT/opt/dsh" "$TMP_ROOT/dsh-home" "$TMP_ROOT/workspace"
 
+echo '[e2e] rootfs absolute-symlink namespace regression'
+test -L "$TMP_ROOT/bin/sh"
+printf 'rootfs-bin-sh=%s\n' "$(readlink "$TMP_ROOT/bin/sh")"
+# A rootfs absolute symlink belongs to the guest namespace. A host-side follow check
+# can therefore report it missing even though the PRoot guest resolves it correctly.
+probe="$ROOT_DIR/.mcp/tmp/rootfs-nofollow-probe"
+rm -rf "$probe"
+mkdir -p "$probe/bin"
+printf probe > "$probe/bin/dshm-rootfs-target"
+ln -s /bin/dshm-rootfs-target "$probe/bin/sh"
+test -L "$probe/bin/sh"
+if test -e "$probe/bin/sh"; then
+  echo 'synthetic rootfs symlink unexpectedly resolved in host namespace' >&2
+  exit 2
+fi
+rm -rf "$probe"
+
 materialize_seed_hardlinks() {
   python3 - "$1" "$2" <<'PYHARD'
 import os, pathlib, stat, sys, tarfile

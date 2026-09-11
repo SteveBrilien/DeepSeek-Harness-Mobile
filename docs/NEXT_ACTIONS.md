@@ -1,19 +1,20 @@
 # Immediate Next Actions
 
 Last updated: 2026-09-11
-Current release candidate: `0.3.0-alpha.10` (`versionCode = 11`)
+Current release candidate: `0.3.0-alpha.11` (`versionCode = 12`)
 
-## P0 — Validate alpha.10 Runtime fast path and startup on Android 11 / OriginOS
+## P0 — Validate alpha.11 symlink-aware Runtime startup on Android 11 / OriginOS
 
-Alpha.9 target logs gave two concrete failures: embedded seed extraction hit `link failed: EACCES`, forcing the 523-package npm fallback, and DSH startup then failed in preflight with `Runtime command failed (127)` before a useful DSH log was created. Alpha.10 addresses both paths.
+Alpha.10 target logs proved that slot A reached the new host-side startup preflight but was rejected as `Runtime shell is missing`. This is a host-namespace false negative: Alpine `/bin/sh` is an absolute guest symlink to `/bin/busybox`, so Android `File.isFile()` follows the wrong root. Alpha.11 uses no-follow `lstat` checks for rootfs nodes.
 
-1. Cover-install alpha.10 without clearing app data or deleting `/storage/emulated/0/DeepSeekHarness`. The already prepared alpha.9 Runtime slot A should be reusable; first test `重试启动`/cold launch without rebuilding the Runtime.
-2. Confirm startup logs contain explicit stages such as `[startup] verify-start-prerequisites`, `[startup] write-mobile-context`, `[startup] ensure-mobile-plugins`, and `[startup] spawn-dsh-web`. On success they should end with `[startup] web-ready: ...`.
-3. If the existing Runtime still fails, copy the new DSH log. It should identify the exact failed startup stage or the DSH process exit code instead of only returning an empty `Runtime command failed (127)`.
-4. After startup is proven, validate the alpha.9 UI baseline: full-size Home WebView, mobile drawer/composer layout, `首页 / 工作区 / 终端 / 设置`, grouped Settings, and terminal execution.
-5. Only when safe to do so, test a fresh Runtime slot. Embedded seed extraction must no longer log `link failed: EACCES`; tar hard-link entries are materialized as ordinary app-owned files.
-6. On the fresh-install happy path, expect `bundled DSH + pnpm ready` and no 523-package DSH npm install. Online npm remains fallback only.
-7. Preserve the existing working/recoverable slot and Recovery Vault throughout manual regression testing. Do not clear app data merely to force a fresh test.
+1. Cover-install alpha.11 without clearing app data and without deleting `/storage/emulated/0/DeepSeekHarness`.
+2. Do **not** reinstall Runtime first. Press `重试启动` (or cold-launch) so the existing slot A tests the exact fixed path.
+3. Confirm `[startup] verify-start-prerequisites: ok` appears instead of `Runtime shell is missing`.
+4. Continue through `[startup] write-mobile-context`, `[startup] ensure-mobile-plugins`, `[startup] spawn-dsh-web`; success should end with `[startup] web-ready: ...`.
+5. If a later stage fails, copy the full log. Preserve slot A; diagnose that new stage rather than rebuilding everything.
+6. Confirm the retry card timer starts from the new retry and no longer shows the stale npm mirror/download elapsed time.
+7. After DSH Web is ready, validate the alpha.9 UI baseline: full-size Home WebView, mobile drawer/composer layout, `首页 / 工作区 / 终端 / 设置`, grouped Settings and terminal execution.
+8. Fresh Runtime-install testing remains secondary; when performed safely, the alpha.10 hardlink fix should keep the embedded DSH seed on the fast path instead of the 523-package npm fallback.
 
 ## P0 — Preserve and recover user state
 
@@ -30,7 +31,7 @@ Before destructive regression tests, verify the Recovery Vault and do not delete
 
 Do not replace the pinned bootable DSH version by blindly running `npm install @deepseek-ai/dsh@latest` over the active slot.
 
-Implement remote DSH version discovery after alpha.10 device Runtime/UI startup validation is stable:
+Implement remote DSH version discovery after alpha.11 device Runtime/UI startup validation is stable:
 
 1. query official npm dist-tags/metadata with bounded timeout and cached results;
 2. show installed / recommended / latest versions separately;
@@ -55,14 +56,14 @@ Keep `docs/UI_BASELINE.md` authoritative. The exact upstream DeepSeek Harness wo
 
 ## Current automated validation
 
-For alpha.10 on the OrangePi/ARM64 development environment:
+For alpha.11 on the OrangePi/ARM64 development environment:
 
-- `runtime_alpine_e2e`: PASS with all 2 DSH-seed and 181 Web-profile hard-link entries materialized as ordinary files, plus the exact direct-Node DSH Web launch path, embedded Web profile, `dsh-client-ui-mobile 0.1.9`, bundled `pty.node`, real PTY execution, online/source-build fallbacks, Mobile Context and token authentication;
+- `runtime_alpine_e2e`: PASS, including the `/bin/sh -> /bin/busybox` rootfs absolute-symlink regression probe, embedded-seed hardlink materialization, DSH/pnpm fast path, Web profile, bundled `pty.node`, real PTY execution, online/source-build fallbacks, Mobile Context and token-authenticated DSH Web;
 - `mobile_context_contract`: PASS;
-- final `android_debug`: PASS on `0.3.0-alpha.10` / versionCode 11 after the Runtime extractor/startup changes;
-- final `android_lint`: PASS after the Runtime extractor/startup changes;
-- final `android_signing_verify`: PASS against the final alpha.10 candidate APK;
-- release candidate: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.10.apk`, SHA-256 `ffc7e1f772feda2a1ee99c4b5fac5f039eb240dfe0ea9457734a7a700da15a8c`, size `86,641,657` bytes;
-- physical-device alpha.10 validation remains manual because no ADB device is connected.
+- final `android_debug`: PASS on `0.3.0-alpha.11` / versionCode 12;
+- final `android_lint`: PASS on the alpha.11 candidate;
+- final `android_signing_verify`: PASS against the alpha.11 candidate APK;
+- release candidate: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.11.apk`, SHA-256 `ab2588ffdae8b2762f219c6788173e017bc37d541719ece247481b2fec38b2a1`, size `86,641,657` bytes;
+- physical-device alpha.11 validation remains manual because no ADB device is connected.
 
 For full architecture, invariants and handoff state, read `docs/HANDOFF.md` first.

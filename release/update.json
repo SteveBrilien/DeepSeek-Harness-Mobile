@@ -1,7 +1,7 @@
 {
-  "versionCode": 11,
-  "versionName": "0.3.0-alpha.10",
-  "apkUrl": "https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.10.apk",
-  "sha256": "ffc7e1f772feda2a1ee99c4b5fac5f039eb240dfe0ea9457734a7a700da15a8c",
-  "notes": "Alpha.10 fixes OriginOS embedded Runtime extraction by materializing tar hard links as ordinary files, avoiding the 523-package npm fallback. DSH startup now uses a lightweight host preflight, skips redundant PRoot migration work when mobile plugins are current, launches the verified DSH Node entrypoint directly, and records exact startup stages for diagnostics. Alpha.9 mobile UI remains unchanged."
+  "versionCode": 12,
+  "versionName": "0.3.0-alpha.11",
+  "apkUrl": "https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.11.apk",
+  "sha256": "ab2588ffdae8b2762f219c6788173e017bc37d541719ece247481b2fec38b2a1",
+  "notes": "Alpha.11 fixes the OriginOS false “Runtime shell is missing” startup failure. Alpine rootfs absolute symlinks such as /bin/sh -> /bin/busybox are now checked without following them into the Android host namespace. Runtime inventory and health use the same no-follow rule. Retry-start telemetry also resets stale install elapsed/source fields. No Runtime reinstall or data clear is required."
 }

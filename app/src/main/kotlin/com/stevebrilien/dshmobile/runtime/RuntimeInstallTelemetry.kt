@@ -128,7 +128,15 @@ class RuntimeInstallTelemetry(context: Context) {
     fun beginRuntimeStart(message: String = "正在启动 DSH") {
         val current = writerState ?: readStateJson().also { writerState = it }
         val now = System.currentTimeMillis()
-        if (current.optLong("startedAtMillis", 0L) <= 0L) current.put("startedAtMillis", now)
+        // A retry is a new startup attempt, not a continuation of the original install.
+        // Reset timing/download-source telemetry so the UI does not show hours of stale
+        // install elapsed time or an npm mirror while it is only starting DSH.
+        current
+            .put("startedAtMillis", now)
+            .remove("downloadedBytes")
+        current.remove("totalBytes")
+        current.remove("sourceId")
+        current.remove("sourceName")
         appendLog(message)
         current
             .put("running", true)

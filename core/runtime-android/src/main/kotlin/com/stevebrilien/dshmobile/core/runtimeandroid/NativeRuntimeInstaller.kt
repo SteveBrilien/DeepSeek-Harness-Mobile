@@ -89,7 +89,7 @@ internal class NativeRuntimeInstaller(
         val persistentArchive = persistentRootfsCacheFile()
         val localCacheOk = localArchive.isFile && runCatching { sha256(localArchive) == RuntimePins.ALPINE_ROOTFS_SHA256 }.getOrDefault(false)
         val persistentCacheOk = persistentArchive.isFile && runCatching { sha256(persistentArchive) == RuntimePins.ALPINE_ROOTFS_SHA256 }.getOrDefault(false)
-        val activeRootfsReady = state.activeSlot?.let { File(layout.rootfs(it), "bin/sh").isFile } == true
+        val activeRootfsReady = state.activeSlot?.let { rootfsNodeExists(File(layout.rootfs(it), "bin/sh")) } == true
         val comparison = installedDsh?.let { compareLooseVersions(it, RuntimePins.DSH_VERSION) } ?: -1
         return RuntimeResourceInventory(
             activeSlot = state.activeSlot,
@@ -362,9 +362,12 @@ internal class NativeRuntimeInstaller(
         check(manifest.optInt("schemaVersion", -1) == RuntimePins.RUNTIME_MANIFEST_VERSION)
         check(manifest.optString("alpineVersion") == RuntimePins.ALPINE_VERSION)
         check(manifest.optString("dshVersion") == RuntimePins.DSH_VERSION)
-        check(File(rootfs, "bin/sh").isFile) { "Runtime shell is missing" }
-        check(File(rootfs, "usr/bin/node").isFile) { "Runtime Node binary is missing" }
-        check(File(rootfs, "opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js").isFile) { "DSH entrypoint is missing" }
+        // Do not use File.isFile()/exists() for rootfs paths here. Alpine uses
+        // absolute symlinks such as /bin/sh -> /bin/busybox; Android's host namespace
+        // would resolve that target outside the PRoot rootfs and report a false negative.
+        check(rootfsNodeExists(File(rootfs, "bin/sh"))) { "Runtime shell is missing" }
+        check(rootfsNodeExists(File(rootfs, "usr/bin/node"))) { "Runtime Node binary is missing" }
+        check(rootfsNodeExists(File(rootfs, "opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js"))) { "DSH entrypoint is missing" }
     }
 
     fun buildProcess(slot: RuntimeSlot, shellCommand: String): ProcessBuilder {
@@ -1036,6 +1039,9 @@ internal class NativeRuntimeInstaller(
         lockFile.parentFile?.let { check(it.exists() || it.mkdirs()) }
         lockFile.writeText(json.toString(2), StandardCharsets.UTF_8)
     }
+
+    private fun rootfsNodeExists(file: File): Boolean =
+        runCatching { Os.lstat(file.absolutePath); true }.getOrDefault(false)
 
     private fun sha256(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")

@@ -262,3 +262,19 @@ Files:
 - `release/DeepSeek-Harness-Mobile-0.3.0-alpha.10.apk`
 - `release/SHA256SUMS`
 - `release/update.json`
+
+## 2026-09-11T01:00:46.840035Z — RELEASE: 0.3.0-alpha.11: fix false Runtime shell missing on OriginOS
+
+Alpha.10 target-device logs showed the startup preflight repeatedly failing with `Runtime shell is missing` even though slot A had completed installation and verification. Root cause: Alpine `/bin/sh` is an absolute guest symlink (`/bin/sh -> /bin/busybox`), while Android-side `File.isFile()` follows that link in the Android host namespace instead of the PRoot guest rootfs and therefore reports a false negative. Alpha.11 changes Runtime prerequisite, inventory and health rootfs-node checks to no-follow `Os.lstat()` semantics. The ARM64 Runtime E2E now explicitly covers the host-vs-guest absolute-symlink case and still passes embedded seed hardlink materialization, native modules, PTY, Mobile Context/mobile UI and authenticated DSH Web. DSH retry telemetry also resets stale install elapsed/source fields so a retry no longer displays the original npm mirror and multi-hour install duration. Final android_debug, android_lint, stable signing, mobile_context_contract and runtime_alpine_e2e all pass. Existing slot A should be reused: cover-install alpha.11 and retry startup without clearing app data or reinstalling Runtime. Physical OriginOS startup remains manual because no ADB device is connected. APK SHA-256 ab2588ffdae8b2762f219c6788173e017bc37d541719ece247481b2fec38b2a1; size 86,641,657 bytes.
+
+Files:
+- `app/build.gradle.kts`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/runtime/RuntimeInstallTelemetry.kt`
+- `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/AndroidRuntimeManager.kt`
+- `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/NativeRuntimeInstaller.kt`
+- `scripts/test-runtime-alpine-e2e.sh`
+- `docs/HANDOFF.md`
+- `docs/NEXT_ACTIONS.md`
+- `release/DeepSeek-Harness-Mobile-0.3.0-alpha.11.apk`
+- `release/SHA256SUMS`
+- `release/update.json`

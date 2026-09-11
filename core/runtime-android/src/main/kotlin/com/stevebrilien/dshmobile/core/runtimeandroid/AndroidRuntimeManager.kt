@@ -1,6 +1,7 @@
 package com.stevebrilien.dshmobile.core.runtimeandroid
 
 import android.content.Context
+import android.system.Os
 import com.stevebrilien.dshmobile.core.model.RuntimeId
 import com.stevebrilien.dshmobile.core.recovery.RecoveryVault
 import com.stevebrilien.dshmobile.core.runtimeapi.ComponentHealth
@@ -53,9 +54,11 @@ class AndroidRuntimeManager(
         val state = stateStore.read()
         val slot = state.activeSlot
         val rootfs = slot?.let(stateStore.layout::rootfs)
-        val linuxHealthy = rootfs?.let { File(it, "bin/sh").isFile } == true
-        val nodeHealthy = rootfs?.let { File(it, "usr/bin/node").isFile } == true
-        val dshInstalled = rootfs?.let { File(it, "opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js").isFile } == true
+        // Rootfs paths may be absolute symlinks (for example /bin/sh -> /bin/busybox).
+        // lstat checks the node itself without incorrectly resolving into Android's host root.
+        val linuxHealthy = rootfs?.let { rootfsNodeExists(File(it, "bin/sh")) } == true
+        val nodeHealthy = rootfs?.let { rootfsNodeExists(File(it, "usr/bin/node")) } == true
+        val dshInstalled = rootfs?.let { rootfsNodeExists(File(it, "opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js")) } == true
         val webReady = probeWebReady()
 
         RuntimeHealth(
@@ -343,6 +346,9 @@ class AndroidRuntimeManager(
             firstLine.take(96)
         }
     }.getOrNull()
+
+    private fun rootfsNodeExists(file: File): Boolean =
+        runCatching { Os.lstat(file.absolutePath); true }.getOrDefault(false)
 
     private fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 

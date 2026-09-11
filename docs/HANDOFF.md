@@ -1,7 +1,7 @@
 # DeepSeek Harness Mobile — Project Handoff
 
 Last updated: 2026-09-10
-Current app release: `0.3.0-alpha.8` (`versionCode = 9`)
+Current app release: `0.3.0-alpha.11` (`versionCode = 12`)
 Base Git HEAD before alpha.8 changes: `f4f0344fed75186115d9e1e4b0ff3e6a7f6073c9`
 Primary branch: `main`
 Remote: `ssh://git@ssh.github.com:443/SteveBrilien/DeepSeek-Harness-Mobile.git`
@@ -169,36 +169,44 @@ This fix still requires device-side reproduction/regression verification because
 - The long-lived Web process launches the pinned DSH Node entrypoint directly: `/usr/bin/node --expose-internals /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js web ...`. The shell launcher remains available for interactive/plugin commands. Process-exit diagnostics now include the exit code.
 - The Runtime E2E explicitly materializes all seed hard links as ordinary files and uses the exact direct-Node production Web launch path. This passes embedded DSH/native loading, the mobile Web profile, authenticated Web startup, online fallback, source-built `node-pty`, cleanup and final version checks.
 
+### Alpha.11 rootfs symlink-aware startup preflight
+
+- Target-device alpha.10 logs isolated the next startup failure to `[startup] verify-start-prerequisites`: `Runtime shell is missing`. The Runtime itself was not missing. Alpine stores `/bin/sh` as an absolute guest symlink (`/bin/sh -> /bin/busybox`). Android-side `File.isFile()` follows that link in the Android host namespace, where the guest target is not present, producing a false negative before PRoot ever starts.
+- Runtime prerequisite, inventory and health checks now use `Os.lstat()` semantics for rootfs nodes. This verifies that the rootfs entry exists without following a guest-absolute symlink into Android's host filesystem. Actual executable/runtime behavior remains verified inside PRoot by the install/activation E2E path.
+- `runtime_alpine_e2e` now records the real Alpine `/bin/sh -> /bin/busybox` link and contains a synthetic host-vs-guest absolute-symlink regression probe, preventing a return to host-following existence checks.
+- Runtime retry telemetry starts a fresh timer and clears stale download/source fields, so a DSH-only retry no longer displays the original multi-hour install elapsed time or npm mirror.
+- Existing alpha.10/alpha.9 slot A should be reused. This fix intentionally requires only an APK cover-install followed by `重试启动` or cold launch; no Runtime reinstall and no app-data clear are required.
+
 ## 4. Release artifact
 
 Current manual-test package:
 
-- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.10.apk`
-- SHA-256: `ffc7e1f772feda2a1ee99c4b5fac5f039eb240dfe0ea9457734a7a700da15a8c`
+- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.11.apk`
+- SHA-256: `ab2588ffdae8b2762f219c6788173e017bc37d541719ece247481b2fec38b2a1`
 - size: `86,641,657` bytes
 - update manifest: `release/update.json`
 
 The current update manifest advertises:
 
-- `versionCode`: 11
-- `versionName`: `0.3.0-alpha.10`
-- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.10.apk`
+- `versionCode`: 12
+- `versionName`: `0.3.0-alpha.11`
+- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.11.apk`
 
 The project uses a stable development signing identity for alpha cover-install testing. Do not replace the signing identity casually; doing so breaks seamless upgrade/cover-install behavior.
 
 ## 5. Validation status
 
-Verified on the development host for alpha.10:
+Verified on the development host for alpha.11:
 
 - `runtime_alpine_e2e` succeeded, including embedded DSH/pnpm fast path, embedded Web profile, `dsh-client-ui-mobile 0.1.9`, online fallback, bundled `pty.node`, real PTY execution, source-build fallback, Mobile Context and authenticated DSH Web;
 - `mobile_context_contract` succeeded;
-- final `android_debug` succeeded on versionCode 11 after the OriginOS Runtime/startup fixes;
-- final `android_lint` succeeded after the Runtime/startup fixes; retained vector-path performance warnings do not alter the exact upstream brand geometry;
-- final stable signing verification succeeded against the alpha.10 candidate APK;
+- final `android_debug` succeeded on versionCode 12 after the rootfs symlink/preflight fix;
+- final `android_lint` succeeded on the alpha.11 candidate; retained vector-path performance warnings do not alter the exact upstream brand geometry;
+- final stable signing verification succeeded against the alpha.11 candidate APK;
 - release SHA-256 generated and recorded;
 - project path contamination check reports no known contamination.
 
-Physical-device validation remains manual because no ADB device is connected. The target test should first confirm that the existing alpha.9 slot starts without reinstall; a fresh install should then confirm that `link failed: EACCES` and the 523-package npm fallback are gone. UI validation from alpha.9 remains required after DSH Web reaches ready state.
+Physical-device validation remains manual because no ADB device is connected. The immediate target test is to cover-install alpha.11 and retry the already prepared slot A. The `Runtime shell is missing` false negative should be gone without reinstalling Runtime; the next startup stages and DSH Web result should then be visible in the copyable log.
 
 ## 6. Target-device validation sequence
 
