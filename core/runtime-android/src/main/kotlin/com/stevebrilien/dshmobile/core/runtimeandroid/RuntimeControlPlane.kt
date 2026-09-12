@@ -58,7 +58,9 @@ class RuntimeControlPlane(context: Context) {
         }
     }
 
-    fun start(): Result<Unit> = runBlocking { manager.start() }
+    fun start(progress: (RuntimeStartProgress) -> Unit = {}): Result<Unit> = runBlocking {
+        manager.start(progress)
+    }
 
     fun isWebReady(): Boolean = manager.isWebReady()
 

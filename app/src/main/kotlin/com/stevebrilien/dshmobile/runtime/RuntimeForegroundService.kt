@@ -98,8 +98,16 @@ class RuntimeForegroundService : Service() {
                     else -> updateNotification("未知 Runtime 操作")
                 }
             } catch (t: Throwable) {
-                if (action == ACTION_INSTALL) runCatching { telemetry.fail(t) }
-                updateNotification("Runtime 操作失败：${shortMessage(t)}", if (action == ACTION_INSTALL) telemetry.snapshot() else null)
+                when (action) {
+                    ACTION_INSTALL -> runCatching { telemetry.fail(t) }
+                    ACTION_START -> {
+                        val runtimeInstalled = runCatching { control.inspectResources().reusableInstalledRuntime }
+                            .getOrDefault(telemetry.snapshot().runtimeInstalled)
+                        runCatching { telemetry.fail(t, runtimeInstalled = runtimeInstalled) }
+                    }
+                }
+                val snapshot = if (action == ACTION_INSTALL || action == ACTION_START) telemetry.snapshot() else null
+                updateNotification("Runtime 操作失败：${shortMessage(t)}", snapshot)
             } finally {
                 busy.set(false)
             }
@@ -139,9 +147,12 @@ class RuntimeForegroundService : Service() {
             updateNotification("Runtime 安装失败：${shortMessage(it)}", telemetry.snapshot())
             return
         }
-        runCatching { telemetry.markRuntimeInstalled("Runtime 已安装，正在启动 DSH") }
+        runCatching { telemetry.beginRuntimeStart("Runtime 已安装，正在启动 DSH") }
         updateNotification("Runtime 已安装到 slot ${install.getOrNull()?.name}，正在启动 DSH", telemetry.snapshot())
-        val started = control.start()
+        val started = control.start { progress ->
+            runCatching { telemetry.updateRuntimeStart(progress) }
+            updateNotification(progress.message, telemetry.snapshot())
+        }
         started.onSuccess {
             runCatching { telemetry.succeed("DSH Runtime 已安装并运行") }
             updateNotification("DSH Runtime 已安装并运行", telemetry.snapshot())
@@ -153,24 +164,35 @@ class RuntimeForegroundService : Service() {
     }
 
     private fun startRuntime() {
-        val before = telemetry.snapshot()
-        if (before.runtimeInstalled || (before.failed && before.percent == 99)) {
-            runCatching { telemetry.beginRuntimeStart("正在重新启动 DSH") }
+        val inventory = runCatching { control.inspectResources() }.getOrElse { failure ->
+            runCatching { telemetry.beginRuntimeStart("无法读取 Runtime 磁盘状态", runtimeInstalled = false) }
+            runCatching { telemetry.fail(failure, runtimeInstalled = false) }
+            updateNotification("Runtime 状态读取失败：${shortMessage(failure)}", telemetry.snapshot())
+            return
         }
-        updateNotification("正在启动 DSH Runtime", telemetry.snapshot().takeIf { it.runtimeInstalled })
-        control.start().onSuccess {
-            val snapshot = telemetry.snapshot()
-            if (snapshot.runtimeInstalled) runCatching { telemetry.succeed("DSH Runtime 已运行") }
-            updateNotification("DSH Runtime 正在运行", telemetry.snapshot().takeIf { it.runtimeInstalled })
+        val runtimePresent = inventory.activeSlot != null && inventory.reusableInstalledRuntime
+        if (!runtimePresent) {
+            val failure = IllegalStateException("尚未安装可复用的本地 Runtime")
+            runCatching { telemetry.beginRuntimeStart("尚未安装本地 Runtime", runtimeInstalled = false) }
+            runCatching { telemetry.fail(failure, runtimeInstalled = false) }
+            updateNotification("尚未安装本地 Runtime", telemetry.snapshot())
+            return
+        }
+
+        runCatching { telemetry.beginRuntimeStart("正在启动 DSH") }
+        updateNotification("正在启动 DSH Runtime", telemetry.snapshot())
+        control.start { progress ->
+            runCatching { telemetry.updateRuntimeStart(progress) }
+            updateNotification(progress.message, telemetry.snapshot())
+        }.onSuccess {
+            runCatching { telemetry.succeed("DSH Runtime 已运行") }
+            updateNotification("DSH Runtime 正在运行", telemetry.snapshot())
         }.onFailure {
-            val snapshot = telemetry.snapshot()
-            if (snapshot.runtimeInstalled) {
-                runCatching { telemetry.appendDiagnostic("DSH 启动日志", control.logTail(16_000)) }
-                runCatching { telemetry.fail(it, runtimeInstalled = true) }
-            }
+            runCatching { telemetry.appendDiagnostic("DSH 启动日志", control.logTail(16_000)) }
+            runCatching { telemetry.fail(it, runtimeInstalled = true) }
             updateNotification(
-                if (snapshot.runtimeInstalled) "Runtime 已安装，DSH 启动未就绪：${shortMessage(it)}" else "Runtime 错误：${shortMessage(it)}",
-                telemetry.snapshot().takeIf { snapshot.runtimeInstalled },
+                "Runtime 已安装，DSH 启动未就绪：${shortMessage(it)}",
+                telemetry.snapshot(),
             )
         }
     }

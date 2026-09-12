@@ -25,24 +25,10 @@ internal class NativeRuntimeInstaller(
     private val stateStore: RuntimeStateStore,
 ) {
     companion object {
-        private const val MOBILE_CONTEXT_PLUGIN_VERSION = "0.2.1"
-        private const val MOBILE_UI_PLUGIN_VERSION = "0.1.9"
         private const val NODE_PTY_MODULE_ABI = "137"
         private const val NODE_PTY_ASSET = "runtime/native-modules/node24-arm64-musl/pty.node"
         private const val NODE_PTY_ASSET_SHA256 = "3e9cb29670c2cac1f7d54302099af8b0f998b9acc79891666b3136db575f18c3"
         private const val PROBE_BYTES = 64 * 1024
-        private val MOBILE_CONTEXT_PLUGIN_ASSETS = listOf(
-            "package.json",
-            "cordis.patch.yml",
-            "lib/index.js",
-        )
-        private val MOBILE_UI_PLUGIN_ASSETS = listOf(
-            "package.json",
-            "cordis.patch.yml",
-            "lib/index.js",
-            "lib/client.js",
-            "LICENSE",
-        )
     }
 
     private data class MirrorProbe(
@@ -435,7 +421,7 @@ internal class NativeRuntimeInstaller(
             val pluginManifest = File(stagedProfile, "node_modules/@dsh-mobile/dsh-mobile-context/package.json")
             check(stagedProfile.isDirectory && pluginManifest.isFile) { "Bundled web profile seed is incomplete" }
             val pluginVersion = JSONObject(pluginManifest.readText(StandardCharsets.UTF_8)).optString("version")
-            check(pluginVersion == MOBILE_CONTEXT_PLUGIN_VERSION) {
+            check(pluginVersion == MobilePluginProfileCoordinator.MOBILE_CONTEXT_PLUGIN_VERSION) {
                 "Bundled web profile plugin version mismatch: $pluginVersion"
             }
             target.parentFile?.let { check(it.exists() || it.mkdirs()) }
@@ -488,84 +474,7 @@ internal class NativeRuntimeInstaller(
 
     private fun ensureMobileContextIntegrationForRootfs(rootfs: File) {
         check(rootfs.isDirectory) { "Runtime rootfs is missing: ${rootfs.absolutePath}" }
-        val pluginDir = File(layout.persistentDshHome, "mobile-plugins/dsh-mobile-context")
-        MOBILE_CONTEXT_PLUGIN_ASSETS.forEach { relative ->
-            val destination = File(pluginDir, relative)
-            destination.parentFile?.let { check(it.exists() || it.mkdirs()) }
-            appContext.assets.open("runtime/dsh-mobile-context/$relative").use { input ->
-                val tmp = File(destination.parentFile, ".${destination.name}.tmp")
-                FileOutputStream(tmp).use { output -> input.copyTo(output) }
-                if (destination.exists()) check(destination.delete())
-                check(tmp.renameTo(destination)) { "Unable to install DSH Mobile context asset: $relative" }
-            }
-        }
-
-        // Keep the official DSH Web UI and add a Cordis-native mobile layout layer instead
-        // of maintaining a cosmetic WebView fork. dsh-client-ui-mobile 0.1.9 is vendored
-        // verbatim under its MIT license and reuses DSH's own layout service and slots.
-        val mobileUiDir = File(layout.persistentDshHome, "mobile-plugins/dsh-client-ui-mobile")
-        MOBILE_UI_PLUGIN_ASSETS.forEach { relative ->
-            val destination = File(mobileUiDir, relative)
-            destination.parentFile?.let { check(it.exists() || it.mkdirs()) }
-            appContext.assets.open("runtime/dsh-client-ui-mobile/$relative").use { input ->
-                val tmp = File(destination.parentFile, ".${destination.name}.tmp")
-                FileOutputStream(tmp).use { output -> input.copyTo(output) }
-                if (destination.exists()) check(destination.delete())
-                check(tmp.renameTo(destination)) { "Unable to install DSH mobile UI asset: $relative" }
-            }
-        }
-
-        val marker = File(layout.persistentDshHome, "mobile/context-plugin.version")
-        val uiMarker = File(layout.persistentDshHome, "mobile/ui-plugin.version")
-        val installedPluginManifest = File(layout.persistentDshHome, "profiles/web/node_modules/@dsh-mobile/dsh-mobile-context/package.json")
-        val installedUiManifest = File(layout.persistentDshHome, "profiles/web/node_modules/dsh-client-ui-mobile/package.json")
-        fun installedPluginVersion(): String? = installedPluginManifest.takeIf(File::isFile)?.let { file ->
-            runCatching { JSONObject(file.readText(StandardCharsets.UTF_8)).optString("version") }.getOrNull()
-        }
-        fun installedUiVersion(): String? = installedUiManifest.takeIf(File::isFile)?.let { file ->
-            runCatching { JSONObject(file.readText(StandardCharsets.UTF_8)).optString("version") }.getOrNull()
-        }
-        if (
-            marker.readTextIfExists() == MOBILE_CONTEXT_PLUGIN_VERSION &&
-            installedPluginVersion() == MOBILE_CONTEXT_PLUGIN_VERSION &&
-            uiMarker.readTextIfExists() == MOBILE_UI_PLUGIN_VERSION &&
-            installedUiVersion() == MOBILE_UI_PLUGIN_VERSION
-        ) return
-
-        // Only enter the Runtime when the persistent Web profile actually needs migration.
-        // Normal cold starts should not rewrite the launcher or execute a redundant PRoot
-        // command before spawning DSH Web.
-        ensureDshLauncher(rootfs)
-
-        // A fresh install can restore the exact prevalidated web profile from the APK. This
-        // avoids a first-run pnpm registry transaction while never overwriting an existing
-        // user profile. If the seed cannot be used, fall back to DSH's official plugin path.
-        val seeded = runCatching { installBundledWebProfileSeed() }.getOrDefault(false)
-        if (!seeded && installedPluginVersion() != MOBILE_CONTEXT_PLUGIN_VERSION) {
-            runInsideRootfs(
-                rootfs,
-                "mkdir -p /dsh-home/mobile && " +
-                    "/usr/local/bin/dsh plugin --profile web add file:/dsh-home/mobile-plugins/dsh-mobile-context",
-                timeoutMillis = 10 * 60_000L,
-            )
-        }
-        check(installedPluginVersion() == MOBILE_CONTEXT_PLUGIN_VERSION) {
-            "DSH Mobile context plugin verification failed"
-        }
-        if (installedUiVersion() != MOBILE_UI_PLUGIN_VERSION) {
-            runInsideRootfs(
-                rootfs,
-                "/usr/local/bin/dsh plugin --profile web add file:/dsh-home/mobile-plugins/dsh-client-ui-mobile",
-                timeoutMillis = 10 * 60_000L,
-            )
-        }
-        check(installedUiVersion() == MOBILE_UI_PLUGIN_VERSION) {
-            "DSH mobile UI plugin verification failed"
-        }
-        marker.parentFile?.let { check(it.exists() || it.mkdirs()) }
-        marker.writeText(MOBILE_CONTEXT_PLUGIN_VERSION, StandardCharsets.UTF_8)
-        uiMarker.parentFile?.let { check(it.exists() || it.mkdirs()) }
-        uiMarker.writeText(MOBILE_UI_PLUGIN_VERSION, StandardCharsets.UTF_8)
+        MobilePluginProfileCoordinator(appContext, layout).reconcile(::installBundledWebProfileSeed)
     }
 
     private fun findReusableRootfsArchive(progress: (RuntimeInstallProgress) -> Unit): File? {

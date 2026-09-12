@@ -103,18 +103,32 @@ class AndroidRuntimeManager(
         listOf(RuntimeInstallSource("auto", "自动选择", "并行测速后选择当前最快可用源")) +
             RuntimePins.ALPINE_MIRRORS.map { RuntimeInstallSource(it.id, it.name, it.baseUrl) }
 
-    override suspend fun start(): Result<Unit> = withContext(Dispatchers.IO) {
+    override suspend fun start(): Result<Unit> = start {}
+
+    suspend fun start(progress: (RuntimeStartProgress) -> Unit): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            if (probeWebReady()) return@runCatching
+            if (probeWebReady()) {
+                progress(RuntimeStartProgress("web-ready", "DSH Web 已就绪", 100, lastWebProbeDetail))
+                return@runCatching
+            }
             val active = stateStore.read().activeSlot ?: error("No active runtime slot. Install a runtime first.")
             val logFile = File(stateStore.layout.logsDir, "dsh-web.log")
             logFile.parentFile?.let { check(it.exists() || it.mkdirs()) }
             logFile.appendText("\n=== DSH start ${System.currentTimeMillis()} slot=${active.name} ===\n", StandardCharsets.UTF_8)
 
-            fun <T> startupStep(name: String, block: () -> T): T {
+            fun <T> startupStep(
+                name: String,
+                message: String,
+                percent: Int,
+                block: () -> T,
+            ): T {
+                progress(RuntimeStartProgress(name, message, percent))
                 logFile.appendText("[startup] $name\n", StandardCharsets.UTF_8)
                 return try {
-                    block().also { logFile.appendText("[startup] $name: ok\n", StandardCharsets.UTF_8) }
+                    block().also {
+                        logFile.appendText("[startup] $name: ok\n", StandardCharsets.UTF_8)
+                        progress(RuntimeStartProgress(name, message, percent, "$name: ok"))
+                    }
                 } catch (t: Throwable) {
                     val detail = t.message?.lineSequence()?.firstOrNull().orEmpty().take(320)
                     logFile.appendText("[startup] $name: failed${if (detail.isNotBlank()) ": $detail" else ""}\n", StandardCharsets.UTF_8)
@@ -122,9 +136,15 @@ class AndroidRuntimeManager(
                 }
             }
 
-            startupStep("verify-start-prerequisites") { installer.verifyStartPrerequisites(active) }
-            startupStep("write-mobile-context") { contextSnapshotWriter.writeStableBootSnapshot() }
-            startupStep("ensure-mobile-plugins") { installer.ensureMobileContextIntegration(active) }
+            startupStep("verify-start-prerequisites", "正在校验 Runtime 启动条件", 10) {
+                installer.verifyStartPrerequisites(active)
+            }
+            startupStep("write-mobile-context", "正在写入手机环境快照", 30) {
+                contextSnapshotWriter.writeStableBootSnapshot()
+            }
+            startupStep("ensure-mobile-plugins", "正在协调 DSH Mobile 插件", 50) {
+                installer.ensureMobileContextIntegration(active)
+            }
 
             // Launch the pinned DSH entrypoint directly with the verified Node binary. This
             // removes an extra shell-wrapper lookup from the long-lived Web process while
@@ -136,12 +156,15 @@ class AndroidRuntimeManager(
             // A previous start attempt can remain alive without ever binding the Web port.
             // Restart that owned process instead of waiting another full startup window on it.
             if (RuntimeProcessRegistry.isAlive()) RuntimeProcessRegistry.stop()
+            progress(RuntimeStartProgress("spawn-dsh-web", "正在启动 DSH Web 进程", 65))
             logFile.appendText("[startup] spawn-dsh-web\n", StandardCharsets.UTF_8)
             RuntimeProcessRegistry.start(installer.buildProcess(active, command), logFile)
+            progress(RuntimeStartProgress("wait-web-ready", "正在等待本地 DSH Web 就绪", 75))
             val deadline = System.currentTimeMillis() + WEB_STARTUP_TIMEOUT_MILLIS
             while (System.currentTimeMillis() < deadline) {
                 if (probeWebReady()) {
                     logFile.appendText("[startup] web-ready: $lastWebProbeDetail\n", StandardCharsets.UTF_8)
+                    progress(RuntimeStartProgress("web-ready", "DSH Web 已就绪", 100, lastWebProbeDetail))
                     return@runCatching
                 }
                 if (!RuntimeProcessRegistry.isAlive()) {

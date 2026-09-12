@@ -3,6 +3,7 @@ package com.stevebrilien.dshmobile.runtime
 import android.content.Context
 import android.util.AtomicFile
 import com.stevebrilien.dshmobile.core.runtimeandroid.RuntimeInstallProgress
+import com.stevebrilien.dshmobile.core.runtimeandroid.RuntimeStartProgress
 import org.json.JSONObject
 import java.io.File
 import java.nio.charset.StandardCharsets
@@ -125,7 +126,10 @@ class RuntimeInstallTelemetry(context: Context) {
     }
 
     @Synchronized
-    fun beginRuntimeStart(message: String = "正在启动 DSH") {
+    fun beginRuntimeStart(
+        message: String = "正在启动 DSH",
+        runtimeInstalled: Boolean = true,
+    ) {
         val current = writerState ?: readStateJson().also { writerState = it }
         val now = System.currentTimeMillis()
         // A retry is a new startup attempt, not a continuation of the original install.
@@ -141,13 +145,32 @@ class RuntimeInstallTelemetry(context: Context) {
         current
             .put("running", true)
             .put("failed", false)
-            .put("runtimeInstalled", true)
+            .put("runtimeInstalled", runtimeInstalled)
             .put("updatedAtMillis", now)
             .put("phase", "start")
             .put("message", message)
-            .put("percent", 99)
+            .put("percent", if (runtimeInstalled) 1 else 0)
         writeState(current)
         lastStateWriteAt = now
+    }
+
+    @Synchronized
+    fun updateRuntimeStart(progress: RuntimeStartProgress) {
+        val current = writerState ?: readStateJson().also { writerState = it }
+        val previousPhase = current.optString("phase")
+        val previousMessage = current.optString("message")
+        progress.logLine?.takeIf { it.isNotBlank() }?.let(::appendLog)
+        if (progress.phase != previousPhase || progress.message != previousMessage) appendLog(progress.message)
+        current
+            .put("running", true)
+            .put("failed", false)
+            .put("runtimeInstalled", true)
+            .put("updatedAtMillis", System.currentTimeMillis())
+            .put("phase", progress.phase)
+            .put("message", progress.message)
+        progress.percent?.let { current.put("percent", it.coerceIn(0, 100)) }
+        writeState(current)
+        lastStateWriteAt = System.currentTimeMillis()
     }
 
     @Synchronized

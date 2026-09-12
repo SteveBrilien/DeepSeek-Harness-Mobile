@@ -28,8 +28,8 @@ android {
         // Android 10+ blocks execve() from writable app home for apps targeting 29+;
         // the local PRoot/Node/DSH runtime requires executable files in app-private storage.
         targetSdk = 28
-        versionCode = 12
-        versionName = "0.3.0-alpha.11"
+        versionCode = 13
+        versionName = "0.3.0-alpha.12"
     }
 
     buildTypes {
@@ -41,6 +41,10 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
     }
 
     compileOptions {
@@ -82,4 +86,11 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     debugImplementation("androidx.compose.ui:ui-tooling")
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("androidx.test:core:1.6.1")
+    testImplementation("org.robolectric:robolectric:4.15.1")
+    // Robolectric 4.15.1 resolves Conscrypt 2.5.2, whose uber JAR has no Linux ARM64 JNI.
+    // 2.6.2 adds linux-aarch_64 and remains compatible with this ARM64 test host.
+    testImplementation("org.conscrypt:conscrypt-openjdk-uber:2.6.2")
 }

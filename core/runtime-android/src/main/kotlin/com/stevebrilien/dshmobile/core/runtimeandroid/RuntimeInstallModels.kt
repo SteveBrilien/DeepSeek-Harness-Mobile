@@ -19,6 +19,13 @@ data class RuntimeInstallProgress(
     val logLine: String? = null,
 )
 
+data class RuntimeStartProgress(
+    val phase: String,
+    val message: String,
+    val percent: Int? = null,
+    val logLine: String? = null,
+)
+
 data class RuntimeResourceInventory(
     val activeSlot: RuntimeSlot?,
     val installedAlpineVersion: String?,
