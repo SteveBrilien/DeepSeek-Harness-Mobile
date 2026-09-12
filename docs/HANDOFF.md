@@ -1,7 +1,7 @@
 # DeepSeek Harness Mobile — Project Handoff
 
-Last updated: 2026-09-10
-Current app release: `0.3.0-alpha.11` (`versionCode = 12`)
+Last updated: 2026-09-12
+Current app release: `0.3.0-alpha.12` (`versionCode = 13`)
 Base Git HEAD before alpha.8 changes: `f4f0344fed75186115d9e1e4b0ff3e6a7f6073c9`
 Primary branch: `main`
 Remote: `ssh://git@ssh.github.com:443/SteveBrilien/DeepSeek-Harness-Mobile.git`
@@ -177,36 +177,44 @@ This fix still requires device-side reproduction/regression verification because
 - Runtime retry telemetry starts a fresh timer and clears stale download/source fields, so a DSH-only retry no longer displays the original multi-hour install elapsed time or npm mirror.
 - Existing alpha.10/alpha.9 slot A should be reused. This fix intentionally requires only an APK cover-install followed by `重试启动` or cold launch; no Runtime reinstall and no app-data clear are required.
 
+### Alpha.12 deterministic startup and offline profile migration
+
+- Runtime startup is now one observable six-stage pipeline: `verify-start-prerequisites` -> `write-mobile-context` -> `ensure-mobile-plugins` -> `spawn-dsh-web` -> `wait-web-ready` -> `web-ready`. Foreground-service telemetry is the UI status source rather than a separate three-minute Web-port guess loop.
+- Every `ACTION_START` first rebuilds startup state from the on-disk Runtime inventory. Stale install/start telemetry cannot make an absent Runtime look installed or keep a failed startup spinning. Unexpected service-level startup exceptions are persisted as current-attempt failures.
+- APK-owned Mobile Context and mobile-UI plugins are reconciled entirely on the Android host. Existing Web profiles are preserved and patched offline/atomically; normal startup no longer enters PRoot to invoke `dsh plugin add`/pnpm for these bundled plugins. Managed plugin trees use staging/backup/rollback activation, and version markers commit only after the final profile contract verifies.
+- Robolectric/API-30 tests now cover the service/telemetry path and old-profile migration. The ARM64 Runtime E2E additionally proves an old Web profile can be reconciled without changing the pnpm lockfile and still start the real token-authenticated DSH Web service.
+
 ## 4. Release artifact
 
 Current manual-test package:
 
-- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.11.apk`
-- SHA-256: `ab2588ffdae8b2762f219c6788173e017bc37d541719ece247481b2fec38b2a1`
+- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.12.apk`
+- SHA-256: `f7c96a3f8381992e0b8a1984f5c7b6396b5196d9b0cea9e8c7254245c0357701`
 - size: `86,641,657` bytes
 - update manifest: `release/update.json`
 
 The current update manifest advertises:
 
-- `versionCode`: 12
-- `versionName`: `0.3.0-alpha.11`
-- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.11.apk`
+- `versionCode`: 13
+- `versionName`: `0.3.0-alpha.12`
+- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.12.apk`
 
 The project uses a stable development signing identity for alpha cover-install testing. Do not replace the signing identity casually; doing so breaks seamless upgrade/cover-install behavior.
 
 ## 5. Validation status
 
-Verified on the development host for alpha.11:
+Verified on the Orange Pi ARM64 development host for alpha.12:
 
-- `runtime_alpine_e2e` succeeded, including embedded DSH/pnpm fast path, embedded Web profile, `dsh-client-ui-mobile 0.1.9`, online fallback, bundled `pty.node`, real PTY execution, source-build fallback, Mobile Context and authenticated DSH Web;
-- `mobile_context_contract` succeeded;
-- final `android_debug` succeeded on versionCode 12 after the rootfs symlink/preflight fix;
-- final `android_lint` succeeded on the alpha.11 candidate; retained vector-path performance warnings do not alter the exact upstream brand geometry;
-- final stable signing verification succeeded against the alpha.11 candidate APK;
-- release SHA-256 generated and recorded;
+- `mobile_context_contract`: PASS;
+- `android_unit_test`: PASS under Robolectric/API 30, including offline/idempotent old-profile reconciliation, marker failure safety, startup telemetry reset/stage/failure propagation and Foreground Service `ACTION_START`;
+- `runtime_alpine_e2e`: PASS for DSH `0.1.2-rc.1`, including genuinely registry-free embedded profile startup, Node/native/PTY fallbacks, old-profile host-side reconciliation with unchanged pnpm-lock SHA, and token-authenticated real DSH Web startup;
+- `android_lint`: PASS (`287 actionable tasks`, no blocking errors);
+- final clean-commit `android_debug`: PASS from source commit `bcb061a345de7658d91e8aad5cacc390d871eb7a`;
+- stable signing certificate verification: PASS; certificate SHA-256 remains `08:5C:7B:7D:EA:58:2F:F9:29:5B:25:0F:88:D0:E9:0E:94:7B:D2:93:AC:72:7A:82:40:A7:47:C8:C9:B2:49:07`;
+- release APK SHA-256: `f7c96a3f8381992e0b8a1984f5c7b6396b5196d9b0cea9e8c7254245c0357701`;
 - project path contamination check reports no known contamination.
 
-Physical-device validation remains manual because no ADB device is connected. The immediate target test is to cover-install alpha.11 and retry the already prepared slot A. The `Runtime shell is missing` false negative should be gone without reinstalling Runtime; the next startup stages and DSH Web result should then be visible in the copyable log.
+ADB HostCapability is healthy on the ARM64 host, but this release run found zero connected devices. Android 11 / OriginOS cover-install therefore remains a manual device validation item and is not reported as passed. The primary device regression is to install alpha.12 over alpha.11 without clearing data, reuse the existing Runtime slot, and confirm the six startup stages either reach `web-ready` or surface the exact failing stage immediately.
 
 ## 6. Target-device validation sequence
 

@@ -1,7 +1,7 @@
 {
-  "versionCode": 12,
-  "versionName": "0.3.0-alpha.11",
-  "apkUrl": "https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.11.apk",
-  "sha256": "ab2588ffdae8b2762f219c6788173e017bc37d541719ece247481b2fec38b2a1",
-  "notes": "Alpha.11 fixes the OriginOS false “Runtime shell is missing” startup failure. Alpine rootfs absolute symlinks such as /bin/sh -> /bin/busybox are now checked without following them into the Android host namespace. Runtime inventory and health use the same no-follow rule. Retry-start telemetry also resets stale install elapsed/source fields. No Runtime reinstall or data clear is required."
+  "versionCode": 13,
+  "versionName": "0.3.0-alpha.12",
+  "apkUrl": "https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.12.apk",
+  "sha256": "f7c96a3f8381992e0b8a1984f5c7b6396b5196d9b0cea9e8c7254245c0357701",
+  "notes": "Alpha.12 rebuilds Runtime startup as a six-stage observable pipeline. Existing Web profiles are upgraded offline and atomically on the Android host; startup no longer invokes dsh plugin or pnpm for bundled mobile plugins. Disk inventory is authoritative, stale telemetry is reset, and Chat surfaces service-stage failures promptly instead of spinning for minutes. Robolectric and ARM64 Runtime E2E cover old-profile migration and real DSH Web startup. OriginOS cover-install remains a manual device check."
 }

@@ -264,4 +264,4 @@ MCP 宿主为 ARM64 Linux，具备 JDK 17、Android SDK、`aapt2` 和 `adb`。�
 - 项目路径污染检查：未发现已知污染。
 - ADB HostCapability 本身在 ARM64 上可用，但本轮查询为 0 台在线设备；因此 Android 11 / OriginOS 覆盖安装仍明确属于真机验收项，未将其写成已通过。
 
-发布候选版本已提升为 `0.3.0-alpha.12` / `versionCode 13`。只有 lint、最终 APK 构建和稳定签名验证继续通过后才写入 `release/` 并更新公开 update manifest。
+发布门槛已全部完成：`0.3.0-alpha.12` / `versionCode 13` 从干净源码 commit `bcb061a345de7658d91e8aad5cacc390d871eb7a` 构建成功，稳定签名证书校验通过；发布 APK 为 `release/DeepSeek-Harness-Mobile-0.3.0-alpha.12.apk`，大小 `86,641,657` bytes，SHA-256 `f7c96a3f8381992e0b8a1984f5c7b6396b5196d9b0cea9e8c7254245c0357701`。公开 `release/update.json` 已同步到该候选。真机 OriginOS 覆盖安装仍保留为唯一未执行的设备级验收。

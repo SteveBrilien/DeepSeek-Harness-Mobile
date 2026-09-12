@@ -278,3 +278,15 @@ Files:
 - `release/DeepSeek-Harness-Mobile-0.3.0-alpha.11.apk`
 - `release/SHA256SUMS`
 - `release/update.json`
+
+## 2026-09-12T16:18:33.581147Z — RELEASE: Package 0.3.0-alpha.12 deterministic Runtime startup release
+
+Rebuilt Runtime startup as a six-stage observable pipeline; moved APK-owned mobile plugin migration to offline/atomic Android-host reconciliation; reset stale startup telemetry and propagate service failures directly to Chat. Validation passed: mobile_context_contract, Robolectric/API 30 android_unit_test, ARM64 runtime_alpine_e2e including old-profile offline reconciliation and real authenticated DSH Web startup, android_lint, clean-commit android_debug, and stable signing verification. APK SHA-256 f7c96a3f8381992e0b8a1984f5c7b6396b5196d9b0cea9e8c7254245c0357701, size 86,641,657 bytes. No physical Android device was connected, so OriginOS cover-install remains manual.
+
+Files:
+- `release/DeepSeek-Harness-Mobile-0.3.0-alpha.12.apk`
+- `release/SHA256SUMS`
+- `release/update.json`
+- `docs/INSTALLATION_RUNTIME_RESEARCH.md`
+- `docs/HANDOFF.md`
+- `docs/NEXT_ACTIONS.md`
