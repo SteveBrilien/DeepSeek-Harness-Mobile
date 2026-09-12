@@ -143,36 +143,47 @@ private fun DshMobileShell(
             .statusBarsPadding()
             .padding(bottom = 60.dp)
 
-        AnimatedContent(
-            targetState = selected,
-            transitionSpec = {
-                (fadeIn(tween(150)) + slideInHorizontally(tween(170)) { it / 24 }) togetherWith
-                    (fadeOut(tween(100)) + slideOutHorizontally(tween(130)) { -it / 30 })
-            },
-            label = "main-section",
-        ) { section ->
-            when (section) {
-                MainSection.Home -> ChatScreen(modifier = contentModifier)
-                MainSection.Workspace -> WorkspaceHubScreen(
-                    section = workspaceSection,
-                    onSectionChange = { workspaceSection = it },
-                    registry = projectRegistry,
-                    fileManager = fileManager,
-                    modifier = contentModifier,
-                )
-                MainSection.Terminal -> TerminalScreen(
-                    shell = recoveryShell,
-                    fileManager = fileManager,
-                    modifier = contentModifier,
-                )
-                MainSection.Settings -> SettingsScreen(
-                    vault = vault,
-                    controller = recoveryController,
-                    themeMode = themeMode,
-                    onThemeChange = onThemeChange,
-                    onRunOnboarding = onRunOnboarding,
-                    modifier = contentModifier,
-                )
+        // Keep the DSH WebView attached for the full shell lifetime. Recreating the Home
+        // destination used to destroy/recreate WebView every time the bottom navigation
+        // changed, which reloaded the DSH SPA and discarded its in-memory UI state.
+        ChatScreen(
+            modifier = contentModifier,
+            visible = selected == MainSection.Home,
+        )
+
+        if (selected != MainSection.Home) {
+            AnimatedContent(
+                targetState = selected,
+                modifier = Modifier.fillMaxSize().background(colors.base),
+                transitionSpec = {
+                    (fadeIn(tween(150)) + slideInHorizontally(tween(170)) { it / 24 }) togetherWith
+                        (fadeOut(tween(100)) + slideOutHorizontally(tween(130)) { -it / 30 })
+                },
+                label = "main-section",
+            ) { section ->
+                when (section) {
+                    MainSection.Home -> Unit
+                    MainSection.Workspace -> WorkspaceHubScreen(
+                        section = workspaceSection,
+                        onSectionChange = { workspaceSection = it },
+                        registry = projectRegistry,
+                        fileManager = fileManager,
+                        modifier = contentModifier,
+                    )
+                    MainSection.Terminal -> TerminalScreen(
+                        shell = recoveryShell,
+                        fileManager = fileManager,
+                        modifier = contentModifier,
+                    )
+                    MainSection.Settings -> SettingsScreen(
+                        vault = vault,
+                        controller = recoveryController,
+                        themeMode = themeMode,
+                        onThemeChange = onThemeChange,
+                        onRunOnboarding = onRunOnboarding,
+                        modifier = contentModifier,
+                    )
+                }
             }
         }
 

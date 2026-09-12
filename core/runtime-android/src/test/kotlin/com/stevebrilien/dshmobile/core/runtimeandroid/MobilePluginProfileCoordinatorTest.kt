@@ -47,7 +47,12 @@ class MobilePluginProfileCoordinatorTest {
             .put("name", "user-web-profile")
             .put("private", true)
             .put("userCustom", JSONObject().put("keep", "yes"))
-            .put("dependencies", JSONObject().put("user-plugin", "1.2.3"))
+            .put(
+                "dependencies",
+                JSONObject()
+                    .put("user-plugin", "1.2.3")
+                    .put("dsh-client-ui-mobile", "file:/dsh-home/mobile-plugins/dsh-client-ui-mobile"),
+            )
             .put(
                 "dsh",
                 JSONObject().put(
@@ -57,12 +62,16 @@ class MobilePluginProfileCoordinatorTest {
                         org.json.JSONArray()
                             .put("@deepseek-ai/dsh-base")
                             .put("@deepseek-ai/dsh-web-app")
-                            .put("user-plugin"),
+                            .put("user-plugin")
+                            .put("dsh-client-ui-mobile"),
                     ).put("patchReload", "live"),
                 ),
             )
         val packageFile = File(profile, "package.json")
         packageFile.writeText(original.toString(2), StandardCharsets.UTF_8)
+        val staleUi = File(profile, "node_modules/dsh-client-ui-mobile")
+        assertTrue(staleUi.mkdirs())
+        File(staleUi, "package.json").writeText("{\"version\":\"0.1.9\"}", StandardCharsets.UTF_8)
 
         coordinator.reconcile { error("seed must not be used for an existing profile") }
 
@@ -73,15 +82,12 @@ class MobilePluginProfileCoordinatorTest {
             "file:/dsh-home/mobile-plugins/dsh-mobile-context",
             migrated.getJSONObject("dependencies").getString("@dsh-mobile/dsh-mobile-context"),
         )
-        assertEquals(
-            "file:/dsh-home/mobile-plugins/dsh-client-ui-mobile",
-            migrated.getJSONObject("dependencies").getString("dsh-client-ui-mobile"),
-        )
+        assertFalse(migrated.getJSONObject("dependencies").has("dsh-client-ui-mobile"))
         val bundles = migrated.getJSONObject("dsh").getJSONObject("profile").getJSONArray("bundles")
         val bundleNames = (0 until bundles.length()).map(bundles::getString)
         assertTrue(bundleNames.contains("user-plugin"))
         assertTrue(bundleNames.contains("@dsh-mobile/dsh-mobile-context"))
-        assertTrue(bundleNames.contains("dsh-client-ui-mobile"))
+        assertFalse(bundleNames.contains("dsh-client-ui-mobile"))
         assertEquals(
             MobilePluginProfileCoordinator.MOBILE_CONTEXT_PLUGIN_VERSION,
             JSONObject(
@@ -89,18 +95,27 @@ class MobilePluginProfileCoordinatorTest {
                     .readText(StandardCharsets.UTF_8),
             ).getString("version"),
         )
+        assertFalse(File(profile, "node_modules/dsh-client-ui-mobile").exists())
         assertEquals(
             MobilePluginProfileCoordinator.MOBILE_UI_PLUGIN_VERSION,
             JSONObject(
-                File(profile, "node_modules/dsh-client-ui-mobile/package.json")
+                File(store.layout.persistentDshHome, "mobile-plugins/dsh-client-ui-mobile/package.json")
                     .readText(StandardCharsets.UTF_8),
             ).getString("version"),
+        )
+        assertEquals(
+            MobilePluginProfileCoordinator.MOBILE_WEB_PROFILE_MODE,
+            File(store.layout.persistentDshHome, "mobile/ui-plugin.version")
+                .readText(StandardCharsets.UTF_8),
         )
         assertTrue(coordinator.isReconciled())
 
         val firstResult = packageFile.readBytes()
+        File(store.layout.persistentDshHome, "mobile-plugins/dsh-client-ui-mobile").deleteRecursively()
         coordinator.reconcile { error("reconciled profile must not reinstall seed") }
         assertTrue(firstResult.contentEquals(packageFile.readBytes()))
+        assertTrue(File(store.layout.persistentDshHome, "mobile-plugins/dsh-client-ui-mobile/package.json").isFile)
+        assertTrue(coordinator.isReconciled())
     }
 
     @Test

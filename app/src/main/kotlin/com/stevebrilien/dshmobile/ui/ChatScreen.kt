@@ -3,6 +3,7 @@ package com.stevebrilien.dshmobile.ui
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
+import android.view.View
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -44,7 +45,10 @@ private sealed interface LocalDshState {
 }
 
 @Composable
-fun ChatScreen(modifier: Modifier = Modifier) {
+fun ChatScreen(
+    modifier: Modifier = Modifier,
+    visible: Boolean = true,
+) {
     val appContext = LocalContext.current.applicationContext
     val runtime = remember(appContext) { RuntimeControlPlane(appContext) }
     val telemetry = remember(appContext) { RuntimeInstallTelemetry(appContext) }
@@ -121,6 +125,7 @@ fun ChatScreen(modifier: Modifier = Modifier) {
         )
         is LocalDshState.Ready -> DshWebClient(
             launchUrl = current.launchUrl,
+            visible = visible,
             modifier = modifier,
         )
     }
@@ -130,6 +135,7 @@ fun ChatScreen(modifier: Modifier = Modifier) {
 @Composable
 private fun DshWebClient(
     launchUrl: String,
+    visible: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -169,10 +175,12 @@ private fun DshWebClient(
                             return true
                         }
                     }
+                    visibility = if (visible) View.VISIBLE else View.INVISIBLE
                     loadUrl(launchUrl)
                 }
             },
             update = { webView ->
+                webView.visibility = if (visible) View.VISIBLE else View.INVISIBLE
                 if (webView.url.isNullOrBlank()) webView.loadUrl(launchUrl)
             },
         )
