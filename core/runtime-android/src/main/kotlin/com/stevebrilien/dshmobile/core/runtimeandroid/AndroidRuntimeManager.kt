@@ -30,10 +30,6 @@ class AndroidRuntimeManager(
         private const val WEB_AUTH_REQUIRED_MARKER = "dsh web authentication required"
         private const val WEB_STARTUP_POLL_MILLIS = 250L
         private const val WEB_STARTUP_TIMEOUT_MILLIS = 180_000L
-        private val WEB_LAUNCH_URL = Regex(
-            """dsh web:\s+(http://(?:127\.0\.0\.1|localhost):${RuntimePins.DSH_HTTP_PORT}/\?token=[^\s()]+)""",
-        )
-
         val DEFAULT_COMPONENT_VERSIONS: Map<RuntimeComponent, String> = mapOf(
             RuntimeComponent.LINUX_USERSPACE to "alpine-${RuntimePins.ALPINE_VERSION}",
             RuntimeComponent.NODE to "24",
@@ -107,7 +103,7 @@ class AndroidRuntimeManager(
 
     suspend fun start(progress: (RuntimeStartProgress) -> Unit): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            if (probeWebReady()) {
+            if (probeWebReady() && webLaunchUrl() != null) {
                 progress(RuntimeStartProgress("web-ready", "DSH Web 已就绪", 100, lastWebProbeDetail))
                 return@runCatching
             }
@@ -162,10 +158,15 @@ class AndroidRuntimeManager(
             progress(RuntimeStartProgress("wait-web-ready", "正在等待本地 DSH Web 就绪", 75))
             val deadline = System.currentTimeMillis() + WEB_STARTUP_TIMEOUT_MILLIS
             while (System.currentTimeMillis() < deadline) {
-                if (probeWebReady()) {
-                    logFile.appendText("[startup] web-ready: $lastWebProbeDetail\n", StandardCharsets.UTF_8)
-                    progress(RuntimeStartProgress("web-ready", "DSH Web 已就绪", 100, lastWebProbeDetail))
+                val endpointReady = probeWebReady()
+                val currentLaunchUrl = webLaunchUrl()
+                if (endpointReady && currentLaunchUrl != null) {
+                    logFile.appendText("[startup] web-ready: $lastWebProbeDetail; current launch token observed\n", StandardCharsets.UTF_8)
+                    progress(RuntimeStartProgress("web-ready", "DSH Web 已就绪", 100, "$lastWebProbeDetail; launch-token-ready"))
                     return@runCatching
+                }
+                if (endpointReady) {
+                    lastWebProbeDetail = "$lastWebProbeDetail; waiting for current launch token"
                 }
                 if (!RuntimeProcessRegistry.isAlive()) {
                     val exit = RuntimeProcessRegistry.exitCodeOrNull()?.toString() ?: "unknown"
@@ -242,7 +243,7 @@ class AndroidRuntimeManager(
         val bytes = file.readBytes()
         val start = (bytes.size - 128 * 1024).coerceAtLeast(0)
         val tail = String(bytes, start, bytes.size - start, StandardCharsets.UTF_8)
-        return WEB_LAUNCH_URL.findAll(tail).lastOrNull()?.groupValues?.getOrNull(1)
+        return DshWebAuthContract.latestLaunchUrl(tail)
     }
 
     suspend fun executeShell(
@@ -292,7 +293,7 @@ class AndroidRuntimeManager(
         // DSH bound on 127.0.0.1. A raw HTTP probe avoids that false-negative path.
         probeRawLoopbackHttp()?.let { statusLine ->
             lastWebProbeDetail = "$statusLine via raw 127.0.0.1"
-            return true
+            if (DshWebAuthContract.isExpectedReadyStatusLine(statusLine)) return true
         }
 
         // Keep URLConnection fallbacks for OEM stacks where raw sockets are restricted.

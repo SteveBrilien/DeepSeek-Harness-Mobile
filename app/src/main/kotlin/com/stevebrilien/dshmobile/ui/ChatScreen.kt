@@ -6,6 +6,7 @@ import android.net.Uri
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -126,6 +127,9 @@ fun ChatScreen(
         is LocalDshState.Ready -> DshWebClient(
             launchUrl = current.launchUrl,
             visible = visible,
+            onAuthenticationRejected = {
+                state = LocalDshState.Offline("DSH Web 拒绝了本次启动凭据；请重试以获取当前进程的新凭据")
+            },
             modifier = modifier,
         )
     }
@@ -136,6 +140,7 @@ fun ChatScreen(
 private fun DshWebClient(
     launchUrl: String,
     visible: Boolean,
+    onAuthenticationRejected: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -173,6 +178,22 @@ private fun DshWebClient(
                             }
                             runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
                             return true
+                        }
+
+                        override fun onReceivedHttpError(
+                            view: WebView?,
+                            request: WebResourceRequest?,
+                            errorResponse: WebResourceResponse?,
+                        ) {
+                            super.onReceivedHttpError(view, request, errorResponse)
+                            val uri = request?.url ?: return
+                            if (
+                                request.isForMainFrame &&
+                                isLocalDshUri(uri) &&
+                                errorResponse?.statusCode == 401
+                            ) {
+                                onAuthenticationRejected()
+                            }
                         }
                     }
                     visibility = if (visible) View.VISIBLE else View.INVISIBLE
