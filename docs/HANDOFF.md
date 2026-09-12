@@ -1,7 +1,7 @@
 # DeepSeek Harness Mobile — Project Handoff
 
 Last updated: 2026-09-12
-Current app release: `0.3.0-alpha.12` (`versionCode = 13`)
+Current app release: `0.3.0-alpha.13` (`versionCode = 14`)
 Base Git HEAD before alpha.8 changes: `f4f0344fed75186115d9e1e4b0ff3e6a7f6073c9`
 Primary branch: `main`
 Remote: `ssh://git@ssh.github.com:443/SteveBrilien/DeepSeek-Harness-Mobile.git`
@@ -184,37 +184,44 @@ This fix still requires device-side reproduction/regression verification because
 - APK-owned Mobile Context and mobile-UI plugins are reconciled entirely on the Android host. Existing Web profiles are preserved and patched offline/atomically; normal startup no longer enters PRoot to invoke `dsh plugin add`/pnpm for these bundled plugins. Managed plugin trees use staging/backup/rollback activation, and version markers commit only after the final profile contract verifies.
 - Robolectric/API-30 tests now cover the service/telemetry path and old-profile migration. The ARM64 Runtime E2E additionally proves an old Web profile can be reconciled without changing the pnpm lockfile and still start the real token-authenticated DSH Web service.
 
+### Alpha.13 native DSH Web baseline and persistent Home WebView
+
+- The Home `WebView` is now composed for the lifetime of the native app shell and only toggled visible/invisible when switching bottom tabs. Workspace/Terminal/Settings no longer destroy Home, so returning to Home preserves the same DSH SPA instance and its in-memory state instead of calling `loadUrl()` again.
+- `dsh-client-ui-mobile` is no longer loaded into the active DSH Web profile. Its previous narrow-screen stylesheet intentionally hid native sidebar/header utility/tab elements, which also removed the official settings entry. Alpha.13 keeps the package only as a dormant APK-owned asset for future UI work.
+- Existing alpha.12 profiles migrate offline: the coordinator removes only the managed mobile-UI dependency/bundle/profile tree, keeps `@dsh-mobile/dsh-mobile-context` active, preserves unrelated/user JSON fields and does not require a startup pnpm transaction. The profile-mode marker is now `native-dsh-web-v1`, forcing the one-time alpha.12 -> alpha.13 reconciliation.
+- UI adaptation is deliberately deferred until the official DSH Web baseline is validated on OriginOS. Future mobile work must not hide or replace DSH-owned settings/header/sidebar controls by default.
+
 ## 4. Release artifact
 
 Current manual-test package:
 
-- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.12.apk`
-- SHA-256: `f7c96a3f8381992e0b8a1984f5c7b6396b5196d9b0cea9e8c7254245c0357701`
+- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.13.apk`
+- SHA-256: `1c59410aea85f67929a207cbd57bbe725a24e74bd858bf0e10acc616116ac743`
 - size: `86,641,657` bytes
 - update manifest: `release/update.json`
 
 The current update manifest advertises:
 
-- `versionCode`: 13
-- `versionName`: `0.3.0-alpha.12`
-- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.12.apk`
+- `versionCode`: 14
+- `versionName`: `0.3.0-alpha.13`
+- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.13.apk`
 
 The project uses a stable development signing identity for alpha cover-install testing. Do not replace the signing identity casually; doing so breaks seamless upgrade/cover-install behavior.
 
 ## 5. Validation status
 
-Verified on the Orange Pi ARM64 development host for alpha.12:
+Verified on the Orange Pi ARM64 development host for alpha.13:
 
 - `mobile_context_contract`: PASS;
-- `android_unit_test`: PASS under Robolectric/API 30, including offline/idempotent old-profile reconciliation, marker failure safety, startup telemetry reset/stage/failure propagation and Foreground Service `ACTION_START`;
-- `runtime_alpine_e2e`: PASS for DSH `0.1.2-rc.1`, including genuinely registry-free embedded profile startup, Node/native/PTY fallbacks, old-profile host-side reconciliation with unchanged pnpm-lock SHA, and token-authenticated real DSH Web startup;
-- `android_lint`: PASS (`287 actionable tasks`, no blocking errors);
-- final clean-commit `android_debug`: PASS from source commit `bcb061a345de7658d91e8aad5cacc390d871eb7a`;
+- `android_unit_test`: PASS under Robolectric/API 30, including alpha.12 mobile-UI removal, user-field preservation/idempotent reconciliation, marker failure safety, startup telemetry and Foreground Service `ACTION_START`;
+- `runtime_alpine_e2e`: PASS for DSH `0.1.2-rc.1`, including the registry-free native-profile path, dormant mobile-UI asset, alpha.12 old-profile offline rollback with unchanged pnpm-lock SHA, Node/native/PTY fallbacks and token-authenticated real DSH Web startup;
+- `android_lint`: PASS (`287 actionable tasks`, `27 executed`, no blocking errors);
+- final clean-commit `android_debug`: PASS from source commit `60818e3aecd8f5de969f52969a4c05bd4db69bd6`;
 - stable signing certificate verification: PASS; certificate SHA-256 remains `08:5C:7B:7D:EA:58:2F:F9:29:5B:25:0F:88:D0:E9:0E:94:7B:D2:93:AC:72:7A:82:40:A7:47:C8:C9:B2:49:07`;
-- release APK SHA-256: `f7c96a3f8381992e0b8a1984f5c7b6396b5196d9b0cea9e8c7254245c0357701`;
+- release APK SHA-256: `1c59410aea85f67929a207cbd57bbe725a24e74bd858bf0e10acc616116ac743`;
 - project path contamination check reports no known contamination.
 
-ADB HostCapability is healthy on the ARM64 host, but this release run found zero connected devices. Android 11 / OriginOS cover-install therefore remains a manual device validation item and is not reported as passed. The primary device regression is to install alpha.12 over alpha.11 without clearing data, reuse the existing Runtime slot, and confirm the six startup stages either reach `web-ready` or surface the exact failing stage immediately.
+ADB HostCapability is healthy on the ARM64 host, but this release run found zero connected devices. Android 11 / OriginOS cover-install therefore remains a manual device validation item and is not reported as passed. The primary device regression is to install alpha.13 over alpha.12 without clearing data, reuse the existing Runtime slot, and confirm the six startup stages either reach `web-ready` or surface the exact failing stage immediately.
 
 ## 6. Target-device validation sequence
 

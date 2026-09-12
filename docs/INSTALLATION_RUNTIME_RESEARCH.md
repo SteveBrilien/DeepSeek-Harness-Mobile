@@ -265,3 +265,27 @@ MCP 宿主为 ARM64 Linux，具备 JDK 17、Android SDK、`aapt2` 和 `adb`。�
 - ADB HostCapability 本身在 ARM64 上可用，但本轮查询为 0 台在线设备；因此 Android 11 / OriginOS 覆盖安装仍明确属于真机验收项，未将其写成已通过。
 
 发布门槛已全部完成：`0.3.0-alpha.12` / `versionCode 13` 从干净源码 commit `bcb061a345de7658d91e8aad5cacc390d871eb7a` 构建成功，稳定签名证书校验通过；发布 APK 为 `release/DeepSeek-Harness-Mobile-0.3.0-alpha.12.apk`，大小 `86,641,657` bytes，SHA-256 `f7c96a3f8381992e0b8a1984f5c7b6396b5196d9b0cea9e8c7254245c0357701`。公开 `release/update.json` 已同步到该候选。真机 OriginOS 覆盖安装仍保留为唯一未执行的设备级验收。
+
+
+## 12. Alpha.13：恢复原生 DSH Web 基线与 WebView 常驻
+
+用户真机 alpha.12 证明 Runtime 启动链已恢复，但暴露出两个前端层问题。第一，原 `AppShell` 用 `AnimatedContent(targetState = selected)` 直接切换 Home/Workspace/Terminal/Settings；离开 Home 会把 `ChatScreen` 和 `AndroidView(WebView)` 从 Composition 中移除，因此返回 Home 必然新建 WebView、重新执行本地 DSH 就绪流程并再次 `loadUrl()`。第二，`dsh-client-ui-mobile/lib/client.js` 的窄屏 CSS 明确将 DSH 原生 sidebar/details、conversation header utilities 和 tabs 设为 `display:none`，再用自定义 hamburger / new-session 浮层替代它们；这正是原生设置入口和若干 DSH 元素消失的直接原因，而不是 DSH Web 没有加载完整。
+
+本轮将优先级改为“官方 DSH Web 是基线，移动 UI 适配后置”：
+
+- `ChatScreen` 现在在 native shell 生命周期内常驻，底部导航切换只改变 WebView `VISIBLE/INVISIBLE`，不会销毁 Home。`loadUrl()` 仍只在首次创建或 URL 真正为空时调用。
+- `MobilePluginProfileCoordinator` 保留 `@dsh-mobile/dsh-mobile-context` 为 active bundle，但把 `dsh-client-ui-mobile` 从 Web profile 的 dependency、bundle 和受管 `node_modules` 中移除。UI 包仍作为 APK-owned dormant asset 保留，便于后续重新设计，而不是继续影响当前 DSH DOM。
+- profile mode marker 改为 `native-dsh-web-v1`，因此 alpha.12 的旧 `0.1.9` marker 会触发一次离线迁移；用户自定义 dependency/bundle/JSON 字段保持不变，不调用启动期 pnpm。
+- Robolectric 升级场景从“加入 mobile UI”改为“识别并移除旧 mobile UI，同时保留用户字段、Context 与 dormant asset”，并验证幂等/自修复。ARM64 E2E 同时覆盖 seed fast path 与旧 profile rollback，验证 `pnpm-lock.yaml` SHA 不变，并实际启动 token-authenticated DSH Web。
+
+自动验证结果：
+
+- `android_unit_test`：PASS；
+- `mobile_context_contract`：PASS；
+- `runtime_alpine_e2e`：PASS，最终日志 `runtime-alpine-e2e: PASS dsh=0.1.2-rc.1`；
+- `android_lint`：PASS，287 actionable tasks（27 executed）；
+- 干净源码 `60818e3aecd8f5de969f52969a4c05bd4db69bd6` 上 `android_debug`：PASS，170 actionable tasks（6 executed）；
+- `android_signing_verify`：PASS，稳定证书 SHA-256 仍为 `08:5C:7B:7D:EA:58:2F:F9:29:5B:25:0F:88:D0:E9:0E:94:7B:D2:93:AC:72:7A:82:40:A7:47:C8:C9:B2:49:07`；
+- Alpha.13 APK：`release/DeepSeek-Harness-Mobile-0.3.0-alpha.13.apk`，`86,641,657` bytes，SHA-256 `1c59410aea85f67929a207cbd57bbe725a24e74bd858bf0e10acc616116ac743`。
+
+Orange Pi 的自动化测试能够证明 profile、Runtime、Android 编译与签名链路，但无法替代 OriginOS WebView 的视觉/交互验收。因此“原生 DSH 控件在该手机 viewport 上最终如何布局”仍由这次真机覆盖安装确认。若原生 DSH 自身的窄屏响应式布局仍不理想，下一轮才进入 UI 适配；适配不得再默认隐藏 DSH-owned settings/header/sidebar。

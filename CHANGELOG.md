@@ -290,3 +290,12 @@ Files:
 - `docs/INSTALLATION_RUNTIME_RESEARCH.md`
 - `docs/HANDOFF.md`
 - `docs/NEXT_ACTIONS.md`
+
+
+## 2026-09-12 — RELEASE: 0.3.0-alpha.13 native DSH Web baseline
+
+- Keep the Home WebView alive across native bottom-tab navigation, eliminating the Home reconstruction/reload loop.
+- Disable the active `dsh-client-ui-mobile` override that hid official DSH sidebar/header/settings controls; retain its files only as a dormant APK-owned asset for later UI redesign.
+- Migrate existing alpha.12 Web profiles offline while preserving user profile fields and active Mobile Context integration.
+- Validation: Robolectric unit tests, mobile-context contract, ARM64 Runtime E2E, Android lint, clean-commit Android build and stable signing verification PASS.
+- Release: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.13.apk`, SHA-256 `1c59410aea85f67929a207cbd57bbe725a24e74bd858bf0e10acc616116ac743`, size `86,641,657` bytes. OriginOS visual/interaction regression remains a manual device check.
