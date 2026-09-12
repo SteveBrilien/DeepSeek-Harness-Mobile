@@ -289,3 +289,22 @@ MCP 宿主为 ARM64 Linux，具备 JDK 17、Android SDK、`aapt2` 和 `adb`。�
 - Alpha.13 APK：`release/DeepSeek-Harness-Mobile-0.3.0-alpha.13.apk`，`86,641,657` bytes，SHA-256 `1c59410aea85f67929a207cbd57bbe725a24e74bd858bf0e10acc616116ac743`。
 
 Orange Pi 的自动化测试能够证明 profile、Runtime、Android 编译与签名链路，但无法替代 OriginOS WebView 的视觉/交互验收。因此“原生 DSH 控件在该手机 viewport 上最终如何布局”仍由这次真机覆盖安装确认。若原生 DSH 自身的窄屏响应式布局仍不理想，下一轮才进入 UI 适配；适配不得再默认隐藏 DSH-owned settings/header/sidebar。
+
+
+## 13. Alpha.14：当前 DSH Web 进程的认证 token 与 readiness 原子绑定
+
+Alpha.13 真机反馈首次把“Runtime/前端是否启动”和“WebView 是否完成认证”明确分开。用户在系统浏览器直接打开 `127.0.0.1:3080` 时得到 `dsh web authentication required; reopen the URL printed by dsh web.`，同时最新启动日志已通过 `verify-start-prerequisites`、`write-mobile-context`、`ensure-mobile-plugins` 和 `spawn-dsh-web`。这证明 DSH Web 服务本身在线，首页黑屏不能继续按 Runtime 缺失或前端资源未启动处理。
+
+进一步对照 DSH 的 browser-auth 实现和设备日志，确认存在一个真实竞态：每个 `dsh web` 进程会生成新的启动 token，只有该进程打印的 `/?token=...` 能完成一次 token -> cookie 交换；但 Alpha.13 的 readiness 原始 socket probe 会把任意 HTTP 状态都视为“端口已就绪”，所以设备上出现了 `[startup] web-ready: HTTP/1.1 404 Not Found ...`。同时 `webLaunchUrl()` 在累积 `dsh-web.log` 中寻找最后一个 token URL，当新进程已经占用端口、却尚未把新 token 行 flush 到日志时，代码可以读到上一启动尝试的 token。DSH 对旧 token 返回 401 是正确的安全行为，WebView 因此落到空白/未认证状态。
+
+Alpha.14 的修复把这两个条件合成一个启动合同：
+
+- `DshWebAuthContract.latestLaunchUrl()` 只解析最新 `=== DSH start ... ===` marker 之后的 token，绝不跨启动回退；
+- raw-loopback readiness 仅接受 2xx/3xx 和 DSH 裸根路径预期的 401；404/5xx 不再算 ready；
+- `AndroidRuntimeManager.start()` 只有在“endpoint ready + 当前启动 token 已出现”同时满足时才写入 `web-ready`；
+- 当端口已经就绪而 token 尚未出现时继续等待，并在诊断 detail 中记录 `waiting for current launch token`；
+- `ChatScreen` 捕获本地主 frame 401 并显示明确的可重试认证错误，不再用黑屏隐藏握手失败。
+
+新增单测直接复现用户日志顺序：“旧启动已有 token -> 新 start marker -> 新进程先被 probe 为 ready -> 新 token 稍后打印”。在新 token 出现前解析结果必须为 null；出现后必须只返回当前 token。状态合同同时验证 200/303/401 可接受、404/503 拒绝。
+
+本轮自动验证：`android_unit_test` PASS，`mobile_context_contract` PASS，ARM64 `runtime_alpine_e2e` PASS 并完成真实 token -> signed cookie -> authenticated frontend，`android_lint` PASS；干净源码 `4df103f2650d75933eeb5a05a3fafdc6355efef6` 上 `android_debug` PASS，稳定签名校验 PASS。候选 APK 为 `release/DeepSeek-Harness-Mobile-0.3.0-alpha.14.apk`，大小 `86,658,045` bytes，SHA-256 `0b551ca46db034eeeed082e2547cc80945c6729be6d03ddff3a138a3c73c366b`。由于没有在线 ADB 设备，Alpha.14 在 OriginOS 上的最终可视化认证闭环仍属于真机验收，不能写成已通过。

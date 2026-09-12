@@ -1,7 +1,7 @@
 {
-  "versionCode": 14,
-  "versionName": "0.3.0-alpha.13",
-  "apkUrl": "https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.13.apk",
-  "sha256": "1c59410aea85f67929a207cbd57bbe725a24e74bd858bf0e10acc616116ac743",
-  "notes": "Alpha.13 restores the official DSH Web surface as the baseline. Home now keeps one WebView alive across native bottom-tab switches, so returning to Home does not reconstruct or reload the DSH SPA. The experimental dsh-client-ui-mobile package is retained only as a dormant APK-owned asset and is removed from the active Web profile because its narrow-screen CSS hid official DSH sidebar/header/settings UI. Existing alpha.12 profiles migrate offline while preserving user fields and the mobile-context integration. Robolectric, ARM64 Runtime E2E, lint, clean Android build, and stable signing verification pass; OriginOS visual/device validation remains manual."
+  "versionCode": 15,
+  "versionName": "0.3.0-alpha.14",
+  "apkUrl": "https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.14.apk",
+  "sha256": "0b551ca46db034eeeed082e2547cc80945c6729be6d03ddff3a138a3c73c366b",
+  "notes": "Alpha.14 fixes the DSH Web authentication handoff race seen on OriginOS. Runtime readiness now requires both an acceptable loopback HTTP status and the token URL printed by the current DSH start attempt; tokens from earlier cumulative log entries can no longer be reused, and transitional 404 responses no longer count as ready. A main-frame 401 in WebView is surfaced as an explicit retryable authentication error instead of a silent blank page. The official DSH Web baseline and persistent Home WebView from Alpha.13 remain unchanged. Robolectric/unit tests, Mobile Context contract, ARM64 Runtime E2E with real token-to-cookie authentication, Android lint, clean-commit Android build, and stable signing verification pass; physical OriginOS rendering remains a manual validation."
 }

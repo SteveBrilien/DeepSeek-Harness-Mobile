@@ -299,3 +299,12 @@ Files:
 - Migrate existing alpha.12 Web profiles offline while preserving user profile fields and active Mobile Context integration.
 - Validation: Robolectric unit tests, mobile-context contract, ARM64 Runtime E2E, Android lint, clean-commit Android build and stable signing verification PASS.
 - Release: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.13.apk`, SHA-256 `1c59410aea85f67929a207cbd57bbe725a24e74bd858bf0e10acc616116ac743`, size `86,641,657` bytes. OriginOS visual/interaction regression remains a manual device check.
+
+
+## 2026-09-12 — RELEASE: 0.3.0-alpha.14 bind DSH Web readiness to the current auth token
+
+- Target-device Alpha.13 evidence showed DSH Web itself was alive while Home remained blank. The failure was the token handoff: readiness could be reported before the current process printed its launch token, while cumulative-log parsing could reuse an older process token.
+- Token discovery is now scoped to the newest DSH start marker; startup is ready only after both an acceptable loopback HTTP response and the current process token exist. Transitional HTTP 404 no longer counts as ready.
+- WebView main-frame local HTTP 401 now becomes an explicit retryable authentication error instead of a silent blank surface.
+- Validation: Android/Robolectric unit tests including the stale-token race, Mobile Context contract, ARM64 Runtime E2E with real token-to-cookie authentication, Android lint, clean-commit Android build and stable signing verification PASS.
+- Release: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.14.apk`, SHA-256 `0b551ca46db034eeeed082e2547cc80945c6729be6d03ddff3a138a3c73c366b`, size `86,658,045` bytes. OriginOS Alpha.14 visual/auth validation remains manual because no ADB device is attached.

@@ -1,7 +1,7 @@
 # DeepSeek Harness Mobile — Project Handoff
 
 Last updated: 2026-09-12
-Current app release: `0.3.0-alpha.13` (`versionCode = 14`)
+Current app release: `0.3.0-alpha.14` (`versionCode = 15`)
 Base Git HEAD before alpha.8 changes: `f4f0344fed75186115d9e1e4b0ff3e6a7f6073c9`
 Primary branch: `main`
 Remote: `ssh://git@ssh.github.com:443/SteveBrilien/DeepSeek-Harness-Mobile.git`
@@ -191,37 +191,46 @@ This fix still requires device-side reproduction/regression verification because
 - Existing alpha.12 profiles migrate offline: the coordinator removes only the managed mobile-UI dependency/bundle/profile tree, keeps `@dsh-mobile/dsh-mobile-context` active, preserves unrelated/user JSON fields and does not require a startup pnpm transaction. The profile-mode marker is now `native-dsh-web-v1`, forcing the one-time alpha.12 -> alpha.13 reconciliation.
 - UI adaptation is deliberately deferred until the official DSH Web baseline is validated on OriginOS. Future mobile work must not hide or replace DSH-owned settings/header/sidebar controls by default.
 
+### Alpha.14 current-process DSH Web authentication handshake
+
+- Alpha.13 target-device evidence proves the Runtime and DSH Web server can start normally: a direct browser request to `127.0.0.1:3080` receives DSH's expected `authentication required` response. The blank Home was therefore an Android host/WebView authentication handoff failure, not a missing Runtime or missing frontend.
+- The device log exposed an ordering race: on some starts Android recorded `web-ready` from the loopback probe before the current DSH process had printed its `dsh web: http://127.0.0.1:3080/?token=...` URL. The previous parser searched the cumulative log and could consequently hand WebView a token owned by an older DSH process. DSH correctly rejects that stale token with HTTP 401.
+- Alpha.14 scopes token extraction to the newest `=== DSH start ... ===` section. Startup reaches `web-ready` only when an acceptable loopback response **and** the current attempt's launch-token URL are both present. A transitional raw-loopback 404 is no longer treated as readiness; 2xx/3xx and the expected unauthenticated-root 401 remain valid endpoint-ready statuses.
+- `ChatScreen` additionally observes main-frame local HTTP 401 and turns it into a visible retryable authentication error instead of leaving a silent black WebView. The persistent Home WebView and native official DSH Web baseline from Alpha.13 are otherwise unchanged.
+- Regression coverage includes the exact stale-token ordering pattern from the target-device log: an old token followed by a new start marker and `web-ready` must yield no launch URL until the new process prints its own token.
+
 ## 4. Release artifact
 
 Current manual-test package:
 
-- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.13.apk`
-- SHA-256: `1c59410aea85f67929a207cbd57bbe725a24e74bd858bf0e10acc616116ac743`
-- size: `86,641,657` bytes
+- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.14.apk`
+- SHA-256: `0b551ca46db034eeeed082e2547cc80945c6729be6d03ddff3a138a3c73c366b`
+- size: `86,658,045` bytes
 - update manifest: `release/update.json`
 
 The current update manifest advertises:
 
-- `versionCode`: 14
-- `versionName`: `0.3.0-alpha.13`
-- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.13.apk`
+- `versionCode`: 15
+- `versionName`: `0.3.0-alpha.14`
+- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.14.apk`
 
 The project uses a stable development signing identity for alpha cover-install testing. Do not replace the signing identity casually; doing so breaks seamless upgrade/cover-install behavior.
 
 ## 5. Validation status
 
-Verified on the Orange Pi ARM64 development host for alpha.13:
+Verified on the Orange Pi ARM64 development host for alpha.14:
 
 - `mobile_context_contract`: PASS;
-- `android_unit_test`: PASS under Robolectric/API 30, including alpha.12 mobile-UI removal, user-field preservation/idempotent reconciliation, marker failure safety, startup telemetry and Foreground Service `ACTION_START`;
-- `runtime_alpine_e2e`: PASS for DSH `0.1.2-rc.1`, including the registry-free native-profile path, dormant mobile-UI asset, alpha.12 old-profile offline rollback with unchanged pnpm-lock SHA, Node/native/PTY fallbacks and token-authenticated real DSH Web startup;
-- `android_lint`: PASS (`287 actionable tasks`, `27 executed`, no blocking errors);
-- final clean-commit `android_debug`: PASS from source commit `60818e3aecd8f5de969f52969a4c05bd4db69bd6`;
+- `android_unit_test`: PASS under Robolectric/API 30, including alpha.12 mobile-UI removal, user-field preservation/idempotent reconciliation, marker failure safety, startup telemetry/Foreground Service `ACTION_START`, and the target-device stale-token/404-readiness regression;
+- `runtime_alpine_e2e`: PASS for DSH `0.1.2-rc.1`, including the registry-free native-profile path, dormant mobile-UI asset, alpha.12 old-profile offline rollback with unchanged pnpm-lock SHA, Node/native/PTY fallbacks and real token-to-cookie authenticated DSH Web startup;
+- DSH Web auth contract regression: PASS; cumulative-log stale tokens are rejected across start markers, 404 is not ready, and 401 remains the expected bare-root pre-auth signal;
+- `android_lint`: PASS (`287 actionable tasks`, `18 executed`, `269 up-to-date`, no blocking errors);
+- final clean-commit `android_debug`: PASS from source commit `4df103f2650d75933eeb5a05a3fafdc6355efef6`;
 - stable signing certificate verification: PASS; certificate SHA-256 remains `08:5C:7B:7D:EA:58:2F:F9:29:5B:25:0F:88:D0:E9:0E:94:7B:D2:93:AC:72:7A:82:40:A7:47:C8:C9:B2:49:07`;
-- release APK SHA-256: `1c59410aea85f67929a207cbd57bbe725a24e74bd858bf0e10acc616116ac743`;
+- release APK SHA-256: `0b551ca46db034eeeed082e2547cc80945c6729be6d03ddff3a138a3c73c366b`;
 - project path contamination check reports no known contamination.
 
-ADB HostCapability is healthy on the ARM64 host, but this release run found zero connected devices. Android 11 / OriginOS cover-install therefore remains a manual device validation item and is not reported as passed. The primary device regression is to install alpha.13 over alpha.12 without clearing data, reuse the existing Runtime slot, and confirm the six startup stages either reach `web-ready` or surface the exact failing stage immediately.
+ADB HostCapability is healthy on the ARM64 host, but this release run found zero connected devices. Android 11 / OriginOS cover-install therefore remains a manual device validation item and is not reported as passed. The primary device regression is to install alpha.14 over alpha.13 without clearing data, reuse the existing Runtime slot, and confirm the six startup stages either reach `web-ready` or surface the exact failing stage immediately.
 
 ## 6. Target-device validation sequence
 
