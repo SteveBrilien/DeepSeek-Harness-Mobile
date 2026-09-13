@@ -4,7 +4,11 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
 import android.view.View
+import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
+import android.webkit.RenderProcessGoneDetail
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -71,8 +75,16 @@ fun ChatScreen(
         }
 
         val dispatchedAt = System.currentTimeMillis()
+        val runtimeAction = if (resourceState.updateAvailable) {
+            state = LocalDshState.Checking(
+                "检测到 DSH ${resourceState.installedDshVersion ?: "旧版"} → ${resourceState.targetDshVersion}，正在备份并写入备用 Runtime slot…",
+            )
+            RuntimeForegroundService.ACTION_INSTALL
+        } else {
+            RuntimeForegroundService.ACTION_START
+        }
         val dispatch = runCatching {
-            RuntimeForegroundService.dispatch(appContext, RuntimeForegroundService.ACTION_START)
+            RuntimeForegroundService.dispatch(appContext, runtimeAction)
         }
         dispatch.exceptionOrNull()?.let { failure ->
             state = LocalDshState.Offline(
@@ -130,6 +142,9 @@ fun ChatScreen(
             onAuthenticationRejected = {
                 state = LocalDshState.Offline("DSH Web 拒绝了本次启动凭据；请重试以获取当前进程的新凭据")
             },
+            onFatalWebViewError = { detail ->
+                state = LocalDshState.Offline("Android WebView 无法渲染 DSH：$detail；可在设置中查看 WebView 诊断日志")
+            },
             modifier = modifier,
         )
     }
@@ -141,9 +156,11 @@ private fun DshWebClient(
     launchUrl: String,
     visible: Boolean,
     onAuthenticationRejected: () -> Unit,
+    onFatalWebViewError: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val diagnostics = remember(context) { DshWebViewDiagnostics(context.applicationContext) }
     key(launchUrl) {
         AndroidView(
             modifier = modifier.fillMaxSize(),
@@ -165,12 +182,64 @@ private fun DshWebClient(
                     settings.javaScriptCanOpenWindowsAutomatically = false
                     settings.setSupportMultipleWindows(false)
                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                    diagnostics.appendProviderInfo(this)
+                    diagnostics.append("create visible=$visible launch=$launchUrl")
+                    webChromeClient = object : WebChromeClient() {
+                        override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                            consoleMessage?.let { message ->
+                                diagnostics.append(
+                                    "console level=${message.messageLevel()} source=${message.sourceId()} " +
+                                        "line=${message.lineNumber()} message=${message.message()}",
+                                )
+                            }
+                            return super.onConsoleMessage(consoleMessage)
+                        }
+                    }
                     webViewClient = object : WebViewClient() {
+                        override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                            super.onPageStarted(view, url, favicon)
+                            diagnostics.append("page-started url=${url.orEmpty()}")
+                        }
+
+                        override fun onPageFinished(view: WebView?, url: String?) {
+                            super.onPageFinished(view, url)
+                            diagnostics.append("page-finished url=${url.orEmpty()} progress=${view?.progress ?: -1}")
+                            view?.evaluateJavascript(WEBVIEW_HEALTH_PROBE) { result ->
+                                diagnostics.append("page-health result=${result ?: "null"}")
+                            }
+                        }
+
+                        override fun onReceivedError(
+                            view: WebView?,
+                            request: WebResourceRequest?,
+                            error: WebResourceError?,
+                        ) {
+                            super.onReceivedError(view, request, error)
+                            val uri = request?.url
+                            diagnostics.append(
+                                "resource-error main=${request?.isForMainFrame == true} code=${error?.errorCode} " +
+                                    "description=${error?.description} url=${uri ?: "unknown"}",
+                            )
+                            if (request?.isForMainFrame == true && uri != null && isLocalDshUri(uri)) {
+                                onFatalWebViewError("网络错误 ${error?.errorCode ?: "unknown"}")
+                            }
+                        }
+
+                        override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                            diagnostics.append(
+                                "render-process-gone crashed=${detail?.didCrash()} priority=${detail?.rendererPriorityAtExit()}",
+                            )
+                            view?.destroy()
+                            onFatalWebViewError(if (detail?.didCrash() == true) "WebView 渲染进程崩溃" else "WebView 渲染进程被系统终止")
+                            return true
+                        }
+
                         override fun shouldOverrideUrlLoading(
                             view: WebView?,
                             request: WebResourceRequest?,
                         ): Boolean {
                             val uri = request?.url ?: return false
+                            diagnostics.append("navigation main=${request.isForMainFrame} url=$uri")
                             if (isLocalDshUri(uri)) {
                                 // Preserve DSH's literal 127.0.0.1 URL. Rewriting it to localhost
                                 // can interact badly with OEM VPN/DNS stacks on Android 11.
@@ -187,6 +256,10 @@ private fun DshWebClient(
                         ) {
                             super.onReceivedHttpError(view, request, errorResponse)
                             val uri = request?.url ?: return
+                            diagnostics.append(
+                                "http-error main=${request.isForMainFrame} status=${errorResponse?.statusCode} " +
+                                    "reason=${errorResponse?.reasonPhrase} url=$uri",
+                            )
                             if (
                                 request.isForMainFrame &&
                                 isLocalDshUri(uri) &&
@@ -252,6 +325,35 @@ private fun RuntimeStatusScreen(
         }
     }
 }
+
+private val WEBVIEW_HEALTH_PROBE = """
+    (function () {
+      try {
+        var body = document.body;
+        var root = document.documentElement;
+        var cryptoObject = window.crypto;
+        return JSON.stringify({
+          readyState: document.readyState,
+          title: document.title,
+          bodyChildren: body ? body.childElementCount : -1,
+          bodyTextLength: body && body.innerText ? body.innerText.length : 0,
+          htmlLength: root && root.outerHTML ? root.outerHTML.length : 0,
+          origin: location.origin,
+          path: location.pathname,
+          secureContext: window.isSecureContext === true,
+          crypto: typeof cryptoObject,
+          getRandomValues: cryptoObject ? typeof cryptoObject.getRandomValues : "missing",
+          randomUUID: cryptoObject ? typeof cryptoObject.randomUUID : "missing",
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+          devicePixelRatio: window.devicePixelRatio,
+          userAgent: navigator.userAgent
+        });
+      } catch (error) {
+        return JSON.stringify({ probeError: String(error && error.stack ? error.stack : error) });
+      }
+    })();
+""".trimIndent()
 
 private fun isLocalDshUri(uri: Uri): Boolean {
     val host = uri.host?.lowercase() ?: return false

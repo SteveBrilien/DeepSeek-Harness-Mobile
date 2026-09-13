@@ -45,12 +45,12 @@ internal object RuntimePins {
     const val LIBANDROID_SHMEM_PACKAGE_SHA256 =
         "0da3a24d558b93c92bcf8d611e0826a99ff96e396b148e6cdf33b47c47c57ff6"
 
-    const val PNPM_VERSION = "12.3.4"
-    const val DSH_VERSION = "0.1.2-rc.1"
-    const val DSH_SEED_ASSET = "runtime/seeds/dsh-0.1.2-rc.1-node24-arm64-musl.tgz"
-    const val DSH_SEED_SHA256 = "cf496f9e3151490b7aa18ada9bbfcce94ff38881adde177daf9320b218c91a5c"
-    const val DSH_WEB_PROFILE_SEED_ASSET = "runtime/seeds/web-profile-0.1.2-rc.1-mobile-context-0.2.1.tgz"
-    const val DSH_WEB_PROFILE_SEED_SHA256 = "02e46b929a5d9306ac0d907a524d55b73ae990e356705b8e455333687eb3b415"
+    val PNPM_VERSION: String = BuildConfig.DSH_PNPM_VERSION
+    val DSH_VERSION: String = BuildConfig.DSH_VERSION
+    val DSH_SEED_ASSET: String = BuildConfig.DSH_SEED_ASSET
+    val DSH_SEED_SHA256: String = BuildConfig.DSH_SEED_SHA256
+    val DSH_WEB_PROFILE_SEED_ASSET: String = BuildConfig.DSH_WEB_PROFILE_SEED_ASSET
+    val DSH_WEB_PROFILE_SEED_SHA256: String = BuildConfig.DSH_WEB_PROFILE_SEED_SHA256
     const val DSH_HTTP_PORT = 3080
 
     val nativeAssets = mapOf(

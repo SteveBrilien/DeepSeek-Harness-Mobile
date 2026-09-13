@@ -475,6 +475,104 @@ internal class NativeRuntimeInstaller(
     private fun ensureMobileContextIntegrationForRootfs(rootfs: File) {
         check(rootfs.isDirectory) { "Runtime rootfs is missing: ${rootfs.absolutePath}" }
         MobilePluginProfileCoordinator(appContext, layout).reconcile(::installBundledWebProfileSeed)
+        ensureManagedProfileDependencies()
+    }
+
+    /**
+     * Existing installs may carry the mobile-context plugin dependency tree resolved by an
+     * older DSH generation. Replacing only the local plugin source would leave a mixed
+     * profile (for example DSH 0.1.5 with dsh-llm 0.1.2). Merge only the dependency graph
+     * owned by the bundled mobile-context plugin from the verified profile seed. User
+     * dependencies, bundles and package.json fields are deliberately left untouched.
+     */
+    private fun ensureManagedProfileDependencies() {
+        val profileDir = File(layout.persistentDshHome, "profiles/web")
+        val nodeModules = File(profileDir, "node_modules")
+        val dshLlmManifest = File(nodeModules, "@deepseek-ai/dsh-llm/package.json")
+        val current = runCatching {
+            JSONObject(dshLlmManifest.readText(StandardCharsets.UTF_8)).optString("version")
+        }.getOrNull()
+        if (current == RuntimePins.DSH_VERSION) return
+
+        val seedFile = File(layout.tmpDir, "web-profile-dependencies-seed.tar.gz")
+        val stagingRoot = File(layout.tmpDir, "web-profile-dependencies-staging-${System.nanoTime()}")
+        if (seedFile.exists()) seedFile.delete()
+        if (stagingRoot.exists()) stagingRoot.deleteRecursively()
+        check(stagingRoot.mkdirs()) { "Unable to create managed profile dependency staging directory" }
+        try {
+            appContext.assets.open(RuntimePins.DSH_WEB_PROFILE_SEED_ASSET).use { input ->
+                FileOutputStream(seedFile).use { output -> input.copyTo(output) }
+            }
+            check(sha256(seedFile) == RuntimePins.DSH_WEB_PROFILE_SEED_SHA256) {
+                "Bundled Web profile seed checksum mismatch while refreshing managed dependencies"
+            }
+            extractRootfs(seedFile, stagingRoot)
+            val stagedModules = File(stagingRoot, "profiles/web/node_modules")
+            val stagedPlugin = File(stagedModules, "@dsh-mobile/dsh-mobile-context/package.json")
+            check(stagedPlugin.isFile) { "Bundled Web profile seed has no mobile-context manifest" }
+            val rootDependencies = JSONObject(stagedPlugin.readText(StandardCharsets.UTF_8))
+                .optJSONObject("dependencies")
+                ?: error("Bundled mobile-context has no dependencies")
+            val managed = linkedSetOf<String>()
+            fun collect(packageName: String) {
+                if (!managed.add(packageName)) return
+                require(packageName.isNotBlank() && !packageName.contains("..") && !packageName.startsWith('/')) {
+                    "Unsafe managed package name: $packageName"
+                }
+                val manifest = File(stagedModules, "$packageName/package.json")
+                check(manifest.isFile) { "Bundled managed dependency is missing: $packageName" }
+                val dependencies = JSONObject(manifest.readText(StandardCharsets.UTF_8)).optJSONObject("dependencies")
+                if (dependencies != null) {
+                    val keys = dependencies.keys()
+                    while (keys.hasNext()) collect(keys.next())
+                }
+            }
+            val roots = rootDependencies.keys()
+            while (roots.hasNext()) collect(roots.next())
+
+            managed.sorted().forEach { packageName ->
+                val source = File(stagedModules, packageName)
+                val destination = File(nodeModules, packageName)
+                replaceProfileDependencyTree(source, destination)
+            }
+            val refreshed = JSONObject(dshLlmManifest.readText(StandardCharsets.UTF_8)).optString("version")
+            check(refreshed == RuntimePins.DSH_VERSION) {
+                "Managed Web profile dependency refresh did not reach DSH ${RuntimePins.DSH_VERSION}: $refreshed"
+            }
+        } finally {
+            seedFile.delete()
+            stagingRoot.deleteRecursively()
+        }
+    }
+
+    private fun replaceProfileDependencyTree(source: File, destination: File) {
+        check(source.isDirectory) { "Managed dependency source is missing: ${source.absolutePath}" }
+        val parent = destination.parentFile ?: error("Managed dependency destination has no parent")
+        check(parent.exists() || parent.mkdirs()) { "Unable to create ${parent.absolutePath}" }
+        val staging = File(parent, ".${destination.name}.managed-${System.nanoTime()}")
+        val backup = File(parent, ".${destination.name}.backup-${System.nanoTime()}")
+        if (staging.exists()) staging.deleteRecursively()
+        if (backup.exists()) backup.deleteRecursively()
+        check(source.copyRecursively(staging, overwrite = true)) {
+            "Unable to stage managed dependency ${destination.name}"
+        }
+        var previousMoved = false
+        try {
+            if (destination.exists()) {
+                check(destination.renameTo(backup)) { "Unable to back up managed dependency ${destination.name}" }
+                previousMoved = true
+            }
+            check(staging.renameTo(destination)) { "Unable to activate managed dependency ${destination.name}" }
+            if (previousMoved) backup.deleteRecursively()
+        } catch (failure: Throwable) {
+            if (!destination.exists() && previousMoved && backup.exists()) {
+                runCatching { check(backup.renameTo(destination)) }.onFailure(failure::addSuppressed)
+            }
+            throw failure
+        } finally {
+            if (staging.exists()) staging.deleteRecursively()
+            if (backup.exists() && destination.exists()) backup.deleteRecursively()
+        }
     }
 
     private fun findReusableRootfsArchive(progress: (RuntimeInstallProgress) -> Unit): File? {

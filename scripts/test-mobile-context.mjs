@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
-import { cp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const root = resolve(process.cwd());
+const pinText = await readFile(resolve(root, 'config/dsh-runtime.properties'), 'utf8');
+const pins = Object.fromEntries(pinText.split(/\r?\n/).filter(line => line && !line.startsWith('#')).map(line => { const i=line.indexOf('='); return [line.slice(0,i), line.slice(i+1)]; }));
+const dshVersion = pins.dshVersion;
 const source = resolve(root, 'core/runtime-android/src/main/assets/runtime/dsh-mobile-context');
 const temp = resolve(root, '.mcp/tmp/mobile-context-contract');
 const plugin = resolve(temp, 'plugin');
@@ -14,7 +17,7 @@ await mkdir(llm, { recursive: true });
 await cp(source, plugin, { recursive: true });
 await writeFile(resolve(llm, 'package.json'), JSON.stringify({
   name: '@deepseek-ai/dsh-llm',
-  version: '0.1.2-rc.1',
+  version: dshVersion,
   type: 'module',
   exports: './index.js',
 }));
@@ -34,7 +37,7 @@ await writeFile(contextFile, JSON.stringify({
   androidVersion: '11',
   manufacturer: 'vivo',
   deviceModel: 'V2115A',
-  dshVersion: '0.1.2-rc.1',
+  dshVersion,
 }));
 process.env.DSH_MOBILE_CONTEXT_FILE = contextFile;
 

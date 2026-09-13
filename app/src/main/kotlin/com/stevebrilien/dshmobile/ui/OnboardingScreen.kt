@@ -341,7 +341,7 @@ internal fun OnboardingScreen(
             title = { Text("发现可复用的旧版 Runtime") },
             text = {
                 Text(
-                    "本机已有 DSH ${current?.installedDshVersion ?: "未知版本"}，推荐版本为 ${current?.targetDshVersion ?: "当前版本"}。可以直接继续使用，也可以通过 A/B slot 更新，不会先覆盖当前活动环境。",
+                    "本机已有 DSH ${current?.installedDshVersion ?: "未知版本"}，推荐版本为 ${current?.targetDshVersion ?: "当前版本"}。更新会先创建并校验 DSH 数据恢复快照，再写入备用 A/B slot；旧版本会话需要经过上游格式迁移，因此原活动环境不会先被覆盖。",
                 )
             },
             confirmButton = {

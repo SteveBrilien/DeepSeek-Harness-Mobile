@@ -1,6 +1,7 @@
 package com.stevebrilien.dshmobile.core.runtimeandroid
 
 import android.content.Context
+import com.stevebrilien.dshmobile.core.recovery.RecoveryBackupManager
 import com.stevebrilien.dshmobile.core.runtimeapi.RuntimeHealth
 import com.stevebrilien.dshmobile.core.runtimeapi.RuntimeSlot
 import kotlinx.coroutines.runBlocking
@@ -15,7 +16,9 @@ class RuntimeControlPlane(context: Context) {
         private val TOKEN_REDACTION = Regex("""token=[A-Za-z0-9_-]+""")
     }
 
-    private val manager = AndroidRuntimeManager(context.applicationContext)
+    private val appContext = context.applicationContext
+    private val manager = AndroidRuntimeManager(appContext)
+    private val backups = RecoveryBackupManager(appContext)
 
     fun health(): RuntimeHealth = runBlocking { manager.health() }
 
@@ -46,6 +49,19 @@ class RuntimeControlPlane(context: Context) {
                         "现有 Runtime 校验未通过，将在备用 slot 重新构建",
                         3,
                         logLine = verified.exceptionOrNull()?.message,
+                    ),
+                )
+            }
+
+            if (inventory.updateAvailable) {
+                progress(RuntimeInstallProgress("backup-before-upgrade", "升级前创建 DSH 数据恢复快照", 5))
+                val backup = backups.createCheckpoint()
+                progress(
+                    RuntimeInstallProgress(
+                        "backup-before-upgrade",
+                        "升级前恢复快照已验证",
+                        7,
+                        logLine = "${backup.file.name} · sha256=${backup.sha256}",
                     ),
                 )
             }

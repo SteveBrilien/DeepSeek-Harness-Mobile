@@ -308,3 +308,16 @@ Alpha.14 的修复把这两个条件合成一个启动合同：
 新增单测直接复现用户日志顺序：“旧启动已有 token -> 新 start marker -> 新进程先被 probe 为 ready -> 新 token 稍后打印”。在新 token 出现前解析结果必须为 null；出现后必须只返回当前 token。状态合同同时验证 200/303/401 可接受、404/503 拒绝。
 
 本轮自动验证：`android_unit_test` PASS，`mobile_context_contract` PASS，ARM64 `runtime_alpine_e2e` PASS 并完成真实 token -> signed cookie -> authenticated frontend，`android_lint` PASS；干净源码 `4df103f2650d75933eeb5a05a3fafdc6355efef6` 上 `android_debug` PASS，稳定签名校验 PASS。候选 APK 为 `release/DeepSeek-Harness-Mobile-0.3.0-alpha.14.apk`，大小 `86,658,045` bytes，SHA-256 `0b551ca46db034eeeed082e2547cc80945c6729be6d03ddff3a138a3c73c366b`。由于没有在线 ADB 设备，Alpha.14 在 OriginOS 上的最终可视化认证闭环仍属于真机验收，不能写成已通过。
+
+
+## 2026-09-13 — DSH 0.1.5-rc.2 unification and WebView isolation
+
+Target-device evidence changed the fault boundary: the exact current-process token URL renders the official DSH Web in the system browser, while the in-app Android WebView is blank. Therefore loopback service startup and token authentication are no longer treated as the primary blank-screen root cause; Alpha.15 instruments the WebView provider/JS/render path directly.
+
+The Runtime generation is moved from scattered hard-coded `0.1.2-rc.1` references to `config/dsh-runtime.properties`, currently pinning DSH `0.1.5-rc.2`, pnpm `12.3.4`, Mobile Context `0.2.2` and both embedded-seed SHA-256 values. A fresh Orange Pi ARM64/musl probe and the full `runtime_alpine_e2e` both pass rc.2. The upstream package still does not supply a usable `node-pty` Linux ARM64 prebuild, so the existing verified Node 24 ABI 137 `pty.node` remains part of the shipped seed.
+
+Existing Web profiles cannot be considered upgraded merely because `/opt/dsh` changes version: Alpha.14 profiles can still contain the rc.1 `dsh-llm` dependency tree. Alpha.15 therefore refreshes only the recursive dependency graph owned by the APK Mobile Context plugin from the SHA-verified rc.2 profile seed, preserving unrelated user dependencies, bundles and custom profile fields.
+
+The DSH Session persistence format changed between these generations. Alpha.15 requires a verified Recovery Vault checkpoint before updating an existing Runtime, stages the new Runtime into the inactive slot, then verifies/activates it. This checkpoint is intentionally part of rollback safety because Runtime A/B slots do not themselves version the shared `persistent/dsh-home`.
+
+Runtime logs remain append-only with existing size rotation, but new Android startup and DSH child-process lines carry readable local timestamps. WebView diagnostics use a separate rotating log and redact `token=` values before display.

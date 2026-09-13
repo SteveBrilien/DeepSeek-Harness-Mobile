@@ -340,3 +340,15 @@ Do not regress these constraints:
 ## 11. Current top priorities
 
 See `docs/NEXT_ACTIONS.md` for the active queue. The immediate priority is target-device verification of alpha.7, especially direct DSH startup from the already prepared alpha.6 Runtime without reinstall and confirmation that localhost loopback probing reaches DSH Web. After that, stabilize the first-run UX from real screenshots before expanding into new feature work.
+
+
+## 12. 2026-09-13 Alpha.15 Runtime-generation unification
+
+- The shipped DSH generation is now centrally pinned in `config/dsh-runtime.properties`; Android BuildConfig, RuntimePins, seed build and ARM64 E2E consume the same DSH/pnpm/Mobile Context versions and seed hashes.
+- Target DSH is `0.1.5-rc.2`; Mobile Context is `0.2.2` and depends on `@deepseek-ai/dsh-llm 0.1.5-rc.2`. Old rc.1 DSH/profile seed archives are removed from APK assets so releases cannot silently carry two Runtime generations.
+- The target still has no usable Linux ARM64 `node-pty` prebuild. Preserve the SHA-pinned Node 24 ABI 137 ARM64/musl `pty.node` fast path and source-build fallback.
+- Upgrading an installed older Runtime creates and verifies a Recovery Vault checkpoint before staging the inactive A/B slot. Existing persistent Web profiles preserve user fields/plugins; only the APK-owned Mobile Context package and its recursively resolved dependency graph are refreshed from the verified rc.2 profile seed.
+- DSH Session persistence changed across the upgrade range. Do not treat A/B rootfs rollback alone as a complete user-data rollback; the pre-upgrade Recovery Vault checkpoint is part of the upgrade invariant.
+- Runtime logs remain cumulative/rotating but every new startup/process line carries a readable local offset timestamp. UI log views still redact DSH Web token query values.
+- The embedded WebView now has a separate token-redacted diagnostic log (`files/runtime/logs/dsh-webview.log`) containing provider/version, user agent, page navigation/finish, HTTP/network failures, JavaScript console output, renderer death and a DOM/crypto health probe. The Settings/Recovery screen can copy/open the current DSH token URL explicitly without persisting it in display logs.
+- Official DSH Web remains the UI baseline. The dormant `dsh-client-ui-mobile` asset must not be re-enabled globally; phone-browser evidence shows upstream narrow-screen layout problems, but those are handled after render reliability with targeted non-destructive adaptation.

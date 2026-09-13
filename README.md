@@ -4,17 +4,17 @@ DeepSeek Harness Mobile is a personal Android host for running the official Deep
 
 ## Current release
 
-**0.3.0-alpha.3 — manual-test build**
+**0.3.0-alpha.15 — manual-test candidate**
 
 - Android target: fixed Android 11 self-hosting device profile.
-- APK: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.3.apk`
+- APK: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.15.apk`
 - Update manifest: `release/update.json`
 - The APK uses the project stable development signing certificate so later alpha builds can cover-install without silently changing identity.
 - This alpha is intended for manual installation/feedback. Clean-commit Android build, lint, stable signing, and artifact-integrity checks pass; final device/runtime E2E promotion remains feedback-gated because no ADB device was connected for this release build.
 
 ## Implemented surfaces
 
-- **对话** — official DSH Web Client hosted at the local loopback DSH service, with mobile-only compatibility CSS for narrow settings/model screens.
+- **对话** — official DSH Web Client hosted at the local loopback DSH service. The active profile keeps the upstream Web UI unmodified while Android WebView diagnostics isolate device-engine failures; narrow-screen adaptation is a separate follow-up layer.
 - **项目** — Mobile Project registry layered above native DSH Workspace/Session semantics.
 - **文件** — Native file manager/editor with create, rename, copy/move/paste, Trash and text editing.
 - **终端** — one terminal surface with Auto/Linux Runtime/Android Local/ADB execution-domain model; Linux and Android Local are implemented, while in-app Wireless ADB transport remains a follow-up capability.
@@ -27,7 +27,7 @@ The local runtime is rebuildable and separated from persistent user state:
 - PRoot + Alpine userspace
 - Node 24.x
 - pnpm
-- `@deepseek-ai/dsh` 0.1.2-rc.1
+- `@deepseek-ai/dsh` 0.1.5-rc.2
 - A/B runtime slots with verification and rollback
 - DSH Web binds only to `127.0.0.1:3080`
 - persistent `DSH_HOME` lives outside A/B slots so settings, sessions and credentials do not disappear when a slot is rebuilt or switched
@@ -55,7 +55,7 @@ Native UI is being aligned to official DSH primitives instead of generic Materia
 - official DSH Fish/Whale launcher mark and available upstream icon paths
 - compact DSH-like typography, spacing, fine borders and component geometry
 - edge-to-edge content with a compact swipe-up navigation tray
-- narrow-screen compatibility layer for the official DSH settings/models UI
+- official DSH Web retained as the baseline; narrow-screen adaptation is applied only after upstream controls remain reachable
 
 ## Recovery and secrets
 

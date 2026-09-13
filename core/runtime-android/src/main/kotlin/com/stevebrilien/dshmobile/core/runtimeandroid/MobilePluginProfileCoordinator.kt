@@ -20,7 +20,7 @@ internal class MobilePluginProfileCoordinator(
     private val layout: RuntimeLayout,
 ) {
     companion object {
-        const val MOBILE_CONTEXT_PLUGIN_VERSION = "0.2.1"
+        const val MOBILE_CONTEXT_PLUGIN_VERSION = "0.2.2"
         const val MOBILE_UI_PLUGIN_VERSION = "0.1.9"
         const val MOBILE_WEB_PROFILE_MODE = "native-dsh-web-v1"
 

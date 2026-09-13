@@ -2,6 +2,8 @@ package com.stevebrilien.dshmobile.ui
 
 import android.Manifest
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -71,6 +73,8 @@ fun RecoveryScreen(
     var snapshot by remember { mutableStateOf<RecoverySnapshot?>(null) }
     var runtimeHealth by remember { mutableStateOf<RuntimeHealth?>(null) }
     var runtimeLog by remember { mutableStateOf("") }
+    var webViewLog by remember { mutableStateOf("") }
+    var currentDshLaunchUrl by remember { mutableStateOf<String?>(null) }
     var refreshKey by remember { mutableIntStateOf(0) }
     var message by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -114,6 +118,8 @@ fun RecoveryScreen(
                     recovery = controller.inspect(),
                     runtime = runtime.health(),
                     runtimeLog = runtime.logTail(12_000),
+                    webViewLog = DshWebViewDiagnostics(appContext).tail(12_000),
+                    currentDshLaunchUrl = runtime.webLaunchUrl(),
                 )
             }
         }
@@ -122,6 +128,8 @@ fun RecoveryScreen(
             snapshot = it.recovery
             runtimeHealth = it.runtime
             runtimeLog = it.runtimeLog
+            webViewLog = it.webViewLog
+            currentDshLaunchUrl = it.currentDshLaunchUrl
             error = null
         }.onFailure { error = it.message ?: it::class.java.simpleName }
     }
@@ -363,6 +371,38 @@ fun RecoveryScreen(
                             { dispatchRuntime(RuntimeForegroundService.ACTION_ROLLBACK, "已请求回滚 Runtime") },
                             icon = DshIconGlyph.ROLLBACK,
                         )
+                        DshButton(
+                            "复制 DSH 浏览器链接",
+                            {
+                                val url = currentDshLaunchUrl
+                                if (url == null) {
+                                    error = "当前 DSH 进程尚未生成浏览器 token 链接"
+                                } else {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("DSH browser link", url))
+                                    message = "当前进程的 DSH 浏览器链接已复制"
+                                    error = null
+                                }
+                            },
+                            icon = DshIconGlyph.FILE,
+                        )
+                        DshButton(
+                            "在浏览器验证",
+                            {
+                                val url = currentDshLaunchUrl
+                                if (url == null) {
+                                    error = "当前 DSH 进程尚未生成浏览器 token 链接"
+                                } else {
+                                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) }
+                                        .onSuccess {
+                                            message = "已把当前 DSH token 链接交给系统浏览器"
+                                            error = null
+                                        }
+                                        .onFailure { error = it.message ?: "无法打开系统浏览器" }
+                                }
+                            },
+                            icon = DshIconGlyph.INFO,
+                        )
                     }
                 }
             }
@@ -392,6 +432,25 @@ fun RecoveryScreen(
             }
         }
 
+        item {
+            DshPanel(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    DshSectionTitle(
+                        "DSH WebView 诊断",
+                        description = "WebView 版本、导航、JavaScript console 与页面健康探针；token 自动脱敏",
+                    )
+                    SelectionContainer {
+                        Text(
+                            webViewLog.ifBlank { "暂无 WebView 诊断输出" },
+                            modifier = Modifier.padding(top = 8.dp),
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                            color = colors.textSecondary,
+                        )
+                    }
+                }
+            }
+        }
+
         item { DshSectionTitle("原生组件健康状态", modifier = Modifier.padding(top = 2.dp)) }
 
         items(snapshot?.checks.orEmpty(), key = { "recovery-${it.component.name}" }) { check ->
@@ -407,6 +466,8 @@ private data class RuntimeSnapshot(
     val recovery: RecoverySnapshot,
     val runtime: RuntimeHealth,
     val runtimeLog: String,
+    val webViewLog: String,
+    val currentDshLaunchUrl: String?,
 )
 
 @Composable

@@ -10,17 +10,19 @@ TMP_ROOT="$ROOT_DIR/.mcp/tmp/runtime-alpine-e2e-clean"
 ARCHIVE="$ROOT_DIR/.mcp/tmp/alpine-minirootfs-3.24.1-aarch64.tar.gz"
 ARCHIVE_URL="https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/aarch64/alpine-minirootfs-3.24.1-aarch64.tar.gz"
 ARCHIVE_SHA="f55a90f69052c5bd6f92cb09a8f47065970830b194c917a006fb94028e721259"
-DSH_VERSION="0.1.2-rc.1"
-PNPM_VERSION="12.3.4"
+PIN_FILE="$ROOT_DIR/config/dsh-runtime.properties"
+prop() { awk -F= -v key="$1" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$PIN_FILE"; }
+DSH_VERSION=$(prop dshVersion)
+PNPM_VERSION=$(prop pnpmVersion)
 NPM_REGISTRY=${DSHM_E2E_NPM_REGISTRY:-https://registry.npmmirror.com}
 ALPINE_BASE=${DSHM_E2E_ALPINE_BASE:-https://mirrors.ustc.edu.cn/alpine/v3.24}
 BUNDLED_PTY="$ROOT_DIR/core/runtime-android/src/main/assets/runtime/native-modules/node24-arm64-musl/pty.node"
 BUNDLED_PTY_SHA="3e9cb29670c2cac1f7d54302099af8b0f998b9acc79891666b3136db575f18c3"
-DSH_SEED="$ROOT_DIR/core/runtime-android/src/main/assets/runtime/seeds/dsh-0.1.2-rc.1-node24-arm64-musl.tgz"
-DSH_SEED_SHA="cf496f9e3151490b7aa18ada9bbfcce94ff38881adde177daf9320b218c91a5c"
-PROFILE_SEED="$ROOT_DIR/core/runtime-android/src/main/assets/runtime/seeds/web-profile-0.1.2-rc.1-mobile-context-0.2.1.tgz"
-PROFILE_SEED_SHA="02e46b929a5d9306ac0d907a524d55b73ae990e356705b8e455333687eb3b415"
-MOBILE_CONTEXT_VERSION="0.2.1"
+DSH_SEED="$ROOT_DIR/core/runtime-android/src/main/assets/$(prop dshSeedAsset)"
+DSH_SEED_SHA=$(prop dshSeedSha256)
+PROFILE_SEED="$ROOT_DIR/core/runtime-android/src/main/assets/$(prop webProfileSeedAsset)"
+PROFILE_SEED_SHA=$(prop webProfileSeedSha256)
+MOBILE_CONTEXT_VERSION=$(prop mobileContextVersion)
 MOBILE_UI_VERSION="0.1.9"
 
 command -v bwrap >/dev/null

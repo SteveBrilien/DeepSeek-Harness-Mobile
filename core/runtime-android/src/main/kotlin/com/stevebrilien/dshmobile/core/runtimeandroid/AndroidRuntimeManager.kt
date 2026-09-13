@@ -20,6 +20,8 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.URL
 import java.nio.charset.StandardCharsets
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 
 class AndroidRuntimeManager(
@@ -110,7 +112,7 @@ class AndroidRuntimeManager(
             val active = stateStore.read().activeSlot ?: error("No active runtime slot. Install a runtime first.")
             val logFile = File(stateStore.layout.logsDir, "dsh-web.log")
             logFile.parentFile?.let { check(it.exists() || it.mkdirs()) }
-            logFile.appendText("\n=== DSH start ${System.currentTimeMillis()} slot=${active.name} ===\n", StandardCharsets.UTF_8)
+            RuntimeLogWriter.append(logFile, "=== DSH start epochMillis=${System.currentTimeMillis()} slot=${active.name} ===", leadingBlank = true)
 
             fun <T> startupStep(
                 name: String,
@@ -119,15 +121,15 @@ class AndroidRuntimeManager(
                 block: () -> T,
             ): T {
                 progress(RuntimeStartProgress(name, message, percent))
-                logFile.appendText("[startup] $name\n", StandardCharsets.UTF_8)
+                RuntimeLogWriter.append(logFile, "[startup] $name")
                 return try {
                     block().also {
-                        logFile.appendText("[startup] $name: ok\n", StandardCharsets.UTF_8)
+                        RuntimeLogWriter.append(logFile, "[startup] $name: ok")
                         progress(RuntimeStartProgress(name, message, percent, "$name: ok"))
                     }
                 } catch (t: Throwable) {
                     val detail = t.message?.lineSequence()?.firstOrNull().orEmpty().take(320)
-                    logFile.appendText("[startup] $name: failed${if (detail.isNotBlank()) ": $detail" else ""}\n", StandardCharsets.UTF_8)
+                    RuntimeLogWriter.append(logFile, "[startup] $name: failed${if (detail.isNotBlank()) ": $detail" else ""}")
                     throw IllegalStateException("DSH startup preflight '$name' failed: ${t.message ?: t::class.java.simpleName}", t)
                 }
             }
@@ -153,7 +155,7 @@ class AndroidRuntimeManager(
             // Restart that owned process instead of waiting another full startup window on it.
             if (RuntimeProcessRegistry.isAlive()) RuntimeProcessRegistry.stop()
             progress(RuntimeStartProgress("spawn-dsh-web", "正在启动 DSH Web 进程", 65))
-            logFile.appendText("[startup] spawn-dsh-web\n", StandardCharsets.UTF_8)
+            RuntimeLogWriter.append(logFile, "[startup] spawn-dsh-web")
             RuntimeProcessRegistry.start(installer.buildProcess(active, command), logFile)
             progress(RuntimeStartProgress("wait-web-ready", "正在等待本地 DSH Web 就绪", 75))
             val deadline = System.currentTimeMillis() + WEB_STARTUP_TIMEOUT_MILLIS
@@ -161,7 +163,7 @@ class AndroidRuntimeManager(
                 val endpointReady = probeWebReady()
                 val currentLaunchUrl = webLaunchUrl()
                 if (endpointReady && currentLaunchUrl != null) {
-                    logFile.appendText("[startup] web-ready: $lastWebProbeDetail; current launch token observed\n", StandardCharsets.UTF_8)
+                    RuntimeLogWriter.append(logFile, "[startup] web-ready: $lastWebProbeDetail; current launch token observed")
                     progress(RuntimeStartProgress("web-ready", "DSH Web 已就绪", 100, "$lastWebProbeDetail; launch-token-ready"))
                     return@runCatching
                 }
@@ -408,17 +410,42 @@ class AndroidRuntimeManager(
     }
 }
 
+private object RuntimeLogWriter {
+    private val lock = Any()
+    private val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS XXX")
+
+    fun append(logFile: File, message: String, leadingBlank: Boolean = false) = synchronized(lock) {
+        logFile.parentFile?.let { check(it.exists() || it.mkdirs()) }
+        val prefix = OffsetDateTime.now().format(formatter)
+        val separator = if (leadingBlank && logFile.length() > 0L) "\n" else ""
+        logFile.appendText("$separator[$prefix] $message\n", StandardCharsets.UTF_8)
+    }
+}
+
 private object RuntimeProcessRegistry {
     private val lock = Any()
     private var process: Process? = null
+    private var readerThread: Thread? = null
 
     fun start(builder: ProcessBuilder, logFile: File) = synchronized(lock) {
         if (process?.isAlive == true) return
         logFile.parentFile?.let { check(it.exists() || it.mkdirs()) }
         rotateIfNeeded(logFile)
         builder.redirectErrorStream(true)
-        builder.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile))
-        process = builder.start()
+        val started = builder.start()
+        process = started
+        readerThread = Thread({
+            runCatching {
+                started.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { line -> RuntimeLogWriter.append(logFile, line) }
+                }
+            }.onFailure { failure ->
+                RuntimeLogWriter.append(logFile, "[process-log] reader failed: ${failure.message ?: failure::class.java.simpleName}")
+            }
+        }, "dsh-web-log-reader").apply {
+            isDaemon = true
+            start()
+        }
     }
 
     fun isAlive(): Boolean = synchronized(lock) { process?.isAlive == true }
@@ -437,6 +464,8 @@ private object RuntimeProcessRegistry {
                 current.waitFor(2, TimeUnit.SECONDS)
             }
         }
+        readerThread?.join(1_000)
+        readerThread = null
         process = null
     }
 

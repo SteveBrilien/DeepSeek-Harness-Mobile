@@ -1,13 +1,31 @@
+import java.util.Properties
+
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
 }
 
+val dshRuntimePins = Properties().apply {
+    rootProject.file("config/dsh-runtime.properties").inputStream().use(::load)
+}
+fun dshPin(name: String): String = dshRuntimePins.getProperty(name)
+    ?: error("Missing $name in config/dsh-runtime.properties")
+
 android {
     namespace = "com.stevebrilien.dshmobile.core.runtimeandroid"
     compileSdk = 35
 
-    defaultConfig { minSdk = 26 }
+    defaultConfig {
+        minSdk = 26
+        buildConfigField("String", "DSH_VERSION", "\"${dshPin("dshVersion")}\"")
+        buildConfigField("String", "DSH_PNPM_VERSION", "\"${dshPin("pnpmVersion")}\"")
+        buildConfigField("String", "DSH_SEED_ASSET", "\"${dshPin("dshSeedAsset")}\"")
+        buildConfigField("String", "DSH_SEED_SHA256", "\"${dshPin("dshSeedSha256")}\"")
+        buildConfigField("String", "DSH_WEB_PROFILE_SEED_ASSET", "\"${dshPin("webProfileSeedAsset")}\"")
+        buildConfigField("String", "DSH_WEB_PROFILE_SEED_SHA256", "\"${dshPin("webProfileSeedSha256")}\"")
+    }
+
+    buildFeatures { buildConfig = true }
 
     testOptions {
         unitTests.isIncludeAndroidResources = true
