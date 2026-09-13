@@ -308,3 +308,18 @@ Files:
 - WebView main-frame local HTTP 401 now becomes an explicit retryable authentication error instead of a silent blank surface.
 - Validation: Android/Robolectric unit tests including the stale-token race, Mobile Context contract, ARM64 Runtime E2E with real token-to-cookie authentication, Android lint, clean-commit Android build and stable signing verification PASS.
 - Release: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.14.apk`, SHA-256 `0b551ca46db034eeeed082e2547cc80945c6729be6d03ddff3a138a3c73c366b`, size `86,658,045` bytes. OriginOS Alpha.14 visual/auth validation remains manual because no ADB device is attached.
+
+## 2026-09-13T16:55:39.002509Z — RELEASE: Prepare 0.3.0-alpha.15 with DSH 0.1.5-rc.2 and WebView diagnostics
+
+Promoted the Alpha.15 manual-test candidate from clean source commit 1ba59cb9c7791a549396b65424ad698f1ae0b2fa. DSH/runtime/profile versions are unified on 0.1.5-rc.2 with Mobile Context 0.2.2; existing rc.1 installations use a Recovery-Vault-checkpointed A/B upgrade path that replaces only APK-managed dependencies. Added readable runtime timestamps, token-redacted WebView provider/navigation/console/renderer/DOM diagnostics, and explicit copy/open-current-DSH-URL actions. Validation passed Android/Robolectric unit tests, Mobile Context contract, ARM64 Alpine Runtime E2E, Android lint, a 390x844 MCP Chromium UI smoke covering onboarding/sidebar/Settings/workspace interactions with zero console/page/request errors, clean-commit Android build, byte-identical release packaging, and stable signing. Release APK SHA-256 is b8b5e56568320d9489be3ce294a340ef25c161c0e6d998c7dcdc7e64bef38d88, size 88,108,265 bytes. Physical OriginOS WebView rendering remains manual validation.
+
+Files:
+- `release/DeepSeek-Harness-Mobile-0.3.0-alpha.15.apk`
+- `release/SHA256SUMS`
+- `release/update.json`
+- `docs/HANDOFF.md`
+- `docs/NEXT_ACTIONS.md`
+- `config/dsh-runtime.properties`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/DshWebViewDiagnostics.kt`
+- `core/runtime-android/src/main/assets/runtime/seeds/dsh-0.1.5-rc.2-node24-arm64-musl.tgz`
+- `core/runtime-android/src/main/assets/runtime/seeds/web-profile-0.1.5-rc.2-mobile-context-0.2.2.tgz`

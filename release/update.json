@@ -1,7 +1,7 @@
 {
-  "versionCode": 15,
-  "versionName": "0.3.0-alpha.14",
-  "apkUrl": "https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.14.apk",
-  "sha256": "0b551ca46db034eeeed082e2547cc80945c6729be6d03ddff3a138a3c73c366b",
-  "notes": "Alpha.14 fixes the DSH Web authentication handoff race seen on OriginOS. Runtime readiness now requires both an acceptable loopback HTTP status and the token URL printed by the current DSH start attempt; tokens from earlier cumulative log entries can no longer be reused, and transitional 404 responses no longer count as ready. A main-frame 401 in WebView is surfaced as an explicit retryable authentication error instead of a silent blank page. The official DSH Web baseline and persistent Home WebView from Alpha.13 remain unchanged. Robolectric/unit tests, Mobile Context contract, ARM64 Runtime E2E with real token-to-cookie authentication, Android lint, clean-commit Android build, and stable signing verification pass; physical OriginOS rendering remains a manual validation."
+  "versionCode": 16,
+  "versionName": "0.3.0-alpha.15",
+  "apkUrl": "https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.15.apk",
+  "sha256": "b8b5e56568320d9489be3ce294a340ef25c161c0e6d998c7dcdc7e64bef38d88",
+  "notes": "Alpha.15 unifies the bundled/runtime/profile DSH generation on 0.1.5-rc.2 and Mobile Context 0.2.2. Existing rc.1 installations use a recovery-checkpointed A/B upgrade path and preserve user-owned profile fields while replacing only APK-managed runtime/plugin dependencies. WebView diagnostics now record provider/version, navigation, HTTP/network failures, JavaScript console output, renderer death and DOM/crypto health with token redaction; Settings can explicitly copy or open the current DSH browser URL for comparison. Runtime logs now carry readable local timestamps. Validation passes for Android/Robolectric unit tests, Mobile Context contract, ARM64 Alpine Runtime E2E including embedded/offline and fallback paths, mobile-size Chromium UI interactions at 390x844, Android lint, clean-commit Android build from source commit 1ba59cb9c7791a549396b65424ad698f1ae0b2fa, byte-identical release packaging and stable signing. Physical OriginOS WebView rendering remains the manual release validation target."
 }

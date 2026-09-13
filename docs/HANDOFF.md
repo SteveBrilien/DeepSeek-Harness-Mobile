@@ -1,7 +1,7 @@
 # DeepSeek Harness Mobile — Project Handoff
 
-Last updated: 2026-09-12
-Current app release: `0.3.0-alpha.14` (`versionCode = 15`)
+Last updated: 2026-09-14
+Current app release: `0.3.0-alpha.15` (`versionCode = 16`)
 Base Git HEAD before alpha.8 changes: `f4f0344fed75186115d9e1e4b0ff3e6a7f6073c9`
 Primary branch: `main`
 Remote: `ssh://git@ssh.github.com:443/SteveBrilien/DeepSeek-Harness-Mobile.git`
@@ -203,34 +203,35 @@ This fix still requires device-side reproduction/regression verification because
 
 Current manual-test package:
 
-- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.14.apk`
-- SHA-256: `0b551ca46db034eeeed082e2547cc80945c6729be6d03ddff3a138a3c73c366b`
-- size: `86,658,045` bytes
+- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.15.apk`
+- SHA-256: `b8b5e56568320d9489be3ce294a340ef25c161c0e6d998c7dcdc7e64bef38d88`
+- size: `88,108,265` bytes
+- source-freeze commit: `1ba59cb9c7791a549396b65424ad698f1ae0b2fa`
 - update manifest: `release/update.json`
 
 The current update manifest advertises:
 
-- `versionCode`: 15
-- `versionName`: `0.3.0-alpha.14`
-- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.14.apk`
+- `versionCode`: 16
+- `versionName`: `0.3.0-alpha.15`
+- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.15.apk`
 
 The project uses a stable development signing identity for alpha cover-install testing. Do not replace the signing identity casually; doing so breaks seamless upgrade/cover-install behavior.
 
 ## 5. Validation status
 
-Verified on the Orange Pi ARM64 development host for alpha.14:
+Verified on the Orange Pi ARM64 development host for alpha.15:
 
-- `mobile_context_contract`: PASS;
-- `android_unit_test`: PASS under Robolectric/API 30, including alpha.12 mobile-UI removal, user-field preservation/idempotent reconciliation, marker failure safety, startup telemetry/Foreground Service `ACTION_START`, and the target-device stale-token/404-readiness regression;
-- `runtime_alpine_e2e`: PASS for DSH `0.1.2-rc.1`, including the registry-free native-profile path, dormant mobile-UI asset, alpha.12 old-profile offline rollback with unchanged pnpm-lock SHA, Node/native/PTY fallbacks and real token-to-cookie authenticated DSH Web startup;
-- DSH Web auth contract regression: PASS; cumulative-log stale tokens are rejected across start markers, 404 is not ready, and 401 remains the expected bare-root pre-auth signal;
-- `android_lint`: PASS (`287 actionable tasks`, `18 executed`, `269 up-to-date`, no blocking errors);
-- final clean-commit `android_debug`: PASS from source commit `4df103f2650d75933eeb5a05a3fafdc6355efef6`;
+- `mobile_context_contract`: PASS with Mobile Context `0.2.2` / `@deepseek-ai/dsh-llm 0.1.5-rc.2`;
+- `android_unit_test`: PASS for Runtime Android and App/Robolectric coverage;
+- `runtime_alpine_e2e`: PASS for DSH `0.1.5-rc.2`, including embedded no-registry DSH/profile seeds, authenticated Web, online fallback, pinned ARM64/musl `node-pty`, real PTY behavior, source-build fallback, compiler cleanup, and old-profile reconciliation;
+- MCP ARM64 Chromium Browser UI smoke: PASS at `390x844`; current-token auth, first-run onboarding skip, sidebar open, Settings open/close, and workspace picker interactions pass with no console/page/request errors and no horizontal overflow;
+- `android_lint`: PASS (`289 actionable tasks`, `18 executed`, `271 up-to-date`);
+- final clean-commit `android_debug`: PASS from source commit `1ba59cb9c7791a549396b65424ad698f1ae0b2fa`;
 - stable signing certificate verification: PASS; certificate SHA-256 remains `08:5C:7B:7D:EA:58:2F:F9:29:5B:25:0F:88:D0:E9:0E:94:7B:D2:93:AC:72:7A:82:40:A7:47:C8:C9:B2:49:07`;
-- release APK SHA-256: `0b551ca46db034eeeed082e2547cc80945c6729be6d03ddff3a138a3c73c366b`;
+- release APK is byte-identical to the clean-commit build artifact and has SHA-256 `b8b5e56568320d9489be3ce294a340ef25c161c0e6d998c7dcdc7e64bef38d88`;
 - project path contamination check reports no known contamination.
 
-ADB HostCapability is healthy on the ARM64 host, but this release run found zero connected devices. Android 11 / OriginOS cover-install therefore remains a manual device validation item and is not reported as passed. The primary device regression is to install alpha.14 over alpha.13 without clearing data, reuse the existing Runtime slot, and confirm the six startup stages either reach `web-ready` or surface the exact failing stage immediately.
+ADB HostCapability is healthy on the ARM64 host, but physical OriginOS WebView validation remains a manual release item unless an ADB device is connected. Alpha.15 should be cover-installed over Alpha.14 without clearing data so the recovery-checkpointed rc.1 -> rc.2 A/B upgrade and the new WebView diagnostics are exercised.
 
 ## 6. Target-device validation sequence
 
@@ -302,7 +303,7 @@ Registered MCP project: `deepseek-harness-mobile`.
 Known-good environment at handoff time:
 
 - OrangePi host: aarch64;
-- MCP: `2.1.6-orange.1`;
+- MCP: `2.1.11-orange.1`;
 - project branch: `main`;
 - repository-scoped ED25519 GitHub Deploy Key authentication is configured under ignored `.mcp/ssh/` state; the private key must never be committed or copied into ordinary logs/docs;
 - SSH host verification is pinned to GitHub's published Ed25519 host key and the repository deploy-key authentication/push path was verified on 2026-09-09;
@@ -311,6 +312,8 @@ Known-good environment at handoff time:
 - Android SDK HostCapability valid;
 - AAPT2 HostCapability valid;
 - ADB HostCapability valid, but target device may not currently be connected.
+
+The MCP 2.1.11 server registers 21 `browser_*` tools in addition to the 119 pre-existing tools, and the Browser Runtime itself is healthy. At the Alpha.15 handoff, the ChatGPT connector schema still exposed only the 119 non-browser actions, so browser smoke evidence was produced with the same MCP-installed Playwright/ARM64 Chromium inside the controlled sandbox. Treat this as connector/schema exposure debt, not a missing Browser Runtime.
 
 Build through configured TaskProfiles where possible:
 
@@ -339,7 +342,7 @@ Do not regress these constraints:
 
 ## 11. Current top priorities
 
-See `docs/NEXT_ACTIONS.md` for the active queue. The immediate priority is target-device verification of alpha.7, especially direct DSH startup from the already prepared alpha.6 Runtime without reinstall and confirmation that localhost loopback probing reaches DSH Web. After that, stabilize the first-run UX from real screenshots before expanding into new feature work.
+See `docs/NEXT_ACTIONS.md` for the active queue. The immediate priority is target-device cover-install validation of Alpha.15 over Alpha.14: verify the checkpointed rc.1 -> rc.2 A/B upgrade, then compare the in-app WebView against the exact current-token system-browser URL and collect `dsh-webview.log` if rendering is still blank. Only after render reliability is confirmed should narrow-screen DSH Web adaptation resume.
 
 
 ## 12. 2026-09-13 Alpha.15 Runtime-generation unification
