@@ -45,7 +45,7 @@ class PresentationCandidateIdentityTest {
                     ("@dsh-mobile/dsh-webview-compat" to "44".repeat(32)),
             ),
         )
-        assertNotEquals(baseline, generation(handshakeSchema = 2))
+        assertNotEquals(baseline, generation(handshakeSchema = PresentationHandshakeContract.SCHEMA_VERSION + 1))
     }
 
     @Test

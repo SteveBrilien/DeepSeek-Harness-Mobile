@@ -114,6 +114,7 @@ private fun DshWebClient(
     val existing = hostState.peek() != null
     val webView = remember(hostState, context) {
         hostState.obtain(context).also { view ->
+            hostState.ensurePresentationBridge(view, diagnostics)
             diagnostics.append(
                 "host-obtain host=${hostState.id} view=${viewIdentity(view)} reused=$existing launch=$launchUrl",
             )
@@ -174,24 +175,20 @@ private fun DshWebClient(
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
                 diagnostics.append("page-started view=${view?.let(::viewIdentity)} url=${url.orEmpty()}")
+                // A document reload/redirect starts a fresh page-side sequence even when Compose did
+                // not issue loadUrl(). Reset before the new document can emit its first handshake.
+                hostState.beginPresentationNavigation(
+                    launchUrl = url.orEmpty(),
+                    diagnostics = diagnostics,
+                    reason = "page-started",
+                )
                 view?.let { logViewState(it, diagnostics, "page-started") }
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 diagnostics.append("page-finished url=${url.orEmpty()} progress=${view?.progress ?: -1}")
-                view ?: return
-                if (BuildConfig.DEBUG) {
-                    runHealthProbe(view, diagnostics, "finished")
-                    for (delayMillis in listOf(2_000L, 5_000L, 10_000L)) {
-                        val expectedUrl = url
-                        view.postDelayed({
-                            if (view.url == expectedUrl) {
-                                runHealthProbe(view, diagnostics, "+${delayMillis / 1_000}s")
-                            }
-                        }, delayMillis)
-                    }
-                }
+                view?.let { logViewState(it, diagnostics, "page-finished") }
             }
 
             override fun onReceivedError(
@@ -281,6 +278,11 @@ private fun DshWebClient(
             logViewState(view, diagnostics, "update")
             if (shouldLoad) {
                 hostState.loadedLaunchUrl = launchUrl
+                hostState.beginPresentationNavigation(
+                    launchUrl = launchUrl,
+                    diagnostics = diagnostics,
+                    reason = "load-request",
+                )
                 view.loadUrl(launchUrl)
             }
         },
@@ -291,10 +293,48 @@ class DshWebViewHostState {
     val id: String = UUID.randomUUID().toString().take(8)
     var loadedLaunchUrl: String? = null
     private var webView: WebView? = null
+    private var presentationBridgeView: WebView? = null
+    private val presentationNavigationState = DshPresentationNavigationState()
+    internal var latestPresentationTelemetry: DshPresentationTelemetry? = null
+        private set
 
     fun peek(): WebView? = webView
 
     fun obtain(context: Context): WebView = webView ?: WebView(context).also { webView = it }
+
+    internal fun ensurePresentationBridge(view: WebView, diagnostics: DshWebViewDiagnostics) {
+        if (presentationBridgeView === view) return
+        presentationBridgeView = view
+        presentationNavigationState.reset()
+        latestPresentationTelemetry = null
+        DshPresentationBridge.install(view, diagnostics) { telemetry ->
+            val rejection = presentationNavigationState.accept(telemetry)
+            if (rejection != null) {
+                diagnostics.append("presentation-handshake rejected reason=$rejection")
+                return@install
+            }
+            latestPresentationTelemetry = telemetry
+        }
+    }
+
+    internal fun beginPresentationNavigation(
+        launchUrl: String,
+        diagnostics: DshWebViewDiagnostics,
+        reason: String,
+    ) {
+        presentationNavigationState.reset()
+        latestPresentationTelemetry = null
+        val origin = runCatching {
+            Uri.parse(launchUrl).let { "${it.scheme}://${it.host}:${it.port}" }
+        }.getOrDefault("unknown")
+        diagnostics.append("presentation-navigation begin host=$id reason=$reason origin=$origin")
+    }
+
+    /** Heavy DOM diagnostics are deliberately on-demand; cheap readiness uses WebMessage telemetry. */
+    internal fun captureDetailedPresentationDiagnostics(diagnostics: DshWebViewDiagnostics) {
+        if (!BuildConfig.DEBUG) return
+        webView?.let { runHealthProbe(it, diagnostics, "on-demand") }
+    }
 
     /**
      * Keep the browser resource cache coherent with the APK-managed DSH presentation.
@@ -326,6 +366,9 @@ class DshWebViewHostState {
         if (candidate === webView) {
             webView = null
             loadedLaunchUrl = null
+            presentationBridgeView = null
+            presentationNavigationState.reset()
+            latestPresentationTelemetry = null
         }
     }
 
@@ -336,6 +379,9 @@ class DshWebViewHostState {
         }
         webView = null
         loadedLaunchUrl = null
+        presentationBridgeView = null
+        presentationNavigationState.reset()
+        latestPresentationTelemetry = null
     }
 }
 

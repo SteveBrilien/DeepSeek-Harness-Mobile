@@ -366,3 +366,13 @@ See `docs/NEXT_ACTIONS.md` for the active queue. The immediate priority is targe
 - Checkpoints write a partial ZIP, verify the completed archive, then atomically publish it; failed partials are removed and stale partials are bounded.
 - New Recovery unit tests cover link2symlink logical-path preservation, pnpm/L2S exclusion and collision detection. `android_unit_test` now includes `:core:recovery:testDebugUnitTest`.
 - Native MCP Browser smoke against DSH `0.1.5-rc.2` at `390x844` verifies auth/onboarding/sidebar/Settings/workspace interaction and records screenshot, console and network evidence. The upstream Settings layout remains narrow/squeezed and is intentionally deferred to the P1 mobile-adapter phase.
+
+## 9. WebView presentation checkpoint status (2026-09-14)
+
+The WebView rendering investigation is now checkpointed separately from normal Runtime readiness. Checkpoint 1 introduced content-addressed presentation candidate identity and a fail-safe reuse policy. Checkpoint 2 has implemented a bounded, one-way WebMessage observability handshake (schema `2`) without changing the existing `100dvh` viewport repair.
+
+Current Checkpoint 2 host-side gates are green: full Unit, Debug Build, Lint, Mobile Context contract, Runtime Alpine E2E, signing and a fresh exact-composition Chromium sanity gate. The current Debug artifact is `artifact-3bc397be5d7a437084cd79ebd0226271`, SHA-256 `0a7b0ee893324e85a79ff83f914bad41ac7fa365dfe275b4930e16e536cf7fa0`.
+
+**Do not advance to the next viewport-repair checkpoint yet.** The remaining Checkpoint 2 acceptance step is to cover-install that exact APK on the target Android 11 device, cold-start it, and capture the schema-2 presentation handshake (`bootRev`, `comboRev`, viewport-unit measurements, root generation/height and final ready/degraded phase). The physical device was no longer visible to host ADB at the end of the current run, so this is an external test blocker rather than a known app regression.
+
+Detailed evidence and exact job IDs are in `analysis/debug/2026-09-14-cp2-observability/evidence.md`.

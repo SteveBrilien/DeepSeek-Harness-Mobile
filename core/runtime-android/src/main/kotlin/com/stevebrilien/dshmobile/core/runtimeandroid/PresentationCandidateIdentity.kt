@@ -3,6 +3,11 @@ package com.stevebrilien.dshmobile.core.runtimeandroid
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
+/** Public protocol identity shared by the Android WebView host and presentation generation. */
+object PresentationHandshakeContract {
+    const val SCHEMA_VERSION = 2
+}
+
 /**
  * Content-addressed identity for the APK-managed DSH presentation contract.
  *
@@ -13,7 +18,7 @@ import java.security.MessageDigest
  */
 internal object PresentationCandidateIdentity {
     const val SCHEMA_VERSION = 1
-    const val HANDSHAKE_SCHEMA_VERSION = 1
+    const val HANDSHAKE_SCHEMA_VERSION = PresentationHandshakeContract.SCHEMA_VERSION
 
     fun compute(
         dshSeedSha256: String,

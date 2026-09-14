@@ -403,3 +403,15 @@ If the App process is killed while an old DSH child process remains alive on por
 - New APK publication.
 
 The local CP1 commit must remain unpushed, and work must stop before Checkpoint 2 until explicitly resumed.
+
+## 12. Checkpoint 2 progress — WebMessage observability (2026-09-14)
+
+Checkpoint 2 now has a schema-2, one-way, bounded WebMessage observability channel around the existing viewport repair. Android installs the listener before navigation and restricts it to the exact local DSH origin, main-frame string messages and an 8 KiB payload ceiling. The browser reports deterministic phases, DSH boot/combo revisions and bounded viewport/root geometry. Android validates sequence, phase transitions and root generation but does not use those messages to drive Runtime/product readiness state.
+
+The existing `100dvh` repair is intentionally unchanged. Heavy whole-DOM diagnostics are no longer automatic; startup readiness telemetry is bounded and the heavier probe is DEBUG-only/on-demand.
+
+Exact-current-source gates are green: targeted handshake tests, full Unit, Debug Build, Lint, Mobile Context contract, Runtime Alpine E2E, signing, Node-24 syntax, merged-asset byte identity, schema exactness and `git diff --check`. A fresh 360x740 Chromium composition also rendered successfully and requested the current compat bundle (`rev=c01a79a20e9c`). This remains a composition gate only and is not a substitute for Android WebView evidence.
+
+Checkpoint 2 is **not complete**. The exact Debug APK is `artifact-3bc397be5d7a437084cd79ebd0226271`, SHA-256 `0a7b0ee893324e85a79ff83f914bad41ac7fa365dfe275b4930e16e536cf7fa0`. At the true-device stage, the isolated ADB TaskProfile reproduced its known private-daemon/no-device defect; a subsequent approved host-ADB action also reported the physical device absent. Therefore the remaining blocker is a real missing ADB transport, not a product failure. No `#root=0` cause classification and no Checkpoint 3 behavior change is allowed until this exact APK produces a schema-2 true-device handshake.
+
+Run-specific evidence is recorded in `analysis/debug/2026-09-14-cp2-observability/evidence.md`.
