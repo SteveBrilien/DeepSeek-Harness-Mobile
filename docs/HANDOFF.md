@@ -1,7 +1,7 @@
 # DeepSeek Harness Mobile — Project Handoff
 
 Last updated: 2026-09-14
-Current app release: `0.3.0-alpha.15` (`versionCode = 16`)
+Current app release: `0.3.0-alpha.16` (`versionCode = 17`)
 Base Git HEAD before alpha.8 changes: `f4f0344fed75186115d9e1e4b0ff3e6a7f6073c9`
 Primary branch: `main`
 Remote: `ssh://git@ssh.github.com:443/SteveBrilien/DeepSeek-Harness-Mobile.git`
@@ -203,35 +203,35 @@ This fix still requires device-side reproduction/regression verification because
 
 Current manual-test package:
 
-- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.15.apk`
-- SHA-256: `b8b5e56568320d9489be3ce294a340ef25c161c0e6d998c7dcdc7e64bef38d88`
-- size: `88,108,265` bytes
-- source-freeze commit: `1ba59cb9c7791a549396b65424ad698f1ae0b2fa`
+- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.16.apk`
+- SHA-256: `0b56a6e6de5f70bcd4634678368a746b3c0d8cc03a2d289be92cf9fbb6ff651b`
+- size: `88,124,653` bytes
+- source-freeze commit: `2f31d54c06ec055530182fa4fd588990623e8e99`
 - update manifest: `release/update.json`
 
 The current update manifest advertises:
 
-- `versionCode`: 16
-- `versionName`: `0.3.0-alpha.15`
-- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.15.apk`
+- `versionCode`: 17
+- `versionName`: `0.3.0-alpha.16`
+- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.16.apk`
 
 The project uses a stable development signing identity for alpha cover-install testing. Do not replace the signing identity casually; doing so breaks seamless upgrade/cover-install behavior.
 
 ## 5. Validation status
 
-Verified on the Orange Pi ARM64 development host for alpha.15:
+Verified on the Orange Pi ARM64 development host for alpha.16:
 
 - `mobile_context_contract`: PASS with Mobile Context `0.2.2` / `@deepseek-ai/dsh-llm 0.1.5-rc.2`;
-- `android_unit_test`: PASS for Runtime Android and App/Robolectric coverage;
+- `android_unit_test`: PASS for Recovery, Runtime Android and App/Robolectric coverage, including PRoot link2symlink logical-path and backup-entry collision regression tests;
 - `runtime_alpine_e2e`: PASS for DSH `0.1.5-rc.2`, including embedded no-registry DSH/profile seeds, authenticated Web, online fallback, pinned ARM64/musl `node-pty`, real PTY behavior, source-build fallback, compiler cleanup, and old-profile reconciliation;
-- MCP ARM64 Chromium Browser UI smoke: PASS at `390x844`; current-token auth, first-run onboarding skip, sidebar open, Settings open/close, and workspace picker interactions pass with no console/page/request errors and no horizontal overflow;
+- native MCP `browser_*` UI smoke: PASS at `390x844`; current-token auth, first-run onboarding skip, sidebar open, Settings open/close, and workspace picker interactions pass with no console errors or failed application requests. The upstream rc.2 Settings content is still visually squeezed on a 390px viewport and remains a P1 mobile-layout item;
 - `android_lint`: PASS (`289 actionable tasks`, `18 executed`, `271 up-to-date`);
-- final clean-commit `android_debug`: PASS from source commit `1ba59cb9c7791a549396b65424ad698f1ae0b2fa`;
+- final clean-commit `android_debug`: PASS from source commit `2f31d54c06ec055530182fa4fd588990623e8e99`;
 - stable signing certificate verification: PASS; certificate SHA-256 remains `08:5C:7B:7D:EA:58:2F:F9:29:5B:25:0F:88:D0:E9:0E:94:7B:D2:93:AC:72:7A:82:40:A7:47:C8:C9:B2:49:07`;
-- release APK is byte-identical to the clean-commit build artifact and has SHA-256 `b8b5e56568320d9489be3ce294a340ef25c161c0e6d998c7dcdc7e64bef38d88`;
+- release APK is byte-identical to the clean-commit build artifact and has SHA-256 `0b56a6e6de5f70bcd4634678368a746b3c0d8cc03a2d289be92cf9fbb6ff651b`;
 - project path contamination check reports no known contamination.
 
-ADB HostCapability is healthy on the ARM64 host, but physical OriginOS WebView validation remains a manual release item unless an ADB device is connected. Alpha.15 should be cover-installed over Alpha.14 without clearing data so the recovery-checkpointed rc.1 -> rc.2 A/B upgrade and the new WebView diagnostics are exercised.
+ADB HostCapability is healthy on the ARM64 host, but no physical device was connected during Alpha.16 release validation. Alpha.16 should be cover-installed over Alpha.15 without clearing data. The previously failed rc.1 -> rc.2 upgrade remains recoverable because Alpha.15 stopped during the pre-upgrade checkpoint; Alpha.16 retries that checkpoint with the PRoot-safe archive implementation before staging/switching the inactive slot.
 
 ## 6. Target-device validation sequence
 
@@ -303,7 +303,7 @@ Registered MCP project: `deepseek-harness-mobile`.
 Known-good environment at handoff time:
 
 - OrangePi host: aarch64;
-- MCP: `2.1.11-orange.1`;
+- MCP: `2.1.12-orange.1`;
 - project branch: `main`;
 - repository-scoped ED25519 GitHub Deploy Key authentication is configured under ignored `.mcp/ssh/` state; the private key must never be committed or copied into ordinary logs/docs;
 - SSH host verification is pinned to GitHub's published Ed25519 host key and the repository deploy-key authentication/push path was verified on 2026-09-09;
@@ -313,7 +313,7 @@ Known-good environment at handoff time:
 - AAPT2 HostCapability valid;
 - ADB HostCapability valid, but target device may not currently be connected.
 
-The MCP 2.1.11 server registers 21 `browser_*` tools in addition to the 119 pre-existing tools, and the Browser Runtime itself is healthy. At the Alpha.15 handoff, the ChatGPT connector schema still exposed only the 119 non-browser actions, so browser smoke evidence was produced with the same MCP-installed Playwright/ARM64 Chromium inside the controlled sandbox. Treat this as connector/schema exposure debt, not a missing Browser Runtime.
+MCP 2.1.12 exposes the `browser_*` tools directly to this ChatGPT connector. Alpha.16 release smoke used native `browser_start_session`, navigation, snapshot, click, screenshot, console and network-request tools against a real localhost DSH rc.2 process; the previous connector/schema exposure gap is closed.
 
 Build through configured TaskProfiles where possible:
 
@@ -342,7 +342,7 @@ Do not regress these constraints:
 
 ## 11. Current top priorities
 
-See `docs/NEXT_ACTIONS.md` for the active queue. The immediate priority is target-device cover-install validation of Alpha.15 over Alpha.14: verify the checkpointed rc.1 -> rc.2 A/B upgrade, then compare the in-app WebView against the exact current-token system-browser URL and collect `dsh-webview.log` if rendering is still blank. Only after render reliability is confirmed should narrow-screen DSH Web adaptation resume.
+See `docs/NEXT_ACTIONS.md` for the active queue. The immediate priority is target-device cover-install validation of Alpha.16 over the failed Alpha.15 upgrade attempt: verify that the new PRoot-safe Recovery checkpoint completes, the rc.1 -> rc.2 A/B upgrade activates, then compare the in-app WebView against the exact current-token system-browser URL and collect `dsh-webview.log` if rendering is still blank. Only after render reliability is confirmed should narrow-screen DSH Web adaptation resume.
 
 
 ## 12. 2026-09-13 Alpha.15 Runtime-generation unification
@@ -355,3 +355,14 @@ See `docs/NEXT_ACTIONS.md` for the active queue. The immediate priority is targe
 - Runtime logs remain cumulative/rotating but every new startup/process line carries a readable local offset timestamp. UI log views still redact DSH Web token query values.
 - The embedded WebView now has a separate token-redacted diagnostic log (`files/runtime/logs/dsh-webview.log`) containing provider/version, user agent, page navigation/finish, HTTP/network failures, JavaScript console output, renderer death and a DOM/crypto health probe. The Settings/Recovery screen can copy/open the current DSH token URL explicitly without persisting it in display logs.
 - Official DSH Web remains the UI baseline. The dormant `dsh-client-ui-mobile` asset must not be re-enabled globally; phone-browser evidence shows upstream narrow-screen layout problems, but those are handled after render reliability with targeted non-destructive adaptation.
+
+
+## 13. 2026-09-14 Alpha.16 PRoot-safe Recovery checkpoint
+
+- Alpha.15 target-device evidence isolated the rc.1 -> rc.2 upgrade failure to the pre-upgrade Recovery Vault ZIP, before the inactive Runtime slot was staged or activated. The failing entry was a PRoot `link2symlink` `.l2s.*` backing object inside pnpm's CAS store.
+- Recovery backup ZIP names now come from logical relative paths. Canonical paths remain only for containment/security checks, so multiple guest logical files no longer collapse onto one `.l2s.*` archive name.
+- Rebuildable `dsh-home/.local/share/pnpm/store/**` and `.l2s.*` implementation files are excluded, and the pnpm store subtree is pruned during traversal instead of scanned file-by-file.
+- Backup entry names have an explicit registry: an identical duplicate source is skipped, while a real logical archive-path collision fails with a diagnostic before `ZipOutputStream` emits an invalid archive.
+- Checkpoints write a partial ZIP, verify the completed archive, then atomically publish it; failed partials are removed and stale partials are bounded.
+- New Recovery unit tests cover link2symlink logical-path preservation, pnpm/L2S exclusion and collision detection. `android_unit_test` now includes `:core:recovery:testDebugUnitTest`.
+- Native MCP Browser smoke against DSH `0.1.5-rc.2` at `390x844` verifies auth/onboarding/sidebar/Settings/workspace interaction and records screenshot, console and network evidence. The upstream Settings layout remains narrow/squeezed and is intentionally deferred to the P1 mobile-adapter phase.

@@ -323,3 +323,17 @@ Files:
 - `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/DshWebViewDiagnostics.kt`
 - `core/runtime-android/src/main/assets/runtime/seeds/dsh-0.1.5-rc.2-node24-arm64-musl.tgz`
 - `core/runtime-android/src/main/assets/runtime/seeds/web-profile-0.1.5-rc.2-mobile-context-0.2.2.tgz`
+
+## 2026-09-14T04:04:52.152163Z — RELEASE: Prepare 0.3.0-alpha.16 with PRoot-safe Recovery checkpoints
+
+Alpha.16 fixes the target-device rc.1 -> rc.2 upgrade checkpoint failure caused by canonicalizing PRoot link2symlink logical files onto the same .l2s backing path. Recovery ZIP entries now preserve logical relative paths, pnpm CAS/.l2s implementation data is pruned, real archive-path collisions are diagnosed, partial ZIPs are verified before atomic publication, and failed/stale partials are cleaned. Recovery regression tests are part of android_unit_test. Validation is green for Recovery/Runtime/App unit tests, Mobile Context contract, Android lint, ARM64 Alpine Runtime E2E with DSH 0.1.5-rc.2, native MCP browser smoke at 390x844, clean source commit build 2f31d54c06ec055530182fa4fd588990623e8e99 and stable signing. Physical OriginOS cover-install remains manual; upstream rc.2 Settings content is still visually squeezed on a 390px viewport and stays in P1 UI adaptation.
+
+Files:
+- `core/recovery/src/main/kotlin/com/stevebrilien/dshmobile/core/recovery/RecoveryBackupManager.kt`
+- `core/recovery/src/test/kotlin/com/stevebrilien/dshmobile/core/recovery/RecoveryBackupManagerTest.kt`
+- `app/build.gradle.kts`
+- `release/DeepSeek-Harness-Mobile-0.3.0-alpha.16.apk`
+- `release/update.json`
+- `release/SHA256SUMS`
+- `docs/HANDOFF.md`
+- `docs/NEXT_ACTIONS.md`

@@ -1,7 +1,7 @@
 {
-  "versionCode": 16,
-  "versionName": "0.3.0-alpha.15",
-  "apkUrl": "https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.15.apk",
-  "sha256": "b8b5e56568320d9489be3ce294a340ef25c161c0e6d998c7dcdc7e64bef38d88",
-  "notes": "Alpha.15 unifies the bundled/runtime/profile DSH generation on 0.1.5-rc.2 and Mobile Context 0.2.2. Existing rc.1 installations use a recovery-checkpointed A/B upgrade path and preserve user-owned profile fields while replacing only APK-managed runtime/plugin dependencies. WebView diagnostics now record provider/version, navigation, HTTP/network failures, JavaScript console output, renderer death and DOM/crypto health with token redaction; Settings can explicitly copy or open the current DSH browser URL for comparison. Runtime logs now carry readable local timestamps. Validation passes for Android/Robolectric unit tests, Mobile Context contract, ARM64 Alpine Runtime E2E including embedded/offline and fallback paths, mobile-size Chromium UI interactions at 390x844, Android lint, clean-commit Android build from source commit 1ba59cb9c7791a549396b65424ad698f1ae0b2fa, byte-identical release packaging and stable signing. Physical OriginOS WebView rendering remains the manual release validation target."
+  "versionCode": 17,
+  "versionName": "0.3.0-alpha.16",
+  "apkUrl": "https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.16.apk",
+  "sha256": "0b56a6e6de5f70bcd4634678368a746b3c0d8cc03a2d289be92cf9fbb6ff651b",
+  "notes": "Alpha.16 fixes the rc.1 -> rc.2 upgrade checkpoint failure seen on OriginOS/PRoot where canonicalized link2symlink backing files produced duplicate ZIP entries. Recovery snapshots now keep logical archive paths, prune rebuildable pnpm CAS store and .l2s implementation files, reject real archive-path collisions, verify temporary ZIPs before atomic publication, and clean failed partials. DSH remains unified on 0.1.5-rc.2 with Mobile Context 0.2.2. Validation passes for Recovery/Runtime/App unit tests, Mobile Context contract, ARM64 Alpine Runtime E2E including authenticated DSH Web, Android lint, native MCP Browser smoke at 390x844, clean-commit Android build from source commit 2f31d54c06ec055530182fa4fd588990623e8e99, byte-identical release packaging and stable signing. Physical OriginOS cover-install remains the manual validation target."
 }
