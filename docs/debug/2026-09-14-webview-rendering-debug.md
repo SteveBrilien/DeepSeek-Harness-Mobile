@@ -367,3 +367,39 @@ After the research report is accepted:
 `0.4.0-preview.1` is a diagnostic preview, not evidence that display is solved. Do not publish another candidate merely because it builds or because a historical browser instance looks correct.
 
 **Release remains frozen until the exact candidate passes a fresh Chromium presentation gate, a WebView-equivalent gate, and the final true-device gate with the same profile/plugin composition.**
+
+## 14. Checkpoint 1 closure — candidate identity
+
+Checkpoint 1 was completed after the technical-research pass. Full handoff:
+
+`docs/handoff/2026-09-14-cp1-candidate-identity.md`
+
+Final CP1 evidence:
+
+- Android Unit Test: PASS — `task-android_unit_test-70a28435fbf54574bb86`.
+- Android Debug Build: PASS — `task-android_debug-41a5c16ca85946b4bce4`.
+- Android Lint: PASS — `task-android_lint-13d9b271c0f94f6793a7`.
+- Clean Alpine Runtime E2E: PASS — `task-runtime_alpine_e2e-2702d84edd274e18846c`, ending with `runtime-alpine-e2e: PASS dsh=0.1.5-rc.2`.
+- Exact-current-profile Chromium 360x708 composition sanity: PASS for composition only. The authenticated combo used `rev=a77cf275f366`, included `@dsh-mobile/dsh-webview-compat/client.js`, excluded dormant `dsh-client-ui-mobile/client.js`, rendered the DSH application shell/Internal Testing Notice, and produced no console errors in the final fresh session.
+- Final tracked `git diff --check`: PASS.
+- The three new untracked Kotlin files also passed independent whitespace/CR checks.
+- Final CP1 code review: no remaining CP1-blocking defect after enforcing that active presentation must already be current **before** reconciliation for a live process to be reusable.
+
+CP1 establishes a content-addressed Android desired presentation generation and fail-closed process reuse. It does **not** establish rendered-page readiness.
+
+### Known limitation carried forward intentionally
+
+If the App process is killed while an old DSH child process remains alive on port 3080, the new App process no longer has the in-memory ownership/generation record. It therefore reports/rejects an `unowned endpoint` and neither adopts nor kills that process automatically. This is an intentional fail-safe policy, not a completed crash-recovery design.
+
+### Still not started after CP1
+
+- Checkpoint 2 WebMessage readiness/observability.
+- Real Android WebView geometry handshake.
+- Smallest measured `#root = 0` fix.
+- Espresso-Web/CDP instrumentation.
+- Cuttlefish/KVM environment.
+- Vivo physical-device release gate for the new presentation architecture.
+- Mobile responsive UI plugin redesign/reactivation.
+- New APK publication.
+
+The local CP1 commit must remain unpushed, and work must stop before Checkpoint 2 until explicitly resumed.

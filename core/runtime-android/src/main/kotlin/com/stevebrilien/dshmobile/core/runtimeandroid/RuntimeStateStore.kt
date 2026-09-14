@@ -31,6 +31,8 @@ data class RuntimeDiskState(
     val activeSlot: RuntimeSlot? = null,
     val previousSlot: RuntimeSlot? = null,
     val generation: Long = 0,
+    val presentationGeneration: String? = null,
+    val presentationStartedAtMillis: Long = 0L,
 )
 
 internal class RuntimeStateStore(context: Context) {
@@ -73,6 +75,8 @@ internal class RuntimeStateStore(context: Context) {
             activeSlot = json.optString("activeSlot").takeIf { it.isNotBlank() }?.let(RuntimeSlot::valueOf),
             previousSlot = json.optString("previousSlot").takeIf { it.isNotBlank() }?.let(RuntimeSlot::valueOf),
             generation = json.optLong("generation", 0),
+            presentationGeneration = json.optString("presentationGeneration").takeIf { it.isNotBlank() },
+            presentationStartedAtMillis = json.optLong("presentationStartedAtMillis", 0L),
         )
     }
 
@@ -83,6 +87,8 @@ internal class RuntimeStateStore(context: Context) {
             .put("generation", state.generation)
             .put("activeSlot", state.activeSlot?.name ?: "")
             .put("previousSlot", state.previousSlot?.name ?: "")
+            .put("presentationGeneration", state.presentationGeneration ?: "")
+            .put("presentationStartedAtMillis", state.presentationStartedAtMillis)
         val atomic = AtomicFile(layout.stateFile)
         val output = atomic.startWrite()
         try {
@@ -101,8 +107,27 @@ internal class RuntimeStateStore(context: Context) {
                 activeSlot = slot,
                 previousSlot = current.activeSlot?.takeIf { it != slot },
                 generation = current.generation + 1,
+                presentationGeneration = null,
+                presentationStartedAtMillis = 0L,
             ),
         )
+    }
+
+    fun recordPresentationLaunch(generation: String, startedAtMillis: Long = System.currentTimeMillis()) {
+        require(generation.isNotBlank())
+        val current = read()
+        write(
+            current.copy(
+                presentationGeneration = generation,
+                presentationStartedAtMillis = startedAtMillis,
+            ),
+        )
+    }
+
+    fun clearPresentationLaunch() {
+        val current = read()
+        if (current.presentationGeneration == null && current.presentationStartedAtMillis == 0L) return
+        write(current.copy(presentationGeneration = null, presentationStartedAtMillis = 0L))
     }
 
     fun rollbackTarget(): RuntimeSlot? = read().previousSlot

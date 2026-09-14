@@ -88,15 +88,6 @@ class RuntimeSupervisor(context: Context) : AutoCloseable {
             return
         }
 
-        // Fast path: an already-running runtime should not be restarted just because a
-        // Compose surface appeared again.
-        val alreadyReady = runCatching {
-            if (runtime.isWebReady()) runtime.webPresentation() else null
-        }.getOrNull()
-        if (alreadyReady != null) {
-            updateIfCurrent(attemptId, State.Ready(alreadyReady))
-            return
-        }
 
         val dispatchedAt = System.currentTimeMillis()
         val action = if (inventory.updateAvailable) {
@@ -121,9 +112,7 @@ class RuntimeSupervisor(context: Context) : AutoCloseable {
         repeat(210) { index ->
             if (!isCurrent(attemptId)) return
             val snapshot = telemetry.snapshot(maxLogLines = 12)
-            val presentation = runCatching {
-                if (runtime.isWebReady()) runtime.webPresentation() else null
-            }.getOrNull()
+            val presentation = runCatching { runtime.webPresentation() }.getOrNull()
             if (presentation != null) {
                 updateIfCurrent(attemptId, State.Ready(presentation))
                 return

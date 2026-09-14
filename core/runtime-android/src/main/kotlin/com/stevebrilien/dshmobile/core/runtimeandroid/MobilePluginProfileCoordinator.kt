@@ -8,6 +8,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.security.MessageDigest
 
 /**
  * Reconciles APK-owned DSH integration into the persistent Web profile without entering
@@ -93,10 +94,22 @@ internal class MobilePluginProfileCoordinator(
     private val packageFile get() = File(profileDir, "package.json")
     private val contextMarker get() = File(layout.persistentDshHome, "mobile/context-plugin.version")
     private val uiMarker get() = File(layout.persistentDshHome, "mobile/ui-plugin.version")
+    private val presentationMarker get() = File(layout.persistentDshHome, "mobile/presentation-generation")
+
+    fun desiredPresentationGeneration(): String = PresentationCandidateIdentity.compute(
+        dshSeedSha256 = RuntimePins.DSH_SEED_SHA256,
+        webProfileSeedSha256 = RuntimePins.DSH_WEB_PROFILE_SEED_SHA256,
+        profileMode = MOBILE_WEB_PROFILE_MODE,
+        managedArtifactHashes = mapOf(
+            contextSpec.packageName to assetTreeHash(contextSpec),
+            compatSpec.packageName to assetTreeHash(compatSpec),
+        ),
+    )
 
     fun reconcile(installSeedIfMissing: () -> Boolean) {
         layout.persistentDshHome.let { check(it.exists() || it.mkdirs()) }
-        if (isReconciled()) return
+        val desiredGeneration = desiredPresentationGeneration()
+        if (isReconciled(desiredGeneration)) return
 
         // The context and WebView-compat plugins are active; the broad mobile UI package
         // stays dormant until the official DSH interaction baseline passes.
@@ -147,15 +160,28 @@ internal class MobilePluginProfileCoordinator(
         check(isProfileContractValid()) { "DSH native Web profile reconciliation failed" }
         writeAtomic(contextMarker, MOBILE_CONTEXT_PLUGIN_VERSION.toByteArray(StandardCharsets.UTF_8))
         writeAtomic(uiMarker, MOBILE_WEB_PROFILE_MODE.toByteArray(StandardCharsets.UTF_8))
-        check(isReconciled()) { "DSH native Web profile marker verification failed" }
+        writeAtomic(presentationMarker, desiredGeneration.toByteArray(StandardCharsets.UTF_8))
+        check(isReconciled(desiredGeneration)) { "DSH native Web profile marker verification failed" }
     }
 
-    fun isReconciled(): Boolean =
+    fun isActivePresentationReconciled(): Boolean =
+        isActivePresentationReconciled(desiredPresentationGeneration())
+
+    fun isReconciled(): Boolean = isReconciled(desiredPresentationGeneration())
+
+    private fun isActivePresentationReconciled(desiredGeneration: String): Boolean =
         contextMarker.readTextIfExists() == MOBILE_CONTEXT_PLUGIN_VERSION &&
             uiMarker.readTextIfExists() == MOBILE_WEB_PROFILE_MODE &&
-            isProfileContractValid()
+            presentationMarker.readTextIfExists() == desiredGeneration &&
+            isActiveProfileContractValid()
 
-    private fun isProfileContractValid(): Boolean = runCatching {
+    private fun isReconciled(desiredGeneration: String): Boolean =
+        isActivePresentationReconciled(desiredGeneration) && isDormantPayloadValid()
+
+    private fun isProfileContractValid(): Boolean =
+        isActiveProfileContractValid() && isDormantPayloadValid()
+
+    private fun isActiveProfileContractValid(): Boolean = runCatching {
         if (!packageFile.isFile) return@runCatching false
         val profileJson = JSONObject(packageFile.readText(StandardCharsets.UTF_8))
         val dependencies = profileJson.optJSONObject("dependencies") ?: return@runCatching false
@@ -175,8 +201,42 @@ internal class MobilePluginProfileCoordinator(
             !nodeExists(File(profileDir, uiSpec.profileRelative)) &&
             packageVersion(File(layout.persistentDshHome, contextSpec.persistentRelative)) == contextSpec.version &&
             packageVersion(File(layout.persistentDshHome, compatSpec.persistentRelative)) == compatSpec.version &&
-            packageVersion(File(layout.persistentDshHome, uiSpec.persistentRelative)) == uiSpec.version
+            managedTreeMatches(contextSpec, File(profileDir, contextSpec.profileRelative)) &&
+            managedTreeMatches(compatSpec, File(profileDir, compatSpec.profileRelative)) &&
+            managedTreeMatches(contextSpec, File(layout.persistentDshHome, contextSpec.persistentRelative)) &&
+            managedTreeMatches(compatSpec, File(layout.persistentDshHome, compatSpec.persistentRelative))
     }.getOrDefault(false)
+
+    private fun isDormantPayloadValid(): Boolean =
+        packageVersion(File(layout.persistentDshHome, uiSpec.persistentRelative)) == uiSpec.version &&
+            managedTreeMatches(uiSpec, File(layout.persistentDshHome, uiSpec.persistentRelative))
+
+    private fun managedTreeMatches(spec: PluginSpec, directory: File): Boolean =
+        runCatching { directoryTreeHash(directory, spec.assets) == assetTreeHash(spec) }.getOrDefault(false)
+
+    private fun assetTreeHash(spec: PluginSpec): String = treeHash(spec.assets) { relative ->
+        context.assets.open("${spec.assetRoot}/$relative").use { it.readBytes() }
+    }
+
+    private fun directoryTreeHash(directory: File, assets: List<String>): String = treeHash(assets) { relative ->
+        val file = File(directory, relative)
+        check(file.isFile) { "Managed presentation asset is missing: ${file.absolutePath}" }
+        file.readBytes()
+    }
+
+    private fun treeHash(
+        assets: List<String>,
+        readBytes: (String) -> ByteArray,
+    ): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        assets.sorted().forEach { relative ->
+            digest.update(relative.toByteArray(StandardCharsets.UTF_8))
+            digest.update(0)
+            digest.update(readBytes(relative))
+            digest.update(0)
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
 
     private fun packageVersion(directory: File): String? {
         val manifest = File(directory, "package.json")

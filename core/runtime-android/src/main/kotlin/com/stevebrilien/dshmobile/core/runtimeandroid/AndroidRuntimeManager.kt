@@ -43,6 +43,7 @@ class AndroidRuntimeManager(
     private val appContext = context.applicationContext
     private val stateStore = RuntimeStateStore(appContext)
     private val installer = NativeRuntimeInstaller(appContext, vault, stateStore)
+    private val profileCoordinator = MobilePluginProfileCoordinator(appContext, stateStore.layout)
     private val contextSnapshotWriter = MobileContextSnapshotWriter(stateStore)
     private val runtimeId = RuntimeId("local-phone")
     @Volatile private var lastWebProbeDetail: String = "not probed"
@@ -105,14 +106,16 @@ class AndroidRuntimeManager(
 
     suspend fun start(progress: (RuntimeStartProgress) -> Unit): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            if (probeWebReady() && webLaunchUrl() != null) {
-                progress(RuntimeStartProgress("web-ready", "DSH Web 已就绪", 100, lastWebProbeDetail))
-                return@runCatching
-            }
             val active = stateStore.read().activeSlot ?: error("No active runtime slot. Install a runtime first.")
+            val desiredGeneration = profileCoordinator.desiredPresentationGeneration()
+            val activeProfileCurrentBeforeReconcile = profileCoordinator.isActivePresentationReconciled()
             val logFile = File(stateStore.layout.logsDir, "dsh-web.log")
             logFile.parentFile?.let { check(it.exists() || it.mkdirs()) }
-            RuntimeLogWriter.append(logFile, "=== DSH start epochMillis=${System.currentTimeMillis()} slot=${active.name} ===", leadingBlank = true)
+            RuntimeLogWriter.append(
+                logFile,
+                "=== DSH start epochMillis=${System.currentTimeMillis()} slot=${active.name} desiredGeneration=$desiredGeneration ===",
+                leadingBlank = true,
+            )
 
             fun <T> startupStep(
                 name: String,
@@ -144,6 +147,63 @@ class AndroidRuntimeManager(
                 installer.ensureMobileContextIntegration(active)
             }
 
+            val endpointReady = probeWebReady()
+            val existingLaunchUrl = if (endpointReady) webLaunchUrl() else null
+            val persistedGeneration = stateStore.read().presentationGeneration
+            val liveGeneration = RuntimeProcessRegistry.liveGenerationOrNull()
+            val profileReconciled = profileCoordinator.isReconciled()
+            if (
+                PresentationReusePolicy.canReuse(
+                    endpointReady = endpointReady,
+                    launchUrlAvailable = existingLaunchUrl != null,
+                    profileCurrentBeforeReconcile = activeProfileCurrentBeforeReconcile,
+                    profileReconciled = profileReconciled,
+                    liveProcessGeneration = liveGeneration,
+                    persistedProcessGeneration = persistedGeneration,
+                    desiredGeneration = desiredGeneration,
+                )
+            ) {
+                RuntimeLogWriter.append(
+                    logFile,
+                    "[startup] reuse-current-generation: $desiredGeneration; $lastWebProbeDetail",
+                )
+                progress(
+                    RuntimeStartProgress(
+                        "web-ready",
+                        "DSH Web 已就绪",
+                        100,
+                        "$lastWebProbeDetail; generation-current",
+                    ),
+                )
+                return@runCatching
+            }
+
+            if (endpointReady && !RuntimeProcessRegistry.isAlive()) {
+                RuntimeLogWriter.append(
+                    logFile,
+                    "[startup] reject-unowned-endpoint: profileReconciled=$profileReconciled " +
+                        "persistedGeneration=${persistedGeneration ?: "none"} desiredGeneration=$desiredGeneration",
+                )
+                stateStore.clearPresentationLaunch()
+                error(
+                    "A DSH Web endpoint is already reachable on 127.0.0.1:${RuntimePins.DSH_HTTP_PORT}, " +
+                        "but this app process cannot prove ownership of that process/generation. " +
+                        "Refusing to reuse it or spawn a competing process.",
+                )
+            }
+
+            if (RuntimeProcessRegistry.isAlive() || persistedGeneration != null) {
+                RuntimeLogWriter.append(
+                    logFile,
+                    "[startup] reject-stale-generation: endpointReady=$endpointReady " +
+                        "profileCurrentBeforeReconcile=$activeProfileCurrentBeforeReconcile " +
+                        "profileReconciled=$profileReconciled liveGeneration=${liveGeneration ?: "none"} " +
+                        "persistedGeneration=${persistedGeneration ?: "none"} desiredGeneration=$desiredGeneration",
+                )
+                RuntimeProcessRegistry.stop()
+                stateStore.clearPresentationLaunch()
+            }
+
             // Launch the pinned DSH entrypoint directly with the verified Node binary. This
             // removes an extra shell-wrapper lookup from the long-lived Web process while
             // keeping /usr/local/bin/dsh for interactive/runtime commands.
@@ -151,32 +211,47 @@ class AndroidRuntimeManager(
                 "exec /usr/bin/node --expose-internals /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js web " +
                     "--host 127.0.0.1 --port ${RuntimePins.DSH_HTTP_PORT} --no-open"
 
-            // A previous start attempt can remain alive without ever binding the Web port.
-            // Restart that owned process instead of waiting another full startup window on it.
-            if (RuntimeProcessRegistry.isAlive()) RuntimeProcessRegistry.stop()
             progress(RuntimeStartProgress("spawn-dsh-web", "正在启动 DSH Web 进程", 65))
-            RuntimeLogWriter.append(logFile, "[startup] spawn-dsh-web")
-            RuntimeProcessRegistry.start(installer.buildProcess(active, command), logFile)
+            RuntimeLogWriter.append(logFile, "[startup] spawn-dsh-web generation=$desiredGeneration")
+            val launchSearchOffset = RuntimeProcessRegistry.start(
+                installer.buildProcess(active, command),
+                logFile,
+                desiredGeneration,
+            )
             progress(RuntimeStartProgress("wait-web-ready", "正在等待本地 DSH Web 就绪", 75))
             val deadline = System.currentTimeMillis() + WEB_STARTUP_TIMEOUT_MILLIS
             while (System.currentTimeMillis() < deadline) {
-                val endpointReady = probeWebReady()
-                val currentLaunchUrl = webLaunchUrl()
-                if (endpointReady && currentLaunchUrl != null) {
-                    RuntimeLogWriter.append(logFile, "[startup] web-ready: $lastWebProbeDetail; current launch token observed")
-                    progress(RuntimeStartProgress("web-ready", "DSH Web 已就绪", 100, "$lastWebProbeDetail; launch-token-ready"))
+                val currentEndpointReady = probeWebReady()
+                val currentLaunchUrl = webLaunchUrlSince(logFile, launchSearchOffset)
+                val ownsDesiredGeneration = RuntimeProcessRegistry.liveGenerationOrNull() == desiredGeneration
+                if (currentEndpointReady && currentLaunchUrl != null && ownsDesiredGeneration) {
+                    stateStore.recordPresentationLaunch(desiredGeneration)
+                    RuntimeLogWriter.append(
+                        logFile,
+                        "[startup] web-ready: $lastWebProbeDetail; current launch token observed; generation=$desiredGeneration",
+                    )
+                    progress(
+                        RuntimeStartProgress(
+                            "web-ready",
+                            "DSH Web 已就绪",
+                            100,
+                            "$lastWebProbeDetail; launch-token-ready; generation-current",
+                        ),
+                    )
                     return@runCatching
                 }
-                if (endpointReady) {
-                    lastWebProbeDetail = "$lastWebProbeDetail; waiting for current launch token"
+                if (currentEndpointReady) {
+                    lastWebProbeDetail = "$lastWebProbeDetail; waiting for current launch token/generation"
                 }
                 if (!RuntimeProcessRegistry.isAlive()) {
                     val exit = RuntimeProcessRegistry.exitCodeOrNull()?.toString() ?: "unknown"
+                    stateStore.clearPresentationLaunch()
                     error("DSH process exited (code=$exit) before the local Web endpoint became reachable. See ${logFile.absolutePath}")
                 }
                 Thread.sleep(WEB_STARTUP_POLL_MILLIS)
             }
             val runtimeProbe = probeWebInsideRuntime(active)
+            stateStore.clearPresentationLaunch()
             error(
                 "DSH process is still running, but the local Web endpoint did not become reachable within " +
                     "${WEB_STARTUP_TIMEOUT_MILLIS / 1_000}s. Last Android probe: $lastWebProbeDetail. " +
@@ -184,9 +259,11 @@ class AndroidRuntimeManager(
             )
         }
     }
-
     override suspend fun stop(): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching { RuntimeProcessRegistry.stop() }
+        runCatching {
+            RuntimeProcessRegistry.stop()
+            stateStore.clearPresentationLaunch()
+        }
     }
 
     override suspend fun stage(request: RuntimeInstallRequest): Result<Unit> = withContext(Dispatchers.IO) {
@@ -243,11 +320,37 @@ class AndroidRuntimeManager(
 
     fun isWebReady(): Boolean = probeWebReady()
 
-    fun webLaunchUrl(): String? {
-        val file = logFile()
+    fun desiredPresentationGeneration(): String = profileCoordinator.desiredPresentationGeneration()
+
+    fun currentWebLaunchUrlForDesiredGeneration(): String? {
+        val desiredGeneration = desiredPresentationGeneration()
+        val endpointReady = probeWebReady()
+        val launchUrl = if (endpointReady) webLaunchUrl() else null
+        val state = stateStore.read()
+        return if (
+            PresentationReusePolicy.canReuse(
+                endpointReady = endpointReady,
+                launchUrlAvailable = launchUrl != null,
+                profileCurrentBeforeReconcile = profileCoordinator.isActivePresentationReconciled(),
+                profileReconciled = profileCoordinator.isReconciled(),
+                liveProcessGeneration = RuntimeProcessRegistry.liveGenerationOrNull(),
+                persistedProcessGeneration = state.presentationGeneration,
+                desiredGeneration = desiredGeneration,
+            )
+        ) {
+            launchUrl
+        } else {
+            null
+        }
+    }
+
+    fun webLaunchUrl(): String? = webLaunchUrlSince(logFile(), 0L)
+
+    private fun webLaunchUrlSince(file: File, minimumOffset: Long): String? {
         if (!file.isFile) return null
         val bytes = file.readBytes()
-        val start = (bytes.size - 128 * 1024).coerceAtLeast(0)
+        val requestedStart = minimumOffset.coerceIn(0L, bytes.size.toLong()).toInt()
+        val start = maxOf(requestedStart, (bytes.size - 128 * 1024).coerceAtLeast(0))
         val tail = String(bytes, start, bytes.size - start, StandardCharsets.UTF_8)
         return DshWebAuthContract.latestLaunchUrl(tail)
     }
@@ -449,14 +552,18 @@ private object RuntimeProcessRegistry {
     private val lock = Any()
     private var process: Process? = null
     private var readerThread: Thread? = null
+    private var presentationGeneration: String? = null
 
-    fun start(builder: ProcessBuilder, logFile: File) = synchronized(lock) {
-        if (process?.isAlive == true) return
+    fun start(builder: ProcessBuilder, logFile: File, generation: String): Long = synchronized(lock) {
+        check(process?.isAlive != true) { "Refusing to replace a live DSH process without stopping it first" }
+        require(generation.isNotBlank())
         logFile.parentFile?.let { check(it.exists() || it.mkdirs()) }
         RuntimeLogWriter.rotate(logFile)
+        val launchSearchOffset = logFile.length()
         builder.redirectErrorStream(true)
         val started = builder.start()
         process = started
+        presentationGeneration = generation
         readerThread = Thread({
             runCatching {
                 started.inputStream.bufferedReader().useLines { lines ->
@@ -469,9 +576,14 @@ private object RuntimeProcessRegistry {
             isDaemon = true
             start()
         }
+        launchSearchOffset
     }
 
     fun isAlive(): Boolean = synchronized(lock) { process?.isAlive == true }
+
+    fun liveGenerationOrNull(): String? = synchronized(lock) {
+        if (process?.isAlive == true) presentationGeneration else null
+    }
 
     fun exitCodeOrNull(): Int? = synchronized(lock) {
         val current = process ?: return@synchronized null
@@ -479,8 +591,8 @@ private object RuntimeProcessRegistry {
     }
 
     fun stop() = synchronized(lock) {
-        val current = process ?: return
-        if (current.isAlive) {
+        val current = process
+        if (current?.isAlive == true) {
             current.destroy()
             if (!current.waitFor(5, TimeUnit.SECONDS)) {
                 current.destroyForcibly()
@@ -490,6 +602,7 @@ private object RuntimeProcessRegistry {
         readerThread?.join(1_000)
         readerThread = null
         process = null
+        presentationGeneration = null
     }
 
 }

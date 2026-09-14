@@ -127,6 +127,11 @@ class MobilePluginProfileCoordinatorTest {
             File(store.layout.persistentDshHome, "mobile/ui-plugin.version")
                 .readText(StandardCharsets.UTF_8),
         )
+        assertEquals(
+            coordinator.desiredPresentationGeneration(),
+            File(store.layout.persistentDshHome, "mobile/presentation-generation")
+                .readText(StandardCharsets.UTF_8),
+        )
         assertTrue(coordinator.isReconciled())
 
         val firstResult = packageFile.readBytes()
@@ -134,6 +139,52 @@ class MobilePluginProfileCoordinatorTest {
         coordinator.reconcile { error("reconciled profile must not reinstall seed") }
         assertTrue(firstResult.contentEquals(packageFile.readBytes()))
         assertTrue(File(store.layout.persistentDshHome, "mobile-plugins/dsh-client-ui-mobile/package.json").isFile)
+        assertTrue(coordinator.isReconciled())
+    }
+
+    @Test
+    fun sameVersionContentDriftInvalidatesAndReconcilesPresentationGeneration() {
+        val profile = File(store.layout.persistentDshHome, "profiles/web")
+        seedMinimalExistingProfile(profile)
+        coordinator.reconcile { error("seed must not be used for an existing profile") }
+        assertTrue(coordinator.isActivePresentationReconciled())
+
+        val compatClient = File(profile, "node_modules/@dsh-mobile/dsh-webview-compat/lib/client.js")
+        val expected = compatClient.readBytes()
+        compatClient.appendText("\n// stale candidate bytes\n", StandardCharsets.UTF_8)
+        assertFalse(coordinator.isActivePresentationReconciled())
+        assertFalse(coordinator.isReconciled())
+
+        coordinator.reconcile { error("reconcile must repair managed content without replacing the profile") }
+
+        assertTrue(expected.contentEquals(compatClient.readBytes()))
+        assertTrue(coordinator.isActivePresentationReconciled())
+        assertTrue(coordinator.isReconciled())
+        assertEquals(
+            coordinator.desiredPresentationGeneration(),
+            File(store.layout.persistentDshHome, "mobile/presentation-generation")
+                .readText(StandardCharsets.UTF_8),
+        )
+    }
+
+    @Test
+    fun dormantUiPayloadDriftDoesNotInvalidateActivePresentation() {
+        val profile = File(store.layout.persistentDshHome, "profiles/web")
+        seedMinimalExistingProfile(profile)
+        coordinator.reconcile { error("seed must not be used for an existing profile") }
+
+        val dormantClient = File(
+            store.layout.persistentDshHome,
+            "mobile-plugins/dsh-client-ui-mobile/lib/client.js",
+        )
+        dormantClient.appendText("\n// dormant payload drift\n", StandardCharsets.UTF_8)
+
+        assertTrue(coordinator.isActivePresentationReconciled())
+        assertFalse(coordinator.isReconciled())
+
+        coordinator.reconcile { error("dormant repair must not replace the profile") }
+
+        assertTrue(coordinator.isActivePresentationReconciled())
         assertTrue(coordinator.isReconciled())
     }
 
@@ -150,5 +201,27 @@ class MobilePluginProfileCoordinatorTest {
         assertTrue(File(profile, "user-data.txt").isFile)
         assertFalse(File(store.layout.persistentDshHome, "mobile/context-plugin.version").exists())
         assertFalse(File(store.layout.persistentDshHome, "mobile/ui-plugin.version").exists())
+        assertFalse(File(store.layout.persistentDshHome, "mobile/presentation-generation").exists())
+    }
+
+    private fun seedMinimalExistingProfile(profile: File) {
+        assertTrue(profile.mkdirs())
+        val json = JSONObject()
+            .put("name", "test-web-profile")
+            .put("private", true)
+            .put("dependencies", JSONObject())
+            .put(
+                "dsh",
+                JSONObject().put(
+                    "profile",
+                    JSONObject().put(
+                        "bundles",
+                        org.json.JSONArray()
+                            .put("@deepseek-ai/dsh-base")
+                            .put("@deepseek-ai/dsh-web-app"),
+                    ),
+                ),
+            )
+        File(profile, "package.json").writeText(json.toString(2), StandardCharsets.UTF_8)
     }
 }

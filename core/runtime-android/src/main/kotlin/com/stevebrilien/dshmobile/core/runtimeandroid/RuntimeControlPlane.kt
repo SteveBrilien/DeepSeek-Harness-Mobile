@@ -82,21 +82,10 @@ class RuntimeControlPlane(context: Context) {
 
     fun webLaunchUrl(): String? = manager.webLaunchUrl()
 
-    fun webPresentation(): DshWebPresentationDescriptor? = manager.webLaunchUrl()?.let { launchUrl ->
+    fun webPresentation(): DshWebPresentationDescriptor? = manager.currentWebLaunchUrlForDesiredGeneration()?.let { launchUrl ->
         DshWebPresentationDescriptor(
             launchUrl = launchUrl,
-            generation = buildString {
-                append("dsh=")
-                append(BuildConfig.DSH_VERSION)
-                append(";mode=")
-                append(MobilePluginProfileCoordinator.MOBILE_WEB_PROFILE_MODE)
-                append(";compat=")
-                append(MobilePluginProfileCoordinator.WEBVIEW_COMPAT_PLUGIN_VERSION)
-                append(";uiAsset=")
-                append(MobilePluginProfileCoordinator.MOBILE_UI_PLUGIN_VERSION)
-                append(";context=")
-                append(MobilePluginProfileCoordinator.MOBILE_CONTEXT_PLUGIN_VERSION)
-            },
+            generation = manager.desiredPresentationGeneration(),
         )
     }
 
