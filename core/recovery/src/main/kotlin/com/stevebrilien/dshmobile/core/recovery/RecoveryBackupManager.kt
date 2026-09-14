@@ -14,6 +14,34 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 
+internal fun backupLogicalRelativePath(file: File, root: File): String {
+    val normalizedRoot = root.absoluteFile.normalize()
+    val normalizedFile = file.absoluteFile.normalize()
+    return normalizedFile.relativeTo(normalizedRoot).invariantSeparatorsPath
+}
+
+internal fun shouldIncludePersistentDshBackupPath(relative: String): Boolean {
+    val normalized = relative.replace('\\', '/').trimStart('/')
+    if (normalized == ".local/share/pnpm/store" || normalized.startsWith(".local/share/pnpm/store/")) return false
+    if (normalized.split('/').any { it.startsWith(".l2s.") }) return false
+    return true
+}
+
+internal class BackupEntryRegistry {
+    private val sources = linkedMapOf<String, String>()
+
+    /** Returns true when the entry should be written, false for an identical duplicate source. */
+    fun register(path: String, sourceId: String): Boolean {
+        val existing = sources[path]
+        if (existing == null) {
+            sources[path] = sourceId
+            return true
+        }
+        if (existing == sourceId) return false
+        error("Backup entry collision for $path: $existing vs $sourceId")
+    }
+}
+
 /** Integrity checked local checkpoint/export layer over the live Recovery Vault. */
 class RecoveryBackupManager(
     private val context: Context,
@@ -138,80 +166,97 @@ class RecoveryBackupManager(
         }
         val outputDir = File(status.root, relativeDir).apply { check(exists() || mkdirs()) }
         val now = System.currentTimeMillis()
+        cleanupStalePartials(outputDir, prefix, now)
         val finalFile = File(outputDir, "$prefix-$now.zip")
         val partial = File(outputDir, ".${finalFile.name}.partial")
         partial.delete()
 
         val rows = JSONArray()
-        ZipOutputStream(BufferedOutputStream(FileOutputStream(partial))).use { out ->
-            val rootCanonical = status.root.canonicalFile
-            status.root.walkTopDown()
-                .filter { it.isFile }
-                .forEach { file ->
-                    val canonical = file.canonicalFile
-                    if (!canonical.path.startsWith(rootCanonical.path + File.separator)) return@forEach
-                    val relative = canonical.relativeTo(rootCanonical).invariantSeparatorsPath
-                    if (!shouldInclude(relative)) return@forEach
-                    val digest = MessageDigest.getInstance("SHA-256")
-                    val entry = ZipEntry(relative).apply { time = file.lastModified() }
-                    out.putNextEntry(entry)
-                    var size = 0L
-                    BufferedInputStream(FileInputStream(file)).use { input ->
-                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                        while (true) {
-                            val n = input.read(buffer)
-                            if (n < 0) break
-                            out.write(buffer, 0, n)
-                            digest.update(buffer, 0, n)
-                            size += n
-                        }
+        val entries = BackupEntryRegistry()
+        try {
+            ZipOutputStream(BufferedOutputStream(FileOutputStream(partial))).use { out ->
+                val rootCanonical = status.root.canonicalFile
+                status.root.walkTopDown()
+                    .filter { it.isFile }
+                    .forEach { file ->
+                        val canonical = file.canonicalFile
+                        if (!canonical.path.startsWith(rootCanonical.path + File.separator)) return@forEach
+                        val relative = backupLogicalRelativePath(file, status.root)
+                        if (!shouldInclude(relative)) return@forEach
+                        writeArchiveEntry(out, rows, entries, file, relative)
                     }
-                    out.closeEntry()
-                    rows.put(JSONObject().put("path", relative).put("size", size).put("sha256", digest.digest().toHex()))
-                }
-            addPersistentDshHome(out, rows)
-            val manifest = JSONObject()
-                .put("schemaVersion", 1)
-                .put("createdAtEpochMillis", now)
-                .put("vaultId", vault.discover().vaultId ?: JSONObject.NULL)
-                .put("containsPlaintextSecrets", false)
-                .put("includesPersistentDshHome", true)
-                .put("files", rows)
-            out.putNextEntry(ZipEntry("backup-manifest.json"))
-            out.write(manifest.toString(2).toByteArray(Charsets.UTF_8))
-            out.closeEntry()
+                addPersistentDshHome(out, rows, entries)
+                val manifest = JSONObject()
+                    .put("schemaVersion", 1)
+                    .put("createdAtEpochMillis", now)
+                    .put("vaultId", vault.discover().vaultId ?: JSONObject.NULL)
+                    .put("containsPlaintextSecrets", false)
+                    .put("includesPersistentDshHome", true)
+                    .put("files", rows)
+                out.putNextEntry(ZipEntry("backup-manifest.json"))
+                out.write(manifest.toString(2).toByteArray(Charsets.UTF_8))
+                out.closeEntry()
+            }
+            // Verify the completed temporary archive before publishing it as a recovery point.
+            val verifiedPartial = verifyArchive(partial)
+            check(partial.renameTo(finalFile)) { "Unable to atomically publish backup archive" }
+            val verified = verifiedPartial.copy(file = finalFile)
+            writeState(now, finalFile, verified.sha256, rows.length())
+            return verified
+        } finally {
+            // A failed checkpoint must never leave an unbounded trail of partial ZIPs.
+            if (partial.exists()) partial.delete()
         }
-        check(partial.renameTo(finalFile)) { "Unable to atomically publish backup archive" }
-        val verified = verifyArchive(finalFile)
-        writeState(now, finalFile, verified.sha256, rows.length())
-        return verified
     }
 
-    private fun addPersistentDshHome(out: ZipOutputStream, rows: JSONArray) {
+    private fun addPersistentDshHome(out: ZipOutputStream, rows: JSONArray, entries: BackupEntryRegistry) {
         if (!persistentDshHome.isDirectory) return
         val root = persistentDshHome.canonicalFile
-        persistentDshHome.walkTopDown().filter { it.isFile }.forEach { file ->
+        persistentDshHome.walkTopDown()
+            .onEnter { dir ->
+                val relative = backupLogicalRelativePath(dir, persistentDshHome)
+                relative.isBlank() || (!isSensitiveDshPath(relative) && shouldIncludePersistentDshBackupPath(relative))
+            }
+            .filter { it.isFile }
+            .forEach { file ->
             val canonical = file.canonicalFile
             if (!canonical.path.startsWith(root.path + File.separator)) return@forEach
-            val relative = canonical.relativeTo(root).invariantSeparatorsPath
-            if (!isSafeEntry(relative) || isSensitiveDshPath(relative)) return@forEach
-            val digest = MessageDigest.getInstance("SHA-256")
-            val archivePath = dshArchivePrefix + relative
-            out.putNextEntry(ZipEntry(archivePath).apply { time = file.lastModified() })
-            var size = 0L
-            BufferedInputStream(FileInputStream(file)).use { input ->
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                while (true) {
-                    val n = input.read(buffer)
-                    if (n < 0) break
-                    out.write(buffer, 0, n)
-                    digest.update(buffer, 0, n)
-                    size += n
-                }
+            // Keep the logical path as the ZIP name. Under PRoot link2symlink multiple logical
+            // files may canonicalize to the same .l2s.* backing file; using canonical paths as
+            // entry names therefore produces duplicate ZIP entries during an upgrade checkpoint.
+            val relative = backupLogicalRelativePath(file, persistentDshHome)
+            if (!isSafeEntry(relative) || isSensitiveDshPath(relative) || !shouldIncludePersistentDshBackupPath(relative)) {
+                return@forEach
             }
-            out.closeEntry()
-            rows.put(JSONObject().put("path", archivePath).put("size", size).put("sha256", digest.digest().toHex()))
+            val archivePath = dshArchivePrefix + relative
+            writeArchiveEntry(out, rows, entries, file, archivePath)
         }
+    }
+
+    private fun writeArchiveEntry(
+        out: ZipOutputStream,
+        rows: JSONArray,
+        entries: BackupEntryRegistry,
+        file: File,
+        archivePath: String,
+    ) {
+        val sourceId = runCatching { file.canonicalPath }.getOrElse { file.absolutePath }
+        if (!entries.register(archivePath, sourceId)) return
+        val digest = MessageDigest.getInstance("SHA-256")
+        out.putNextEntry(ZipEntry(archivePath).apply { time = file.lastModified() })
+        var size = 0L
+        BufferedInputStream(FileInputStream(file)).use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val n = input.read(buffer)
+                if (n < 0) break
+                out.write(buffer, 0, n)
+                digest.update(buffer, 0, n)
+                size += n
+            }
+        }
+        out.closeEntry()
+        rows.put(JSONObject().put("path", archivePath).put("size", size).put("sha256", digest.digest().toHex()))
     }
 
     private fun isSensitiveDshPath(relative: String): Boolean {
@@ -229,6 +274,15 @@ class RecoveryBackupManager(
         // Secrets are included only from the encrypted vault. Other accidental secret-like files are not copied.
         if (relative.startsWith("Recovery/Secrets/") && !relative.startsWith("Recovery/Secrets/encrypted-vault/")) return false
         return true
+    }
+
+    private fun cleanupStalePartials(outputDir: File, prefix: String, now: Long) {
+        val staleBefore = now - 30L * 60L * 1000L
+        outputDir.listFiles()
+            ?.asSequence()
+            ?.filter { it.isFile && it.name.startsWith(".$prefix-") && it.name.endsWith(".zip.partial") }
+            ?.filter { it.lastModified() in 1 until staleBefore }
+            ?.forEach { it.delete() }
     }
 
     private fun writeState(now: Long, file: File, sha: String, count: Int) {
