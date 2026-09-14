@@ -11,9 +11,13 @@ class FakeStyle {
   constructor() {
     this.values = new Map();
     this.priorities = new Map();
+    this.order = [];
     this.cssText = '';
   }
+  get length() { return this.order.length; }
+  item(index) { return this.order[index] || ''; }
   setProperty(name, value, priority = '') {
+    if (!this.values.has(name)) this.order.push(name);
     this.values.set(name, String(value));
     this.priorities.set(name, String(priority));
   }
@@ -22,6 +26,7 @@ class FakeStyle {
   removeProperty(name) {
     this.values.delete(name);
     this.priorities.delete(name);
+    this.order = this.order.filter((item) => item !== name);
   }
 }
 
@@ -54,12 +59,24 @@ function makeNode({ width = 360, initialHeight = 0, viewportUnitHeight = 0, clie
   };
 }
 
-function runCase({ viewportUnitHeight, expectedMode, expectedOwnedHeight }) {
+function runCase({ viewportUnitHeight, visualViewportHeight = 670, expectedMode, expectedOwnedHeight, expectCssPatch }) {
   let registration = null;
   const messages = [];
   const root = makeNode({ initialHeight: 0, viewportUnitHeight, children: 1 });
   const html = makeNode({ initialHeight: 0, viewportUnitHeight, clientHeight: 670 });
   const body = makeNode({ initialHeight: 0, viewportUnitHeight });
+  const settingsStyle = new FakeStyle();
+  settingsStyle.setProperty('height', 'min(800px, 100vh - 48px)');
+  const nestedStyle = new FakeStyle();
+  nestedStyle.setProperty('max-height', 'min(52vh, 480px)');
+  const dynamicStyle = new FakeStyle();
+  dynamicStyle.setProperty('height', 'min(500px, 100dvh - 32px)');
+  const fakeStyleSheets = [{
+    cssRules: [
+      { style: settingsStyle },
+      { cssRules: [{ style: nestedStyle }, { style: dynamicStyle }] },
+    ],
+  }];
   const visualListeners = new Map();
   const windowListeners = new Map();
   let nextTimer = 1;
@@ -71,7 +88,7 @@ function runCase({ viewportUnitHeight, expectedMode, expectedOwnedHeight }) {
     innerWidth: 360,
     innerHeight: 670,
     visualViewport: {
-      height: 670,
+      height: visualViewportHeight,
       addEventListener(name, fn) { visualListeners.set(name, fn); },
       removeEventListener(name) { visualListeners.delete(name); },
     },
@@ -92,6 +109,9 @@ function runCase({ viewportUnitHeight, expectedMode, expectedOwnedHeight }) {
     body,
     readyState: 'complete',
     scripts: [],
+    styleSheets: fakeStyleSheets,
+    adoptedStyleSheets: [],
+    head: null,
     getElementById(id) { return id === 'root' ? root : null; },
     createElement() {
       return makeNode({ initialHeight: 0, viewportUnitHeight });
@@ -133,6 +153,17 @@ function runCase({ viewportUnitHeight, expectedMode, expectedOwnedHeight }) {
     assert.equal(root.style.getPropertyValue('height'), expectedOwnedHeight);
     assert.equal(root.style.getPropertyPriority('height'), 'important');
     assert.equal(applied.metrics.rootHeight, 670);
+    if (expectCssPatch) {
+      assert.equal(settingsStyle.getPropertyValue('height'), 'min(800px, 670px - 48px)');
+      assert.equal(nestedStyle.getPropertyValue('max-height'), 'min(348.4px, 480px)');
+      assert.equal(dynamicStyle.getPropertyValue('height'), `min(500px, ${visualViewportHeight}px - 32px)`);
+      assert.equal(applied.metrics.verticalViewportPatchedDeclarations, 3);
+    } else {
+      assert.equal(settingsStyle.getPropertyValue('height'), 'min(800px, 100vh - 48px)');
+      assert.equal(nestedStyle.getPropertyValue('max-height'), 'min(52vh, 480px)');
+      assert.equal(dynamicStyle.getPropertyValue('height'), 'min(500px, 100dvh - 32px)');
+      assert.equal(applied.metrics.verticalViewportPatchedDeclarations, 0);
+    }
     assert.ok(messages.some((message) => message.phase === 'presentation-ready'), 'presentation-ready missing');
     assert.ok(!messages.some((message) => message.phase === 'presentation-degraded'), 'unexpected degraded state');
 
@@ -141,6 +172,9 @@ function runCase({ viewportUnitHeight, expectedMode, expectedOwnedHeight }) {
     assert.equal(root.style.getPropertyValue('height'), '', 'cleanup must restore root height');
     assert.equal(html.style.getPropertyValue('height'), '', 'cleanup must restore html height');
     assert.equal(body.style.getPropertyValue('height'), '', 'cleanup must restore body height');
+    assert.equal(settingsStyle.getPropertyValue('height'), 'min(800px, 100vh - 48px)', 'cleanup must restore stylesheet height');
+    assert.equal(nestedStyle.getPropertyValue('max-height'), 'min(52vh, 480px)', 'cleanup must restore nested stylesheet value');
+    assert.equal(dynamicStyle.getPropertyValue('height'), 'min(500px, 100dvh - 32px)', 'cleanup must restore dynamic viewport value');
   } finally {
     for (const [key, value] of previous) {
       if (value === undefined) delete globalThis[key];
@@ -153,11 +187,20 @@ runCase({
   viewportUnitHeight: 0,
   expectedMode: 'measured-layout-px',
   expectedOwnedHeight: '670px',
+  expectCssPatch: true,
+});
+runCase({
+  viewportUnitHeight: 0,
+  visualViewportHeight: 400,
+  expectedMode: 'measured-layout-px',
+  expectedOwnedHeight: '670px',
+  expectCssPatch: true,
 });
 runCase({
   viewportUnitHeight: 670,
   expectedMode: 'native-100dvh',
   expectedOwnedHeight: '100dvh',
+  expectCssPatch: false,
 });
 
-console.log('webview-compat-policy: PASS measured-px fallback + native 100dvh preservation');
+console.log('webview-compat-policy: PASS measured-px root + vertical viewport CSS fallback + native preservation');

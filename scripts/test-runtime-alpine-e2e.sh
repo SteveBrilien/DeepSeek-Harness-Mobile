@@ -23,7 +23,7 @@ DSH_SEED_SHA=$(prop dshSeedSha256)
 PROFILE_SEED="$ROOT_DIR/core/runtime-android/src/main/assets/$(prop webProfileSeedAsset)"
 PROFILE_SEED_SHA=$(prop webProfileSeedSha256)
 MOBILE_CONTEXT_VERSION=$(prop mobileContextVersion)
-WEBVIEW_COMPAT_VERSION="0.1.1"
+WEBVIEW_COMPAT_VERSION="0.1.2"
 MOBILE_UI_VERSION="0.1.9-dshm.2"
 
 command -v bwrap >/dev/null
@@ -170,11 +170,12 @@ test ! -e "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile"
 inside 'test -f /dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-compat/lib/client.js'
 python3 - "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-compat/package.json" <<'PYCOMPAT'
 import json, sys
-assert json.load(open(sys.argv[1]))['version'] == '0.1.1'
+assert json.load(open(sys.argv[1]))['version'] == '0.1.2'
 print('webview-compat-active-ok')
 PYCOMPAT
 grep -q 'webview-compat: viewport root contract' "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-compat/lib/client.js"
 grep -q 'measured-layout-px' "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-compat/lib/client.js"
+grep -q 'verticalViewportPatchedDeclarations' "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-compat/lib/client.js"
 inside 'test -f /dsh-home/mobile-plugins/dsh-client-ui-mobile/package.json'
 python3 - "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile/package.json" <<'PYUI'
 import json, sys

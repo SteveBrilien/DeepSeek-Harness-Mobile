@@ -7,7 +7,7 @@ window.__ModuleLoader__.load({
     const inject = [];
     const name = "dsh-webview-compat";
     const PROTOCOL_SCHEMA = 2;
-    const COMPAT_VERSION = "0.1.1";
+    const COMPAT_VERSION = "0.1.2";
     const BRIDGE_NAME = "dshMobilePresentation";
     const MARKER_NAME = "__DSHM_PRESENTATION__";
 
@@ -21,6 +21,7 @@ window.__ModuleLoader__.load({
         let lastRoot = null;
         let rootGeneration = 0;
         let terminalPhase = null;
+        let verticalViewportPatchedDeclarations = 0;
 
         const finite = (value) => Number.isFinite(value) ? value : null;
         const rect = (node) => {
@@ -89,6 +90,7 @@ window.__ModuleLoader__.load({
             rootWidth: rootRect ? rootRect.width : null,
             rootHeight: rootRect ? rootRect.height : null,
             rootChildCount: root ? root.childElementCount : 0,
+            verticalViewportPatchedDeclarations,
             supportsVh: !!(window.CSS && CSS.supports && CSS.supports("height", "100vh")),
             supportsDvh: !!(window.CSS && CSS.supports && CSS.supports("height", "100dvh")),
           };
@@ -169,8 +171,11 @@ window.__ModuleLoader__.load({
         const properties = ["height", "min-height", "max-height"];
         const snapshots = new Map();
         const ownedValues = new Map();
+        const viewportDeclarationSnapshots = new Map();
         let currentPlan = null;
         let resizeFrame = null;
+        let stylesheetFrame = null;
+        let stylesheetObserver = null;
         const visualViewport = window.visualViewport || null;
 
         const remember = (node) => {
@@ -201,13 +206,157 @@ window.__ModuleLoader__.load({
               mode: "measured-layout-px",
               height: formatPixels(measuredHeight),
               measuredHeight,
+              dynamicHeight: positive(metrics.visualViewportHeight) || measuredHeight,
             };
           }
           return {
             mode: "native-100dvh",
             height: "100dvh",
             measuredHeight: null,
+            dynamicHeight: null,
           };
+        };
+
+        const hasVerticalViewportUnit = (value) =>
+          /(?:^|[^\w.-])-?(?:\d+(?:\.\d*)?|\.\d+)(?:dvh|svh|lvh|vh)\b/i.test(value || "");
+        const replaceVerticalViewportUnits = (value, plan) =>
+          String(value || "").replace(
+            /(-?(?:\d+(?:\.\d*)?|\.\d+))(dvh|svh|lvh|vh)\b/gi,
+            (_, amount, unit) => {
+              const baseHeight = String(unit).toLowerCase() === "dvh"
+                ? (plan.dynamicHeight || plan.measuredHeight)
+                : plan.measuredHeight;
+              return formatPixels((Number.parseFloat(amount) * baseHeight) / 100);
+            },
+          );
+        const declarationSnapshot = (style, property) => {
+          let byProperty = viewportDeclarationSnapshots.get(style);
+          if (!byProperty) {
+            byProperty = new Map();
+            viewportDeclarationSnapshots.set(style, byProperty);
+          }
+          const currentValue = style.getPropertyValue(property);
+          const currentPriority = style.getPropertyPriority(property);
+          let snapshot = byProperty.get(property);
+          if (!snapshot) {
+            snapshot = {
+              originalValue: currentValue,
+              originalPriority: currentPriority,
+              ownedValue: null,
+              ownedPriority: null,
+            };
+            byProperty.set(property, snapshot);
+          } else if (
+            snapshot.ownedValue !== null &&
+            (currentValue !== snapshot.ownedValue || currentPriority !== snapshot.ownedPriority)
+          ) {
+            // Another owner changed the declaration after us. Adopt that as the new source
+            // instead of restoring stale CSS during cleanup or a later viewport resize.
+            snapshot.originalValue = currentValue;
+            snapshot.originalPriority = currentPriority;
+            snapshot.ownedValue = null;
+            snapshot.ownedPriority = null;
+          }
+          return snapshot;
+        };
+        const patchStyleDeclaration = (style, plan) => {
+          if (!style || !Number.isFinite(plan.measuredHeight) || plan.measuredHeight <= 1) return;
+          const propertyNames = [];
+          for (let index = 0; index < style.length; index += 1) {
+            const property = style.item(index);
+            if (property) propertyNames.push(property);
+          }
+          for (const property of propertyNames) {
+            const existingByProperty = viewportDeclarationSnapshots.get(style);
+            const existing = existingByProperty ? existingByProperty.get(property) : null;
+            const currentValue = style.getPropertyValue(property);
+            if (!existing && !hasVerticalViewportUnit(currentValue)) continue;
+            const snapshot = declarationSnapshot(style, property);
+            const source = snapshot.originalValue;
+            if (!hasVerticalViewportUnit(source)) continue;
+            const replacement = replaceVerticalViewportUnits(source, plan);
+            if (!replacement || replacement === source) continue;
+            try {
+              style.setProperty(property, replacement, snapshot.originalPriority);
+              snapshot.ownedValue = replacement;
+              snapshot.ownedPriority = snapshot.originalPriority;
+            } catch (_) {
+              // A single inaccessible declaration must never break the presentation contract.
+            }
+          }
+        };
+        const walkRules = (rules, plan) => {
+          if (!rules) return;
+          for (let index = 0; index < rules.length; index += 1) {
+            const rule = rules[index];
+            if (!rule) continue;
+            if (rule.style) patchStyleDeclaration(rule.style, plan);
+            try {
+              if (rule.cssRules) walkRules(rule.cssRules, plan);
+            } catch (_) {
+              // Ignore inaccessible nested rules and continue with local rules.
+            }
+          }
+        };
+        const countOwnedViewportDeclarations = () => {
+          let count = 0;
+          for (const [style, byProperty] of viewportDeclarationSnapshots) {
+            for (const [property, snapshot] of byProperty) {
+              if (
+                snapshot.ownedValue !== null &&
+                style.getPropertyValue(property) === snapshot.ownedValue &&
+                style.getPropertyPriority(property) === snapshot.ownedPriority
+              ) count += 1;
+            }
+          }
+          return count;
+        };
+        const restoreVerticalViewportDeclarations = () => {
+          for (const [style, byProperty] of viewportDeclarationSnapshots) {
+            for (const [property, snapshot] of byProperty) {
+              if (snapshot.ownedValue === null) continue;
+              if (style.getPropertyValue(property) !== snapshot.ownedValue) continue;
+              if (style.getPropertyPriority(property) !== snapshot.ownedPriority) continue;
+              try {
+                if (snapshot.originalValue) {
+                  style.setProperty(property, snapshot.originalValue, snapshot.originalPriority);
+                } else {
+                  style.removeProperty(property);
+                }
+              } catch (_) {
+                // Best-effort lifecycle cleanup only.
+              }
+            }
+          }
+          viewportDeclarationSnapshots.clear();
+          verticalViewportPatchedDeclarations = 0;
+        };
+        const patchVerticalViewportDeclarations = (plan) => {
+          const sheets = Array.prototype.slice.call(document.styleSheets || []);
+          const adopted = Array.prototype.slice.call(document.adoptedStyleSheets || []);
+          for (const sheet of sheets.concat(adopted)) {
+            try {
+              walkRules(sheet.cssRules || sheet.rules, plan);
+            } catch (_) {
+              // The DSH app is local/same-origin. Keep this defensive for future external CSS.
+            }
+          }
+          verticalViewportPatchedDeclarations = countOwnedViewportDeclarations();
+        };
+        const syncVerticalViewportCompatibility = (plan) => {
+          if (plan.mode === "measured-layout-px" && Number.isFinite(plan.measuredHeight)) {
+            patchVerticalViewportDeclarations(plan);
+          } else if (viewportDeclarationSnapshots.size > 0) {
+            restoreVerticalViewportDeclarations();
+          }
+        };
+        const scheduleStylesheetCompatibility = () => {
+          if (!currentPlan || currentPlan.mode !== "measured-layout-px") return;
+          if (stylesheetFrame !== null) return;
+          stylesheetFrame = window.requestAnimationFrame(() => {
+            stylesheetFrame = null;
+            patchVerticalViewportDeclarations(currentPlan);
+          });
         };
 
         const own = (node, plan) => {
@@ -239,6 +388,7 @@ window.__ModuleLoader__.load({
             currentPlan.mode !== nextPlan.mode ||
             currentPlan.height !== nextPlan.height;
           const root = applyContract(nextPlan);
+          syncVerticalViewportCompatibility(nextPlan);
           const after = collectMetrics();
           if (forceEmit || changed) {
             emit("root-contract-applied", nextPlan.mode, after);
@@ -278,6 +428,19 @@ window.__ModuleLoader__.load({
         });
         observer.observe(document.documentElement, { childList: true, subtree: true });
 
+        stylesheetObserver = new MutationObserver(scheduleStylesheetCompatibility);
+        if (document.head) {
+          stylesheetObserver.observe(document.head, {
+            childList: true,
+            subtree: true,
+            characterData: true,
+          });
+        }
+        for (const delay of [0, 250, 1000, 3000]) {
+          const timer = window.setTimeout(scheduleStylesheetCompatibility, delay);
+          timers.push(timer);
+        }
+
         const refreshForViewportChange = () => {
           if (resizeFrame !== null) return;
           resizeFrame = window.requestAnimationFrame(() => {
@@ -302,11 +465,14 @@ window.__ModuleLoader__.load({
 
         return () => {
           if (observer) observer.disconnect();
+          if (stylesheetObserver) stylesheetObserver.disconnect();
           window.removeEventListener("resize", refreshForViewportChange);
           window.removeEventListener("orientationchange", refreshForViewportChange);
           if (visualViewport) visualViewport.removeEventListener("resize", refreshForViewportChange);
           if (resizeFrame !== null) window.cancelAnimationFrame(resizeFrame);
+          if (stylesheetFrame !== null) window.cancelAnimationFrame(stylesheetFrame);
           for (const timer of timers) window.clearTimeout(timer);
+          restoreVerticalViewportDeclarations();
           for (const [node, snapshot] of snapshots) restore(node, snapshot);
         };
       }, "webview-compat: viewport root contract");

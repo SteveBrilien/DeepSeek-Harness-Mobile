@@ -26,6 +26,7 @@ internal data class DshPresentationTelemetry(
     val dvh100: Double?,
     val rootWidth: Double?,
     val rootHeight: Double?,
+    val verticalViewportPatchedDeclarations: Int?,
 ) {
     fun summary(): String = buildString {
         append("schema=").append(schema)
@@ -44,6 +45,7 @@ internal data class DshPresentationTelemetry(
         append(" vh100=").append(number(vh100))
         append(" dvh100=").append(number(dvh100))
         append(" root=").append(number(rootWidth)).append('x').append(number(rootHeight))
+        append(" cssViewportPatches=").append(verticalViewportPatchedDeclarations ?: -1)
     }
 
     private fun number(value: Double?): String =
@@ -101,6 +103,7 @@ internal object DshPresentationHandshakeParser {
             dvh100 = metrics?.optFiniteDouble("dvh100"),
             rootWidth = metrics?.optFiniteDouble("rootWidth"),
             rootHeight = metrics?.optFiniteDouble("rootHeight"),
+            verticalViewportPatchedDeclarations = metrics?.optIntOrNull("verticalViewportPatchedDeclarations"),
         )
     }
 

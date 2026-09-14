@@ -115,3 +115,25 @@ If `repair=measured-layout-px` still yields `rootHeight=0`, inspect later style 
 ## 8. Release discipline
 
 A manual-test APK may be produced from a local CP3 checkpoint commit for the user to supply the missing true-device evidence. Do not call that APK a release build. Do not push the checkpoint unless explicitly requested.
+
+## 9. Target Vivo acceptance result (2026-09-15)
+
+The user manually installed the fixed-commit CP3 APK on the target Vivo V2115A. Target acceptance for the root contract is now **PASS**. The exact in-app schema-2 telemetry reported:
+
+```text
+compat=0.1.1
+repair=measured-layout-px
+viewport=360x670
+documentClientHeight=670
+visualViewportHeight=670
+vh100=0
+dvh100=0
+root=360x670
+phase=presentation-ready
+```
+
+The visible DSH home screen also rendered at full height. Therefore the original blank-home / `#root=0` defect is closed: the target WebView still resolves CSS viewport units to zero, but the measured root contract successfully bypasses that provider defect.
+
+A separate downstream failure was immediately exposed after this fix: opening Settings/other DSH surfaces can leave a blurred overlay with only a horizontal sliver. This is **not** a regression of the root contract; root telemetry remains `360x670` and ready. Source audit of the exact DSH `0.1.5-rc.2` composition found 17 vertical viewport-unit uses (`100vh`, `100dvh`, `60vh`, `52vh`) across 13 active client files. The Settings panel is a direct match for the screenshot: its official CSS uses `height:min(800px,100vh - 48px)`, which collapses on this WebView because measured `100vh=0`.
+
+The next compatibility change is therefore constrained to the same platform defect: only while `measured-layout-px` is active, translate vertical `vh/dvh/svh/lvh` values in same-origin CSSOM declarations to measured pixels. This remains platform compatibility, not responsive/mobile UI redesign; `dsh-client-ui-mobile` stays dormant.

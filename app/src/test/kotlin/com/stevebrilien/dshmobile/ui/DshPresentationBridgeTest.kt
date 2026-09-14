@@ -35,7 +35,8 @@ class DshPresentationBridgeTest {
                 .put("vh100", 670.0)
                 .put("dvh100", 0.0)
                 .put("rootWidth", 360.0)
-                .put("rootHeight", 0.0),
+                .put("rootHeight", 0.0)
+                .put("verticalViewportPatchedDeclarations", 17),
         )
         .toString()
 
@@ -55,6 +56,7 @@ class DshPresentationBridgeTest {
         assertEquals(670.0, parsed.innerHeight ?: -1.0, 0.0)
         assertEquals(0.0, parsed.dvh100 ?: -1.0, 0.0)
         assertEquals(0.0, parsed.rootHeight ?: -1.0, 0.0)
+        assertEquals(17, parsed.verticalViewportPatchedDeclarations)
     }
 
     @Test
@@ -139,6 +141,7 @@ class DshPresentationBridgeTest {
         dvh100 = 670.0,
         rootWidth = 360.0,
         rootHeight = 670.0,
+        verticalViewportPatchedDeclarations = 0,
     )
 
     @Test
@@ -160,5 +163,6 @@ class DshPresentationBridgeTest {
         assertNull(parsed.bootRev)
         assertNull(parsed.comboRev)
         assertNull(parsed.rootHeight)
+        assertNull(parsed.verticalViewportPatchedDeclarations)
     }
 }
