@@ -23,12 +23,16 @@ DSH_SEED_SHA=$(prop dshSeedSha256)
 PROFILE_SEED="$ROOT_DIR/core/runtime-android/src/main/assets/$(prop webProfileSeedAsset)"
 PROFILE_SEED_SHA=$(prop webProfileSeedSha256)
 MOBILE_CONTEXT_VERSION=$(prop mobileContextVersion)
-WEBVIEW_COMPAT_VERSION="0.1.0"
+WEBVIEW_COMPAT_VERSION="0.1.1"
 MOBILE_UI_VERSION="0.1.9-dshm.2"
 
 command -v bwrap >/dev/null
 command -v tar >/dev/null
 command -v sha256sum >/dev/null
+command -v node >/dev/null
+
+echo '[e2e] WebView compat measured viewport policy'
+node "$ROOT_DIR/scripts/test-webview-compat-policy.mjs"
 
 if [[ $(uname -m) != aarch64 ]]; then
   echo "runtime-alpine-e2e: SKIP: requires an aarch64 host" >&2
@@ -166,10 +170,11 @@ test ! -e "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile"
 inside 'test -f /dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-compat/lib/client.js'
 python3 - "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-compat/package.json" <<'PYCOMPAT'
 import json, sys
-assert json.load(open(sys.argv[1]))['version'] == '0.1.0'
+assert json.load(open(sys.argv[1]))['version'] == '0.1.1'
 print('webview-compat-active-ok')
 PYCOMPAT
 grep -q 'webview-compat: viewport root contract' "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-compat/lib/client.js"
+grep -q 'measured-layout-px' "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-compat/lib/client.js"
 inside 'test -f /dsh-home/mobile-plugins/dsh-client-ui-mobile/package.json'
 python3 - "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile/package.json" <<'PYUI'
 import json, sys

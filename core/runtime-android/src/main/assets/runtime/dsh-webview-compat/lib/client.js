@@ -7,7 +7,7 @@ window.__ModuleLoader__.load({
     const inject = [];
     const name = "dsh-webview-compat";
     const PROTOCOL_SCHEMA = 2;
-    const COMPAT_VERSION = "0.1.0";
+    const COMPAT_VERSION = "0.1.1";
     const BRIDGE_NAME = "dshMobilePresentation";
     const MARKER_NAME = "__DSHM_PRESENTATION__";
 
@@ -150,8 +150,8 @@ window.__ModuleLoader__.load({
           timers.push(timer);
         };
 
-        emit("compat-active", androidWebView ? "pending-existing-100dvh" : "not-applicable");
-        emit("viewport-probed", androidWebView ? "pending-existing-100dvh" : "not-applicable");
+        emit("compat-active", androidWebView ? "pending-measured-probe" : "not-applicable");
+        emit("viewport-probed", androidWebView ? "pending-measured-probe" : "not-applicable");
 
         if (!androidWebView) {
           scheduleProbe(0, false, "not-applicable");
@@ -163,11 +163,15 @@ window.__ModuleLoader__.load({
           };
         }
 
-        // Checkpoint 2 intentionally preserves the existing viewport repair unchanged.
-        // This instrumentation exists to prove whether the current repair executes and what
-        // geometry it produces before any Checkpoint 3 behavior change is attempted.
+        // Checkpoint 3: preserve native 100dvh when it resolves normally, but fall back to
+        // measured viewport pixels when the target WebView reports a positive JS viewport and
+        // resolves 100dvh to zero. Android Native remains observation/hosting only.
         const properties = ["height", "min-height", "max-height"];
         const snapshots = new Map();
+        const ownedValues = new Map();
+        let currentPlan = null;
+        let resizeFrame = null;
+        const visualViewport = window.visualViewport || null;
 
         const remember = (node) => {
           if (!node || snapshots.has(node)) return;
@@ -178,49 +182,130 @@ window.__ModuleLoader__.load({
           })));
         };
 
-        const own = (node) => {
-          remember(node);
-          node.style.setProperty("height", "100dvh", "important");
-          node.style.setProperty("min-height", "100dvh", "important");
-          node.style.setProperty("max-height", "none", "important");
+        const positive = (value) => Number.isFinite(value) && value > 1 ? value : null;
+        // Root layout follows the layout viewport. visualViewport remains a last-resort
+        // fallback and a resize signal so an overlay-only IME does not shrink the whole app.
+        const measuredViewportHeight = (metrics) =>
+          positive(metrics.innerHeight) ||
+          positive(metrics.documentClientHeight) ||
+          positive(metrics.visualViewportHeight);
+        const formatPixels = (value) => {
+          const rounded = Math.round(value * 1000) / 1000;
+          return String(rounded) + "px";
+        };
+        const chooseRepairPlan = (metrics) => {
+          const measuredHeight = measuredViewportHeight(metrics);
+          const dvhResolved = finite(metrics.dvh100);
+          if (measuredHeight !== null && dvhResolved !== null && dvhResolved <= 1) {
+            return {
+              mode: "measured-layout-px",
+              height: formatPixels(measuredHeight),
+              measuredHeight,
+            };
+          }
+          return {
+            mode: "native-100dvh",
+            height: "100dvh",
+            measuredHeight: null,
+          };
         };
 
-        const applyContract = () => {
-          own(document.documentElement);
-          if (document.body) own(document.body);
+        const own = (node, plan) => {
+          if (!node) return;
+          remember(node);
+          node.style.setProperty("height", plan.height, "important");
+          node.style.setProperty("min-height", plan.height, "important");
+          node.style.setProperty("max-height", "none", "important");
+          ownedValues.set(node, new Map([
+            ["height", plan.height],
+            ["min-height", plan.height],
+            ["max-height", "none"],
+          ]));
+        };
+
+        const applyContract = (plan) => {
+          own(document.documentElement, plan);
+          if (document.body) own(document.body, plan);
           const root = document.getElementById("root");
-          if (root) own(root);
+          if (root) own(root, plan);
+          currentPlan = plan;
           return root;
         };
 
+        const applySelectedContract = (forceEmit) => {
+          const before = collectMetrics();
+          const nextPlan = chooseRepairPlan(before);
+          const changed = !currentPlan ||
+            currentPlan.mode !== nextPlan.mode ||
+            currentPlan.height !== nextPlan.height;
+          const root = applyContract(nextPlan);
+          const after = collectMetrics();
+          if (forceEmit || changed) {
+            emit("root-contract-applied", nextPlan.mode, after);
+          }
+          return { plan: nextPlan, root, metrics: after };
+        };
+
         const restore = (node, snapshot) => {
+          const owned = ownedValues.get(node);
+          if (!owned) return;
           for (const entry of snapshot) {
-            const owned = entry.property === "max-height" ? "none" : "100dvh";
-            if (node.style.getPropertyValue(entry.property) !== owned) continue;
+            const expected = owned.get(entry.property);
+            if (expected === undefined) continue;
+            if (node.style.getPropertyValue(entry.property) !== expected) continue;
             if (node.style.getPropertyPriority(entry.property) !== "important") continue;
             if (entry.value) node.style.setProperty(entry.property, entry.value, entry.priority);
             else node.style.removeProperty(entry.property);
           }
         };
 
-        let observedRoot = applyContract();
-        emit("root-contract-applied", "existing-100dvh");
+        const scheduleCurrentProbe = (delay, finalProbe) => {
+          const mode = currentPlan ? currentPlan.mode : "pending-measured-probe";
+          scheduleProbe(delay, finalProbe, mode);
+        };
+
+        const initial = applySelectedContract(true);
+        let observedRoot = initial.root;
         observer = new MutationObserver(() => {
           const root = document.getElementById("root");
           if (root && root !== observedRoot) {
-            observedRoot = applyContract();
-            emit("root-contract-applied", "existing-100dvh");
+            observedRoot = root;
+            terminalPhase = null;
+            applySelectedContract(true);
+            scheduleCurrentProbe(0, false);
+            scheduleCurrentProbe(250, true);
           }
         });
         observer.observe(document.documentElement, { childList: true, subtree: true });
 
-        scheduleProbe(0, false, "existing-100dvh");
-        scheduleProbe(250, false, "existing-100dvh");
-        scheduleProbe(1000, false, "existing-100dvh");
-        scheduleProbe(3000, true, "existing-100dvh");
+        const refreshForViewportChange = () => {
+          if (resizeFrame !== null) return;
+          resizeFrame = window.requestAnimationFrame(() => {
+            resizeFrame = null;
+            terminalPhase = null;
+            applySelectedContract(true);
+            scheduleCurrentProbe(0, false);
+            scheduleCurrentProbe(250, true);
+          });
+        };
+
+        window.addEventListener("resize", refreshForViewportChange, { passive: true });
+        window.addEventListener("orientationchange", refreshForViewportChange, { passive: true });
+        if (visualViewport) {
+          visualViewport.addEventListener("resize", refreshForViewportChange, { passive: true });
+        }
+
+        scheduleCurrentProbe(0, false);
+        scheduleCurrentProbe(250, false);
+        scheduleCurrentProbe(1000, false);
+        scheduleCurrentProbe(3000, true);
 
         return () => {
           if (observer) observer.disconnect();
+          window.removeEventListener("resize", refreshForViewportChange);
+          window.removeEventListener("orientationchange", refreshForViewportChange);
+          if (visualViewport) visualViewport.removeEventListener("resize", refreshForViewportChange);
+          if (resizeFrame !== null) window.cancelAnimationFrame(resizeFrame);
           for (const timer of timers) window.clearTimeout(timer);
           for (const [node, snapshot] of snapshots) restore(node, snapshot);
         };

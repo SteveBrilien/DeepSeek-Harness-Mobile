@@ -415,3 +415,37 @@ Exact-current-source gates are green: targeted handshake tests, full Unit, Debug
 Checkpoint 2 is **not complete**. The exact Debug APK is `artifact-3bc397be5d7a437084cd79ebd0226271`, SHA-256 `0a7b0ee893324e85a79ff83f914bad41ac7fa365dfe275b4930e16e536cf7fa0`. At the true-device stage, the isolated ADB TaskProfile reproduced its known private-daemon/no-device defect; a subsequent approved host-ADB action also reported the physical device absent. Therefore the remaining blocker is a real missing ADB transport, not a product failure. No `#root=0` cause classification and no Checkpoint 3 behavior change is allowed until this exact APK produces a schema-2 true-device handshake.
 
 Run-specific evidence is recorded in `analysis/debug/2026-09-14-cp2-observability/evidence.md`.
+
+### Checkpoint 2 true-device closure (2026-09-15)
+
+The exact CP2 candidate was later installed manually on the target Vivo V2115A while ADB was unavailable. The in-app bounded WebView diagnostics supplied the missing authoritative target evidence. Provider identity was `com.google.android.webview 151.0.7922.199` on Android 11.
+
+The schema-2 handshake completed the intended diagnostic chain:
+
+- `compat-active`;
+- `viewport-probed`;
+- `root-contract-applied`;
+- repeated settled probes;
+- terminal `presentation-degraded`.
+
+The same messages prove all of the following simultaneously:
+
+- Android WebView branch entered: `androidWebView=true`;
+- compat plugin version `0.1.0` actually executed;
+- JavaScript viewport was healthy: `innerHeight=670`;
+- document layout viewport was healthy: `documentClientHeight=670`;
+- visual viewport was healthy: `visualViewportHeight=670`;
+- measured CSS `100vh` resolved to `0`;
+- measured CSS `100dvh` resolved to `0`;
+- after the existing `100dvh !important` contract ran, `#root` remained `360x0`;
+- the native WebView itself was already measured/attached at `1080x2010`, so this is not the earlier native-size-zero timing hypothesis.
+
+This closes the Checkpoint 2 failure classification as `VIEWPORT_COLLAPSE` / `ROOT_CONTRACT_FAILED`: on this exact target/provider, viewport-relative CSS units resolve to zero even though pixel viewport geometry is positive. Checkpoint 3 is therefore allowed to implement only the measured-pixel fallback described by the research route. This evidence does **not** authorize re-enabling the dormant responsive/mobile UI plugin or moving DOM mutation into Android Native.
+
+### Checkpoint 3 measured viewport candidate (2026-09-15)
+
+Checkpoint 3 implements only the measured-pixel fallback authorized by the target CP2 evidence. `@dsh-mobile/dsh-webview-compat` is now `0.1.1`: when Android WebView reports a positive pixel viewport but measured `100dvh <= 1px`, the plugin owns `html/body/#root` height and min-height with the measured `window.innerHeight` (falling back to `documentElement.clientHeight`, then `visualViewport.height`). Normal engines continue to use `100dvh`. Root replacement and viewport changes recompute the contract; effect disposal restores only still-owned inline properties. No mobile UI selectors or Android Native DOM mutation were added.
+
+Exact-current-source gates are green: Android Unit `task-android_unit_test-dcabc9dd71914ee9a3b9`, Debug Build `task-android_debug-e5e3769084c54349b4cd`, Lint `task-android_lint-fcfdaa525c7e45299102`, Mobile Context Contract `task-mobile_context_contract-55aeeb81d2b14f08a400`, and Runtime Alpine E2E `task-runtime_alpine_e2e-90bba5a5ad584cf9aa9e`. The Alpine run includes the deterministic measured-viewport policy test and finished `runtime-alpine-e2e: PASS dsh=0.1.5-rc.2`. A fresh 360x740 Chromium composition sanity gate also passed with compat in combo revision `66d98215d1da` and no dormant mobile UI package; this remains explicitly non-WebView evidence.
+
+**Checkpoint 3 target acceptance is still pending.** The target Vivo must manually install the post-commit CP3 APK and show `compat=0.1.1`, `repair=measured-layout-px`, non-zero root geometry, and terminal `presentation-ready`. Until then the blank-screen bug is not recorded as fixed. Detailed handoff: `docs/handoff/2026-09-15-cp3-measured-webview-viewport.md`.
