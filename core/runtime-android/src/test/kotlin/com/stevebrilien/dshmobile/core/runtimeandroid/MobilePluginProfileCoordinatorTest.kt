@@ -82,11 +82,16 @@ class MobilePluginProfileCoordinatorTest {
             "file:/dsh-home/mobile-plugins/dsh-mobile-context",
             migrated.getJSONObject("dependencies").getString("@dsh-mobile/dsh-mobile-context"),
         )
+        assertEquals(
+            "file:/dsh-home/mobile-plugins/dsh-webview-compat",
+            migrated.getJSONObject("dependencies").getString("@dsh-mobile/dsh-webview-compat"),
+        )
         assertFalse(migrated.getJSONObject("dependencies").has("dsh-client-ui-mobile"))
         val bundles = migrated.getJSONObject("dsh").getJSONObject("profile").getJSONArray("bundles")
         val bundleNames = (0 until bundles.length()).map(bundles::getString)
         assertTrue(bundleNames.contains("user-plugin"))
         assertTrue(bundleNames.contains("@dsh-mobile/dsh-mobile-context"))
+        assertTrue(bundleNames.contains("@dsh-mobile/dsh-webview-compat"))
         assertFalse(bundleNames.contains("dsh-client-ui-mobile"))
         assertEquals(
             MobilePluginProfileCoordinator.MOBILE_CONTEXT_PLUGIN_VERSION,
@@ -95,7 +100,21 @@ class MobilePluginProfileCoordinatorTest {
                     .readText(StandardCharsets.UTF_8),
             ).getString("version"),
         )
+        assertEquals(
+            MobilePluginProfileCoordinator.WEBVIEW_COMPAT_PLUGIN_VERSION,
+            JSONObject(
+                File(profile, "node_modules/@dsh-mobile/dsh-webview-compat/package.json")
+                    .readText(StandardCharsets.UTF_8),
+            ).getString("version"),
+        )
         assertFalse(File(profile, "node_modules/dsh-client-ui-mobile").exists())
+        assertEquals(
+            MobilePluginProfileCoordinator.WEBVIEW_COMPAT_PLUGIN_VERSION,
+            JSONObject(
+                File(store.layout.persistentDshHome, "mobile-plugins/dsh-webview-compat/package.json")
+                    .readText(StandardCharsets.UTF_8),
+            ).getString("version"),
+        )
         assertEquals(
             MobilePluginProfileCoordinator.MOBILE_UI_PLUGIN_VERSION,
             JSONObject(

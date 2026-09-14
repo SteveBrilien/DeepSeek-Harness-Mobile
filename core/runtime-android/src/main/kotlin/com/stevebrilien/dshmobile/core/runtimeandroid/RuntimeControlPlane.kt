@@ -82,6 +82,24 @@ class RuntimeControlPlane(context: Context) {
 
     fun webLaunchUrl(): String? = manager.webLaunchUrl()
 
+    fun webPresentation(): DshWebPresentationDescriptor? = manager.webLaunchUrl()?.let { launchUrl ->
+        DshWebPresentationDescriptor(
+            launchUrl = launchUrl,
+            generation = buildString {
+                append("dsh=")
+                append(BuildConfig.DSH_VERSION)
+                append(";mode=")
+                append(MobilePluginProfileCoordinator.MOBILE_WEB_PROFILE_MODE)
+                append(";compat=")
+                append(MobilePluginProfileCoordinator.WEBVIEW_COMPAT_PLUGIN_VERSION)
+                append(";uiAsset=")
+                append(MobilePluginProfileCoordinator.MOBILE_UI_PLUGIN_VERSION)
+                append(";context=")
+                append(MobilePluginProfileCoordinator.MOBILE_CONTEXT_PLUGIN_VERSION)
+            },
+        )
+    }
+
     fun stop(): Result<Unit> = runBlocking { manager.stop() }
 
     fun executeShell(
@@ -97,6 +115,10 @@ class RuntimeControlPlane(context: Context) {
             manager.rollback().getOrThrow()
             manager.start().getOrThrow()
         }
+    }
+
+    fun clearLog() {
+        manager.clearLog()
     }
 
     fun logTail(maxChars: Int = 32_000): String {

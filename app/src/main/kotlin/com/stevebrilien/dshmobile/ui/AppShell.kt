@@ -1,5 +1,7 @@
 package com.stevebrilien.dshmobile.ui
 
+import android.app.Activity
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -39,11 +41,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.stevebrilien.dshmobile.DshMobileApplication
 import com.stevebrilien.dshmobile.core.recovery.NativeFileManager
 import com.stevebrilien.dshmobile.core.recovery.NativeRecoveryController
 import com.stevebrilien.dshmobile.core.recovery.NativeRecoveryShell
 import com.stevebrilien.dshmobile.core.recovery.ProjectRegistry
 import com.stevebrilien.dshmobile.core.recovery.RecoveryVault
+import com.stevebrilien.dshmobile.runtime.RuntimeSupervisor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -60,11 +64,16 @@ private enum class WorkspaceSection(val label: String, val icon: DshIconGlyph) {
     Files("文件", DshIconGlyph.FILE),
 }
 
+private val BottomNavigationHeight = 56.dp
+
 @Composable
 fun DshMobileApp() {
     val context = LocalContext.current.applicationContext
+    val application = context as DshMobileApplication
+    val runtimeSupervisor = remember(application) { application.runtimeSupervisor }
     val (themeMode, setThemeMode) = rememberDshThemePreference()
     val vault = remember(context) { RecoveryVault(context) }
+    val webViewHostState = rememberDshWebViewHostState()
     val onboardingStore = remember(context) { OnboardingStateStore(context) }
     var onboardingComplete by remember(onboardingStore) { mutableStateOf(onboardingStore.isComplete()) }
     var showLaunchSplash by remember { mutableStateOf(true) }
@@ -93,6 +102,8 @@ fun DshMobileApp() {
                 } else {
                     DshMobileShell(
                         vault = vault,
+                        runtimeSupervisor = runtimeSupervisor,
+                        webViewHostState = webViewHostState,
                         themeMode = themeMode,
                         onThemeChange = setThemeMode,
                         onRunOnboarding = {
@@ -116,17 +127,28 @@ fun DshMobileApp() {
 @Composable
 private fun DshMobileShell(
     vault: RecoveryVault,
+    runtimeSupervisor: RuntimeSupervisor,
+    webViewHostState: DshWebViewHostState,
     themeMode: DshThemeMode,
     onThemeChange: (DshThemeMode) -> Unit,
     onRunOnboarding: () -> Unit,
 ) {
-    val context = LocalContext.current.applicationContext
+    val localContext = LocalContext.current
+    val context = localContext.applicationContext
     val fileManager = remember(context) { NativeFileManager(context, vault) }
     val projectRegistry = remember(vault) { ProjectRegistry(vault) }
     val recoveryShell = remember(context) { NativeRecoveryShell(context, fileManager) }
     val recoveryController = remember(context) { NativeRecoveryController(context, vault) }
     var selected by remember { mutableStateOf(MainSection.Home) }
     var workspaceSection by remember { mutableStateOf(WorkspaceSection.Projects) }
+    BackHandler {
+        if (selected != MainSection.Home) {
+            selected = MainSection.Home
+        } else {
+            webViewHostState.handleBack { (localContext as? Activity)?.finish() }
+        }
+    }
+
     val colors = LocalDshColors.current
 
     LaunchedEffect(vault) {
@@ -141,12 +163,15 @@ private fun DshMobileShell(
         val contentModifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .padding(bottom = 60.dp)
+            .navigationBarsPadding()
+            .padding(bottom = BottomNavigationHeight)
 
         // Keep the DSH WebView attached for the full shell lifetime. Recreating the Home
         // destination used to destroy/recreate WebView every time the bottom navigation
         // changed, which reloaded the DSH SPA and discarded its in-memory UI state.
         ChatScreen(
+            runtimeSupervisor = runtimeSupervisor,
+            webViewHostState = webViewHostState,
             modifier = contentModifier,
             visible = selected == MainSection.Home,
         )
@@ -261,7 +286,7 @@ private fun DshBottomNavigation(
 ) {
     val colors = LocalDshColors.current
     Surface(
-        modifier = modifier.fillMaxWidth().height(60.dp),
+        modifier = modifier.fillMaxWidth().height(BottomNavigationHeight),
         color = colors.base,
         border = BorderStroke(0.5.dp, colors.border1),
         tonalElevation = 0.dp,

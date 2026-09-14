@@ -337,3 +337,17 @@ Files:
 - `release/SHA256SUMS`
 - `docs/HANDOFF.md`
 - `docs/NEXT_ACTIONS.md`
+
+## 2026-09-14T10:03:35.901415Z — DOCS: Freeze releases and document WebView rendering/debug test failures
+
+Added a debug baseline for 0.4.0-preview.1. It separates the Android WebView root-collapse failure from the old broad mobile-layout regressions, records the stale 13080 Chromium session/profile mismatch, identifies that the current Alpine E2E stops at HTTP/profile contract rather than rendered presentation, catalogs Runtime/WebView/log/navigation architecture debt, and defines a release gate plus the research backlog for the next conversation. No new APK should be published until fresh Chromium, WebView-equivalent, and true-device presentation gates pass for the exact candidate.
+
+Files:
+- `docs/debug/2026-09-14-webview-rendering-debug.md`
+
+## 2026-09-14T10:40:19.751806Z — DOCS: Complete Android WebView presentation technical-route research
+
+Research-only pass. Documented pinned DSH/Cordis client-plugin lifecycle, DSH boot/combo revision semantics, Android System WebView 151 viewport evidence, an origin-scoped WebMessageListener presentation handshake, CDP + Espresso-Web observability, and a real-WebView Orange Pi strategy centered on conditional ARM64 Cuttlefish userdebug plus mandatory physical Vivo OEM acceptance. Selected DSH compat-plugin ownership with measured geometry; rejected Chromium-as-WebView, post-load Android DOM patching, semantic-version-only generations, and immediately=true as a standalone fix. No product repair implementation was performed.
+
+Files:
+- `docs/research/2026-09-14-webview-presentation-technical-route.md`

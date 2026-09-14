@@ -26,6 +26,19 @@ data class RuntimeStartProgress(
     val logLine: String? = null,
 )
 
+/**
+ * Authenticated local DSH Web launch plus the managed mobile-presentation generation.
+ *
+ * The URL is intentionally ephemeral because it carries the current runtime launch
+ * credential. [generation] is stable for one APK-managed browser-plugin contract and
+ * lets the Android Web host invalidate stale resource cache exactly when that contract
+ * changes.
+ */
+data class DshWebPresentationDescriptor(
+    val launchUrl: String,
+    val generation: String,
+)
+
 data class RuntimeResourceInventory(
     val activeSlot: RuntimeSlot?,
     val installedAlpineVersion: String?,

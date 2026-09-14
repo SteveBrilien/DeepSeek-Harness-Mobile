@@ -10,8 +10,8 @@ import java.time.format.DateTimeFormatter
 internal class DshWebViewDiagnostics(context: Context) {
     companion object {
         private const val MAX_LOG_BYTES = 1024L * 1024L
-        private val TOKEN = Regex("""([?&]token=)[^&\\s\"']+""")
-        private val TOKEN_ASSIGNMENT = Regex("""token=[A-Za-z0-9._~-]+""")
+        private val TOKEN = Regex("""([?&]token=)[^&\s"']+""")
+        private val TOKEN_ASSIGNMENT = Regex("""token=[^&\s"']+""")
         private val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS XXX")
 
         internal fun redact(value: String): String =
@@ -34,6 +34,11 @@ internal class DshWebViewDiagnostics(context: Context) {
             "provider package=${pkg?.packageName ?: "unknown"} version=${pkg?.versionName ?: "unknown"} " +
                 "ua=${webView.settings.userAgentString}",
         )
+    }
+
+    fun clear() = synchronized(lock) {
+        if (logFile.exists()) logFile.writeText("", StandardCharsets.UTF_8)
+        File(logFile.parentFile, "${logFile.name}.1").delete()
     }
 
     fun tail(maxChars: Int = 16_000): String {

@@ -14,4 +14,13 @@ class DshWebViewDiagnosticsTest {
         assertTrue(output.contains("token=[redacted]"))
         assertTrue(output.contains("&x=1"))
     }
+    @Test
+    fun redactionDoesNotLeakSuffixWhenTokenContainsLowercaseS() {
+        val input = "launch=http://127.0.0.1:3080/?token=abc_sSuffix-42"
+        val output = DshWebViewDiagnostics.redact(input)
+        assertFalse(output.contains("abc_sSuffix-42"))
+        assertFalse(output.contains("Suffix-42"))
+        assertTrue(output.endsWith("token=[redacted]"))
+    }
+
 }

@@ -362,10 +362,10 @@ private fun FilesHeader(
                 .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            DshButton("新建", onNew, icon = DshIconGlyph.PLUS, style = DshButtonStyle.PRIMARY)
             DshButton("上一级", onUp, icon = DshIconGlyph.ARROW_LEFT, enabled = canGoUp)
             DshButton("根目录", onRoot, icon = DshIconGlyph.HOME)
             DshButton("刷新", onRefresh, icon = DshIconGlyph.REFRESH)
-            DshButton("新建", onNew, icon = DshIconGlyph.PLUS, style = DshButtonStyle.PRIMARY)
         }
 
         if (!rootInfo.persistentRecoveryAvailable) {
@@ -400,16 +400,21 @@ private fun FileActions(
     onRename: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    DshActionStrip(modifier = Modifier.fillMaxWidth()) {
-        DshCompactAction("新建文件", DshIconGlyph.FILE, onNewFile)
-        DshCompactAction("新建文件夹", DshIconGlyph.PROJECT, onNewDirectory)
-        DshActionDivider()
-        DshCompactAction("复制", DshIconGlyph.COPY, onCopy, enabled = selected)
-        DshCompactAction("移动", DshIconGlyph.ARROW_LEFT, onCut, enabled = selected)
-        DshCompactAction("粘贴", DshIconGlyph.PASTE, onPaste, enabled = hasClipboard)
-        DshActionDivider()
-        DshCompactAction("重命名", DshIconGlyph.RENAME, onRename, enabled = selected)
-        DshCompactAction("删除", DshIconGlyph.DELETE, onDelete, enabled = selected)
+    DshPanel(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(4.dp)) {
+            Row(modifier = Modifier.fillMaxWidth()) {
+                DshCompactAction("新建文件", DshIconGlyph.FILE, onNewFile, Modifier.weight(1f))
+                DshCompactAction("新建文件夹", DshIconGlyph.PROJECT, onNewDirectory, Modifier.weight(1f))
+                DshCompactAction("复制", DshIconGlyph.COPY, onCopy, Modifier.weight(1f), enabled = selected)
+                DshCompactAction("移动", DshIconGlyph.ARROW_LEFT, onCut, Modifier.weight(1f), enabled = selected)
+            }
+            Row(modifier = Modifier.fillMaxWidth()) {
+                DshCompactAction("粘贴", DshIconGlyph.PASTE, onPaste, Modifier.weight(1f), enabled = hasClipboard)
+                DshCompactAction("重命名", DshIconGlyph.RENAME, onRename, Modifier.weight(1f), enabled = selected)
+                DshCompactAction("删除", DshIconGlyph.DELETE, onDelete, Modifier.weight(1f), enabled = selected)
+                Spacer(Modifier.weight(1f))
+            }
+        }
     }
 }
 

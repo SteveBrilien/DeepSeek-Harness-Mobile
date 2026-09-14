@@ -1,25 +1,28 @@
 # Third-Party Notices
 
-## dsh-client-ui-mobile 0.1.9
+## dsh-client-ui-mobile 0.1.9-dshm.2
 
 - Project: `dsh-client-ui-mobile`
 - Upstream: `https://github.com/GithungDang/dsh-client-ui-mobile`
-- Package version: `0.1.9`
+- Upstream package version: `0.1.9`
+- Local package version: `0.1.9-dshm.2`
 - License: MIT
 - Copyright notice: `Copyright (c) 2026 gihungdang`
 
-DeepSeek Harness Mobile vendors the published 0.1.9 runtime package files (`package.json`, `cordis.patch.yml`, `lib/index.js`, `lib/client.js`) together with the upstream MIT license. The files are copied verbatim from the published package and are not locally rebuilt.
+DeepSeek Harness Mobile vendors the published 0.1.9 runtime package files (`package.json`, `cordis.patch.yml`, `lib/index.js`, `lib/client.js`) together with the upstream MIT license. The local `0.1.9-dshm.2` derivative contains a narrow Android WebView viewport compatibility patch inside the existing Cordis browser plugin. The mobile stylesheet retains a `100dvh` fallback for `html`, `body`, and `#root`; the client lifecycle additionally owns those three roots at widths up to 768 px using inline `height: 100dvh !important`, `min-height: 100dvh !important`, and `max-height: none !important`, restoring their previous inline values when the mobile contract is deactivated.
 
-The package is used as an additive Cordis client-layout layer for the official `dsh web` profile on narrow screens. It reuses DSH's built-in layout service and slots rather than replacing the upstream DSH Web Client.
+This second step is necessary because true-device Android 11 WebView validation showed that DSH can install a later root-height rule after the plugin stylesheet has loaded: other mobile-plugin rules were active while `html`, `body`, and `#root` still computed to `0px`. Keeping the repair in the Cordis client lifecycle makes the ordering explicit without moving presentation ownership back into Android `WebView.evaluateJavascript()`.
 
-Vendored-file SHA-256 values:
+The package is currently shipped as a **dormant** APK-owned payload and is deliberately removed from the active `dsh web` profile for the raw-DSH / WebView-compat baseline introduced in 0.3.0-alpha.18/19. This lets the official DSH Web Client prove complete rendering and interaction before any responsive overrides are reintroduced. The package is retained for later controlled mobile-plugin work; it is not loaded by the baseline profile. The version suffix is deliberately local so the patched package cannot be mistaken for an upstream release.
+
+Vendored/local-file SHA-256 values:
 
 ```text
-bc5f87f96b31361770ef7cd56c43db0ead78fe1a3e93309f09a3f86091553a4f  package.json
-d36f228b8d4ae842fafc22a9e18a1e43bf3339afd3b5fc8d42f9d455e45852f0  lib/client.js
+545cb646742fc1521892a2126a97c05c3c59457a77ff8d8efe843edc95533970  package.json
+b796daa1778e147d23b1aa7c8b79ae9ff3ae23610da5327987e46c4ece098675  lib/client.js
 ae55135f8ac8520600d83b95c2ac62772b29adfd8e861e0b24934830d313d1d3  lib/index.js
 26780ddc5c14a480645341bc0d606809d9cf0599a4080da8e44aec2dd5f371f1  cordis.patch.yml
 66ef15f1d96a34f0b8d788a5716493513ebc88477523299997eaf8e75ce74c3c  LICENSE
 ```
 
-Compatibility note: the plugin targets the Harness 0.1 series and depends on DSH client layout conventions. Runtime/DSH upgrades must verify the mobile profile before an A/B slot is promoted.
+Compatibility note: the plugin targets the Harness 0.1 series and depends on DSH client layout conventions. Runtime/DSH upgrades must verify the mobile profile before an A/B slot is promoted. If upstream ships an equivalent viewport fix, prefer returning to an unmodified upstream package and dropping the local suffix.

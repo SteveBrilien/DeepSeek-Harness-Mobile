@@ -23,7 +23,8 @@ DSH_SEED_SHA=$(prop dshSeedSha256)
 PROFILE_SEED="$ROOT_DIR/core/runtime-android/src/main/assets/$(prop webProfileSeedAsset)"
 PROFILE_SEED_SHA=$(prop webProfileSeedSha256)
 MOBILE_CONTEXT_VERSION=$(prop mobileContextVersion)
-MOBILE_UI_VERSION="0.1.9"
+WEBVIEW_COMPAT_VERSION="0.1.0"
+MOBILE_UI_VERSION="0.1.9-dshm.2"
 
 command -v bwrap >/dev/null
 command -v tar >/dev/null
@@ -134,6 +135,8 @@ PY2
 [[ "$profile_version" == "$MOBILE_CONTEXT_VERSION" ]] || { echo "Embedded profile expected mobile context $MOBILE_CONTEXT_VERSION, got $profile_version" >&2; exit 2; }
 mkdir -p "$TMP_ROOT/dsh-home/mobile-plugins/dsh-mobile-context"
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-mobile-context/." "$TMP_ROOT/dsh-home/mobile-plugins/dsh-mobile-context/"
+mkdir -p "$TMP_ROOT/dsh-home/mobile-plugins/dsh-webview-compat"
+cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-webview-compat/." "$TMP_ROOT/dsh-home/mobile-plugins/dsh-webview-compat/"
 mkdir -p "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile"
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-client-ui-mobile/." "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile/"
 python3 - "$TMP_ROOT/dsh-home/profiles/web/package.json" <<'PY3'
@@ -142,26 +145,40 @@ p = pathlib.Path(sys.argv[1])
 profile = json.loads(p.read_text())
 deps = profile.setdefault('dependencies', {})
 deps.pop('dsh-client-ui-mobile', None)
+deps['@dsh-mobile/dsh-webview-compat'] = 'file:/dsh-home/mobile-plugins/dsh-webview-compat'
 bundles = profile.setdefault('dsh', {}).setdefault('profile', {}).setdefault('bundles', [])
 profile['dsh']['profile']['bundles'] = [name for name in bundles if name != 'dsh-client-ui-mobile']
+if '@dsh-mobile/dsh-webview-compat' not in profile['dsh']['profile']['bundles']:
+    profile['dsh']['profile']['bundles'].append('@dsh-mobile/dsh-webview-compat')
 p.write_text(json.dumps(profile, indent=2) + '\n')
 assert deps['@dsh-mobile/dsh-mobile-context'] == 'file:/dsh-home/mobile-plugins/dsh-mobile-context'
+assert deps['@dsh-mobile/dsh-webview-compat'] == 'file:/dsh-home/mobile-plugins/dsh-webview-compat'
 assert 'dsh-client-ui-mobile' not in deps
 assert '@dsh-mobile/dsh-mobile-context' in profile['dsh']['profile']['bundles']
+assert '@dsh-mobile/dsh-webview-compat' in profile['dsh']['profile']['bundles']
 assert 'dsh-client-ui-mobile' not in profile['dsh']['profile']['bundles']
-print('embedded-native-profile-offline-contract-ok')
+print('embedded-webview-compat-profile-offline-contract-ok')
 PY3
+mkdir -p "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-compat"
+cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-webview-compat/." "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-compat/"
 rm -rf "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile"
 test ! -e "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile"
+inside 'test -f /dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-compat/lib/client.js'
+python3 - "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-compat/package.json" <<'PYCOMPAT'
+import json, sys
+assert json.load(open(sys.argv[1]))['version'] == '0.1.0'
+print('webview-compat-active-ok')
+PYCOMPAT
+grep -q 'webview-compat: viewport root contract' "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-compat/lib/client.js"
 inside 'test -f /dsh-home/mobile-plugins/dsh-client-ui-mobile/package.json'
 python3 - "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile/package.json" <<'PYUI'
 import json, sys
-assert json.load(open(sys.argv[1]))['version'] == '0.1.9'
+assert json.load(open(sys.argv[1]))['version'] == '0.1.9-dshm.2'
 print('dormant-mobile-ui-asset-ok')
 PYUI
 
 echo '[e2e] embedded fast-path DSH web token exchange'
-inside 'set -e; : >/tmp/dsh-web-seed.log; /usr/bin/node --expose-internals /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js web --host 127.0.0.1 --port 13080 --no-open >/tmp/dsh-web-seed.log 2>&1 & pid=$!; trap "kill $pid 2>/dev/null || true" EXIT; url=""; i=0; while [ $i -lt 120 ]; do url=$(sed -n "s#^dsh web: \(http://127.0.0.1:13080/?token=[^ ]*\).*#\1#p" /tmp/dsh-web-seed.log | tail -1); [ -n "$url" ] && break; if ! kill -0 $pid 2>/dev/null; then cat /tmp/dsh-web-seed.log >&2; exit 2; fi; i=$((i+1)); sleep 0.25; done; [ -n "$url" ] || { cat /tmp/dsh-web-seed.log >&2; exit 3; }; code=$(curl -sS -L -c /tmp/dsh-seed-cookies -o /tmp/dsh-seed-index.html -w "%{http_code}" "$url"); [ "$code" = 200 ]; grep -Eq "__DSH_BOOT__|<html" /tmp/dsh-seed-index.html; echo embedded-web-auth-ok'
+inside 'set -e; : >/tmp/dsh-web-seed.log; /usr/bin/node --expose-internals /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js web --host 127.0.0.1 --port 13081 --no-open >/tmp/dsh-web-seed.log 2>&1 & pid=$!; trap "kill $pid 2>/dev/null || true" EXIT; url=""; i=0; while [ $i -lt 120 ]; do url=$(sed -n "s#^dsh web: \(http://127.0.0.1:13081/?token=[^ ]*\).*#\1#p" /tmp/dsh-web-seed.log | tail -1); [ -n "$url" ] && break; if ! kill -0 $pid 2>/dev/null; then cat /tmp/dsh-web-seed.log >&2; exit 2; fi; i=$((i+1)); sleep 0.25; done; [ -n "$url" ] || { cat /tmp/dsh-web-seed.log >&2; exit 3; }; code=$(curl -sS -L -c /tmp/dsh-seed-cookies -o /tmp/dsh-seed-index.html -w "%{http_code}" "$url"); [ "$code" = 200 ]; grep -Eq "__DSH_BOOT__|<html" /tmp/dsh-seed-index.html; echo embedded-web-auth-ok'
 
 echo '[e2e] reset for online fallback coverage'
 rm -rf "$TMP_ROOT/opt/dsh" "$TMP_ROOT/usr/local/lib/node_modules/pnpm" "$TMP_ROOT/usr/local/bin/pnpm" "$TMP_ROOT/usr/local/bin/pnpx" "$TMP_ROOT/dsh-home/profiles/web"
@@ -218,6 +235,8 @@ inside 'mkdir -p /usr/local/bin; printf "%s\n" "#!/bin/sh" "exec node --expose-i
 echo '[e2e] old Web profile offline migration back to native DSH Web'
 mkdir -p "$TMP_ROOT/dsh-home/mobile-plugins/dsh-mobile-context"
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-mobile-context/." "$TMP_ROOT/dsh-home/mobile-plugins/dsh-mobile-context/"
+mkdir -p "$TMP_ROOT/dsh-home/mobile-plugins/dsh-webview-compat"
+cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-webview-compat/." "$TMP_ROOT/dsh-home/mobile-plugins/dsh-webview-compat/"
 mkdir -p "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile"
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-client-ui-mobile/." "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile/"
 inside '/usr/local/bin/dsh plugin --profile web add file:/dsh-home/mobile-plugins/dsh-mobile-context'
@@ -241,11 +260,17 @@ python3 - "$TMP_ROOT/dsh-home/profiles/web/package.json" <<'PYNATIVE'
 import json, pathlib, sys
 p = pathlib.Path(sys.argv[1])
 data = json.loads(p.read_text())
-data.setdefault('dependencies', {}).pop('dsh-client-ui-mobile', None)
+deps = data.setdefault('dependencies', {})
+deps.pop('dsh-client-ui-mobile', None)
+deps['@dsh-mobile/dsh-webview-compat'] = 'file:/dsh-home/mobile-plugins/dsh-webview-compat'
 profile = data.setdefault('dsh', {}).setdefault('profile', {})
 profile['bundles'] = [name for name in profile.setdefault('bundles', []) if name != 'dsh-client-ui-mobile']
+if '@dsh-mobile/dsh-webview-compat' not in profile['bundles']:
+    profile['bundles'].append('@dsh-mobile/dsh-webview-compat')
 p.write_text(json.dumps(data, indent=2) + '\n')
 PYNATIVE
+mkdir -p "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-compat"
+cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-webview-compat/." "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-compat/"
 rm -rf "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile"
 lock_after=$(sha256sum "$TMP_ROOT/dsh-home/profiles/web/pnpm-lock.yaml" | awk '{print $1}')
 [[ "$lock_after" == "$lock_before" ]] || { echo 'Offline native-profile reconciliation unexpectedly modified pnpm lockfile' >&2; exit 2; }
@@ -254,21 +279,24 @@ import json, sys
 data=json.load(open(sys.argv[1]))
 assert data['userCustom']['preserved'] is True
 assert data['dependencies']['@dsh-mobile/dsh-mobile-context'] == 'file:/dsh-home/mobile-plugins/dsh-mobile-context'
+assert data['dependencies']['@dsh-mobile/dsh-webview-compat'] == 'file:/dsh-home/mobile-plugins/dsh-webview-compat'
 assert 'dsh-client-ui-mobile' not in data['dependencies']
 assert '@dsh-mobile/dsh-mobile-context' in data['dsh']['profile']['bundles']
+assert '@dsh-mobile/dsh-webview-compat' in data['dsh']['profile']['bundles']
 assert 'dsh-client-ui-mobile' not in data['dsh']['profile']['bundles']
-print('old-profile-native-reconcile-contract-ok')
+print('old-profile-webview-compat-reconcile-contract-ok')
 PYCHECK
 test ! -e "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile"
+inside 'test -f /dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-compat/lib/client.js'
 inside 'test -f /dsh-home/mobile-plugins/dsh-client-ui-mobile/package.json'
 python3 - "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile/package.json" <<'PYUI'
 import json, sys
-assert json.load(open(sys.argv[1]))['version'] == '0.1.9'
+assert json.load(open(sys.argv[1]))['version'] == '0.1.9-dshm.2'
 print('dormant-mobile-ui-asset-ok')
 PYUI
 
 echo '[e2e] DSH web token exchange + authenticated frontend'
-inside 'set -e; : >/tmp/dsh-web-e2e.log; /usr/bin/node --expose-internals /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js web --host 127.0.0.1 --port 13080 --no-open >/tmp/dsh-web-e2e.log 2>&1 & pid=$!; trap "kill $pid 2>/dev/null || true" EXIT; url=""; i=0; while [ $i -lt 120 ]; do url=$(sed -n "s#^dsh web: \(http://127.0.0.1:13080/?token=[^ ]*\).*#\1#p" /tmp/dsh-web-e2e.log | tail -1); [ -n "$url" ] && break; if ! kill -0 $pid 2>/dev/null; then cat /tmp/dsh-web-e2e.log >&2; exit 2; fi; i=$((i+1)); sleep 0.25; done; [ -n "$url" ] || { cat /tmp/dsh-web-e2e.log >&2; exit 3; }; unauth=$(curl -sS -o /tmp/unauth.txt -w "%{http_code}" http://127.0.0.1:13080/); [ "$unauth" = 401 ]; grep -q "dsh web authentication required" /tmp/unauth.txt; code=$(curl -sS -L -c /tmp/dsh-cookies -o /tmp/dsh-index.html -w "%{http_code}" "$url"); [ "$code" = 200 ]; grep -Eq "__DSH_BOOT__|<html" /tmp/dsh-index.html; clean=$(curl -sS -b /tmp/dsh-cookies -o /dev/null -w "%{http_code}" http://127.0.0.1:13080/); [ "$clean" = 200 ]; echo web-auth-e2e-ok'
+inside 'set -e; : >/tmp/dsh-web-e2e.log; /usr/bin/node --expose-internals /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js web --host 127.0.0.1 --port 13082 --no-open >/tmp/dsh-web-e2e.log 2>&1 & pid=$!; trap "kill $pid 2>/dev/null || true" EXIT; url=""; i=0; while [ $i -lt 120 ]; do url=$(sed -n "s#^dsh web: \(http://127.0.0.1:13082/?token=[^ ]*\).*#\1#p" /tmp/dsh-web-e2e.log | tail -1); [ -n "$url" ] && break; if ! kill -0 $pid 2>/dev/null; then cat /tmp/dsh-web-e2e.log >&2; exit 2; fi; i=$((i+1)); sleep 0.25; done; [ -n "$url" ] || { cat /tmp/dsh-web-e2e.log >&2; exit 3; }; unauth=$(curl -sS -o /tmp/unauth.txt -w "%{http_code}" http://127.0.0.1:13082/); [ "$unauth" = 401 ]; grep -q "dsh web authentication required" /tmp/unauth.txt; code=$(curl -sS -L -c /tmp/dsh-cookies -o /tmp/dsh-index.html -w "%{http_code}" "$url"); [ "$code" = 200 ]; grep -Eq "__DSH_BOOT__|<html" /tmp/dsh-index.html; clean=$(curl -sS -b /tmp/dsh-cookies -o /dev/null -w "%{http_code}" http://127.0.0.1:13082/); [ "$clean" = 200 ]; echo web-auth-e2e-ok'
 
 actual=$(inside '/usr/local/bin/dsh --version' | tail -n 1 | tr -d '\r')
 [[ "$actual" == "$DSH_VERSION" ]] || { echo "Expected DSH $DSH_VERSION, got $actual" >&2; exit 2; }

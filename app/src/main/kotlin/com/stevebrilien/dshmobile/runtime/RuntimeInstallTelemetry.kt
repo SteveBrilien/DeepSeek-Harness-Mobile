@@ -129,9 +129,14 @@ class RuntimeInstallTelemetry(context: Context) {
     fun beginRuntimeStart(
         message: String = "正在启动 DSH",
         runtimeInstalled: Boolean = true,
+        resetLog: Boolean = true,
     ) {
         val current = writerState ?: readStateJson().also { writerState = it }
         val now = System.currentTimeMillis()
+        if (resetLog) {
+            root.mkdirs()
+            logFile.writeText("", StandardCharsets.UTF_8)
+        }
         // A retry is a new startup attempt, not a continuation of the original install.
         // Reset timing/download-source telemetry so the UI does not show hours of stale
         // install elapsed time or an npm mirror while it is only starting DSH.
@@ -201,6 +206,12 @@ class RuntimeInstallTelemetry(context: Context) {
     }
 
     @Synchronized
+    fun clearLog() {
+        root.mkdirs()
+        logFile.writeText("", StandardCharsets.UTF_8)
+    }
+
+    @Synchronized
     fun snapshot(maxLogLines: Int = 250): RuntimeInstallSnapshot {
         val json = readStateJson()
         val logs = if (logFile.isFile) {
@@ -245,7 +256,7 @@ class RuntimeInstallTelemetry(context: Context) {
         val clean = line.replace('\u0000', ' ').trim().take(800)
         if (clean.isBlank()) return
         logFile.appendText("${System.currentTimeMillis()} · $clean\n", StandardCharsets.UTF_8)
-        if (logFile.length() > 512L * 1024L) {
+        if (logFile.length() > 256L * 1024L) {
             val tail = logFile.readLines(StandardCharsets.UTF_8).takeLast(250)
             logFile.writeText(tail.joinToString("\n", postfix = "\n"), StandardCharsets.UTF_8)
         }

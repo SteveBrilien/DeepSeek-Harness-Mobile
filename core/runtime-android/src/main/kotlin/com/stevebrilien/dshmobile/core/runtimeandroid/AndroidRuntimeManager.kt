@@ -237,6 +237,10 @@ class AndroidRuntimeManager(
 
     fun logFile(): File = File(stateStore.layout.logsDir, "dsh-web.log")
 
+    fun clearLog() {
+        RuntimeLogWriter.clear(logFile())
+    }
+
     fun isWebReady(): Boolean = probeWebReady()
 
     fun webLaunchUrl(): String? {
@@ -411,14 +415,33 @@ class AndroidRuntimeManager(
 }
 
 private object RuntimeLogWriter {
+    private const val MAX_LOG_BYTES = 2L * 1024L * 1024L
     private val lock = Any()
     private val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS XXX")
 
     fun append(logFile: File, message: String, leadingBlank: Boolean = false) = synchronized(lock) {
         logFile.parentFile?.let { check(it.exists() || it.mkdirs()) }
+        rotateIfNeeded(logFile)
         val prefix = OffsetDateTime.now().format(formatter)
         val separator = if (leadingBlank && logFile.length() > 0L) "\n" else ""
         logFile.appendText("$separator[$prefix] $message\n", StandardCharsets.UTF_8)
+    }
+
+    fun rotate(logFile: File) = synchronized(lock) {
+        rotateIfNeeded(logFile)
+    }
+
+    fun clear(logFile: File) = synchronized(lock) {
+        logFile.parentFile?.let { check(it.exists() || it.mkdirs()) }
+        if (logFile.exists()) logFile.writeText("", StandardCharsets.UTF_8)
+        File(logFile.parentFile, "${logFile.name}.1").delete()
+    }
+
+    private fun rotateIfNeeded(logFile: File) {
+        if (!logFile.exists() || logFile.length() < MAX_LOG_BYTES) return
+        val previous = File(logFile.parentFile, "${logFile.name}.1")
+        if (previous.exists()) previous.delete()
+        check(logFile.renameTo(previous)) { "Unable to rotate ${logFile.absolutePath}" }
     }
 }
 
@@ -430,7 +453,7 @@ private object RuntimeProcessRegistry {
     fun start(builder: ProcessBuilder, logFile: File) = synchronized(lock) {
         if (process?.isAlive == true) return
         logFile.parentFile?.let { check(it.exists() || it.mkdirs()) }
-        rotateIfNeeded(logFile)
+        RuntimeLogWriter.rotate(logFile)
         builder.redirectErrorStream(true)
         val started = builder.start()
         process = started
@@ -469,10 +492,4 @@ private object RuntimeProcessRegistry {
         process = null
     }
 
-    private fun rotateIfNeeded(logFile: File) {
-        if (!logFile.exists() || logFile.length() < 4L * 1024L * 1024L) return
-        val previous = File(logFile.parentFile, "${logFile.name}.1")
-        if (previous.exists()) previous.delete()
-        logFile.renameTo(previous)
-    }
 }

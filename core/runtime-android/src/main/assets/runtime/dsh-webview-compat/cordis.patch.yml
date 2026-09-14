@@ -1,0 +1,3 @@
+- insert:
+    - id: webview-compat
+      name: '@dsh-mobile/dsh-webview-compat'

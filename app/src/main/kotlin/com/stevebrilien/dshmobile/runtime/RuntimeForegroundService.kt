@@ -147,7 +147,7 @@ class RuntimeForegroundService : Service() {
             updateNotification("Runtime 安装失败：${shortMessage(it)}", telemetry.snapshot())
             return
         }
-        runCatching { telemetry.beginRuntimeStart("Runtime 已安装，正在启动 DSH") }
+        runCatching { telemetry.beginRuntimeStart("Runtime 已安装，正在启动 DSH", resetLog = false) }
         updateNotification("Runtime 已安装到 slot ${install.getOrNull()?.name}，正在启动 DSH", telemetry.snapshot())
         val started = control.start { progress ->
             runCatching { telemetry.updateRuntimeStart(progress) }
