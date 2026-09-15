@@ -10,12 +10,13 @@ class PresentationCandidateIdentityTest {
     private val baseArtifacts = mapOf(
         "@dsh-mobile/dsh-mobile-context" to "11".repeat(32),
         "@dsh-mobile/dsh-webview-compat" to "22".repeat(32),
+        "dsh-client-ui-mobile" to "33".repeat(32),
     )
 
     private fun generation(
         dshSeed: String = "aa".repeat(32),
         profileSeed: String = "bb".repeat(32),
-        profileMode: String = "dsh-webview-compat-v1",
+        profileMode: String = "dsh-mobile-ui-v1",
         artifacts: Map<String, String> = baseArtifacts,
         handshakeSchema: Int = PresentationCandidateIdentity.HANDSHAKE_SCHEMA_VERSION,
     ): String = PresentationCandidateIdentity.compute(
@@ -43,6 +44,13 @@ class PresentationCandidateIdentityTest {
             generation(
                 artifacts = baseArtifacts +
                     ("@dsh-mobile/dsh-webview-compat" to "44".repeat(32)),
+            ),
+        )
+        assertNotEquals(
+            baseline,
+            generation(
+                artifacts = baseArtifacts +
+                    ("dsh-client-ui-mobile" to "55".repeat(32)),
             ),
         )
         assertNotEquals(baseline, generation(handshakeSchema = PresentationHandshakeContract.SCHEMA_VERSION + 1))

@@ -86,13 +86,16 @@ class MobilePluginProfileCoordinatorTest {
             "file:/dsh-home/mobile-plugins/dsh-webview-compat",
             migrated.getJSONObject("dependencies").getString("@dsh-mobile/dsh-webview-compat"),
         )
-        assertFalse(migrated.getJSONObject("dependencies").has("dsh-client-ui-mobile"))
+        assertEquals(
+            "file:/dsh-home/mobile-plugins/dsh-client-ui-mobile",
+            migrated.getJSONObject("dependencies").getString("dsh-client-ui-mobile"),
+        )
         val bundles = migrated.getJSONObject("dsh").getJSONObject("profile").getJSONArray("bundles")
         val bundleNames = (0 until bundles.length()).map(bundles::getString)
         assertTrue(bundleNames.contains("user-plugin"))
         assertTrue(bundleNames.contains("@dsh-mobile/dsh-mobile-context"))
         assertTrue(bundleNames.contains("@dsh-mobile/dsh-webview-compat"))
-        assertFalse(bundleNames.contains("dsh-client-ui-mobile"))
+        assertTrue(bundleNames.contains("dsh-client-ui-mobile"))
         assertEquals(
             MobilePluginProfileCoordinator.MOBILE_CONTEXT_PLUGIN_VERSION,
             JSONObject(
@@ -107,7 +110,13 @@ class MobilePluginProfileCoordinatorTest {
                     .readText(StandardCharsets.UTF_8),
             ).getString("version"),
         )
-        assertFalse(File(profile, "node_modules/dsh-client-ui-mobile").exists())
+        assertEquals(
+            MobilePluginProfileCoordinator.MOBILE_UI_PLUGIN_VERSION,
+            JSONObject(
+                File(profile, "node_modules/dsh-client-ui-mobile/package.json")
+                    .readText(StandardCharsets.UTF_8),
+            ).getString("version"),
+        )
         assertEquals(
             MobilePluginProfileCoordinator.WEBVIEW_COMPAT_PLUGIN_VERSION,
             JSONObject(
@@ -168,22 +177,21 @@ class MobilePluginProfileCoordinatorTest {
     }
 
     @Test
-    fun dormantUiPayloadDriftDoesNotInvalidateActivePresentation() {
+    fun activeUiPayloadDriftInvalidatesAndReconcilesPresentation() {
         val profile = File(store.layout.persistentDshHome, "profiles/web")
         seedMinimalExistingProfile(profile)
         coordinator.reconcile { error("seed must not be used for an existing profile") }
 
-        val dormantClient = File(
-            store.layout.persistentDshHome,
-            "mobile-plugins/dsh-client-ui-mobile/lib/client.js",
-        )
-        dormantClient.appendText("\n// dormant payload drift\n", StandardCharsets.UTF_8)
+        val uiClient = File(profile, "node_modules/dsh-client-ui-mobile/lib/client.js")
+        val expected = uiClient.readBytes()
+        uiClient.appendText("\n// stale mobile ui bytes\n", StandardCharsets.UTF_8)
 
-        assertTrue(coordinator.isActivePresentationReconciled())
+        assertFalse(coordinator.isActivePresentationReconciled())
         assertFalse(coordinator.isReconciled())
 
-        coordinator.reconcile { error("dormant repair must not replace the profile") }
+        coordinator.reconcile { error("UI repair must not replace the profile") }
 
+        assertTrue(expected.contentEquals(uiClient.readBytes()))
         assertTrue(coordinator.isActivePresentationReconciled())
         assertTrue(coordinator.isReconciled())
     }

@@ -12,11 +12,10 @@ import java.security.MessageDigest
 
 /**
  * Reconciles APK-owned DSH integration into the persistent Web profile without entering
- * PRoot or invoking DSH/pnpm. The mobile context plugin stays active, while the mobile UI
- * package is kept only as a dormant APK-owned payload. A separate tiny WebView compatibility
- * package owns only the html/body/#root viewport contract; it does not alter DSH component
- * layout. This keeps the official DSH presentation intact while making it renderable in the
- * Android WebView. User-owned profile fields and unrelated bundles are preserved.
+ * PRoot or invoking DSH/pnpm. The mobile context, WebView compatibility, and scoped mobile UI
+ * packages are all active managed bundles. WebView compatibility owns only the viewport/root
+ * contract; the mobile UI package owns only phone navigation/settings presentation. User-owned
+ * profile fields and unrelated bundles are preserved.
  */
 internal class MobilePluginProfileCoordinator(
     private val context: Context,
@@ -25,8 +24,8 @@ internal class MobilePluginProfileCoordinator(
     companion object {
         const val MOBILE_CONTEXT_PLUGIN_VERSION = "0.2.2"
         const val WEBVIEW_COMPAT_PLUGIN_VERSION = "0.1.2"
-        const val MOBILE_UI_PLUGIN_VERSION = "0.1.9-dshm.2"
-        const val MOBILE_WEB_PROFILE_MODE = "dsh-webview-compat-v1"
+        const val MOBILE_UI_PLUGIN_VERSION = "0.2.0-dshm.1"
+        const val MOBILE_WEB_PROFILE_MODE = "dsh-mobile-ui-v1"
 
         private val CONTEXT_ASSETS = listOf(
             "package.json",
@@ -51,6 +50,7 @@ internal class MobilePluginProfileCoordinator(
         private const val UI_PACKAGE = "dsh-client-ui-mobile"
         private const val CONTEXT_FILE_DEP = "file:/dsh-home/mobile-plugins/dsh-mobile-context"
         private const val COMPAT_FILE_DEP = "file:/dsh-home/mobile-plugins/dsh-webview-compat"
+        private const val UI_FILE_DEP = "file:/dsh-home/mobile-plugins/dsh-client-ui-mobile"
     }
 
     private data class PluginSpec(
@@ -88,6 +88,7 @@ internal class MobilePluginProfileCoordinator(
         UI_ASSETS,
         "mobile-plugins/dsh-client-ui-mobile",
         "node_modules/dsh-client-ui-mobile",
+        UI_FILE_DEP,
     )
 
     private val profileDir get() = File(layout.persistentDshHome, "profiles/web")
@@ -103,6 +104,7 @@ internal class MobilePluginProfileCoordinator(
         managedArtifactHashes = mapOf(
             contextSpec.packageName to assetTreeHash(contextSpec),
             compatSpec.packageName to assetTreeHash(compatSpec),
+            uiSpec.packageName to assetTreeHash(uiSpec),
         ),
     )
 
@@ -111,8 +113,8 @@ internal class MobilePluginProfileCoordinator(
         val desiredGeneration = desiredPresentationGeneration()
         if (isReconciled(desiredGeneration)) return
 
-        // The context and WebView-compat plugins are active; the broad mobile UI package
-        // stays dormant until the official DSH interaction baseline passes.
+        // All three APK-managed packages are materialized atomically. The compatibility and UI
+        // concerns stay separate packages even though both participate in one presentation identity.
         listOf(contextSpec, compatSpec, uiSpec).forEach { spec ->
             replaceManagedTree(
                 assetRoot = spec.assetRoot,
@@ -138,23 +140,26 @@ internal class MobilePluginProfileCoordinator(
             assetFiles = compatSpec.assets,
             destination = File(profileDir, compatSpec.profileRelative),
         )
-        // Remove only our managed mobile UI profile copy. The dormant payload remains in
-        // persistent storage so later mobile-plugin work can be re-enabled deliberately.
-        deleteNode(File(profileDir, uiSpec.profileRelative))
+        replaceManagedTree(
+            assetRoot = uiSpec.assetRoot,
+            assetFiles = uiSpec.assets,
+            destination = File(profileDir, uiSpec.profileRelative),
+        )
 
         val profileJson = JSONObject(packageFile.readText(StandardCharsets.UTF_8))
         val dependencies = profileJson.optJSONObject("dependencies")
             ?: JSONObject().also { profileJson.put("dependencies", it) }
         dependencies.put(contextSpec.packageName, contextSpec.dependencyValue)
         dependencies.put(compatSpec.packageName, compatSpec.dependencyValue)
-        dependencies.remove(uiSpec.packageName)
+        dependencies.put(uiSpec.packageName, uiSpec.dependencyValue)
 
         val dsh = profileJson.optJSONObject("dsh") ?: JSONObject().also { profileJson.put("dsh", it) }
         val profile = dsh.optJSONObject("profile") ?: JSONObject().also { dsh.put("profile", it) }
         val bundles = profile.optJSONArray("bundles") ?: JSONArray().also { profile.put("bundles", it) }
         if (!bundles.containsString(contextSpec.packageName)) bundles.put(contextSpec.packageName)
         if (!bundles.containsString(compatSpec.packageName)) bundles.put(compatSpec.packageName)
-        profile.put("bundles", bundles.withoutString(uiSpec.packageName))
+        if (!bundles.containsString(uiSpec.packageName)) bundles.put(uiSpec.packageName)
+        profile.put("bundles", bundles)
         writeAtomic(packageFile, profileJson.toString(2).toByteArray(StandardCharsets.UTF_8))
 
         check(isProfileContractValid()) { "DSH native Web profile reconciliation failed" }
@@ -176,10 +181,9 @@ internal class MobilePluginProfileCoordinator(
             isActiveProfileContractValid()
 
     private fun isReconciled(desiredGeneration: String): Boolean =
-        isActivePresentationReconciled(desiredGeneration) && isDormantPayloadValid()
+        isActivePresentationReconciled(desiredGeneration)
 
-    private fun isProfileContractValid(): Boolean =
-        isActiveProfileContractValid() && isDormantPayloadValid()
+    private fun isProfileContractValid(): Boolean = isActiveProfileContractValid()
 
     private fun isActiveProfileContractValid(): Boolean = runCatching {
         if (!packageFile.isFile) return@runCatching false
@@ -192,24 +196,23 @@ internal class MobilePluginProfileCoordinator(
 
         dependencies.optString(contextSpec.packageName) == contextSpec.dependencyValue &&
             dependencies.optString(compatSpec.packageName) == compatSpec.dependencyValue &&
-            !dependencies.has(uiSpec.packageName) &&
+            dependencies.optString(uiSpec.packageName) == uiSpec.dependencyValue &&
             bundles.containsString(contextSpec.packageName) &&
             bundles.containsString(compatSpec.packageName) &&
-            !bundles.containsString(uiSpec.packageName) &&
+            bundles.containsString(uiSpec.packageName) &&
             packageVersion(File(profileDir, contextSpec.profileRelative)) == contextSpec.version &&
             packageVersion(File(profileDir, compatSpec.profileRelative)) == compatSpec.version &&
-            !nodeExists(File(profileDir, uiSpec.profileRelative)) &&
+            packageVersion(File(profileDir, uiSpec.profileRelative)) == uiSpec.version &&
             packageVersion(File(layout.persistentDshHome, contextSpec.persistentRelative)) == contextSpec.version &&
             packageVersion(File(layout.persistentDshHome, compatSpec.persistentRelative)) == compatSpec.version &&
+            packageVersion(File(layout.persistentDshHome, uiSpec.persistentRelative)) == uiSpec.version &&
             managedTreeMatches(contextSpec, File(profileDir, contextSpec.profileRelative)) &&
             managedTreeMatches(compatSpec, File(profileDir, compatSpec.profileRelative)) &&
+            managedTreeMatches(uiSpec, File(profileDir, uiSpec.profileRelative)) &&
             managedTreeMatches(contextSpec, File(layout.persistentDshHome, contextSpec.persistentRelative)) &&
-            managedTreeMatches(compatSpec, File(layout.persistentDshHome, compatSpec.persistentRelative))
-    }.getOrDefault(false)
-
-    private fun isDormantPayloadValid(): Boolean =
-        packageVersion(File(layout.persistentDshHome, uiSpec.persistentRelative)) == uiSpec.version &&
+            managedTreeMatches(compatSpec, File(layout.persistentDshHome, compatSpec.persistentRelative)) &&
             managedTreeMatches(uiSpec, File(layout.persistentDshHome, uiSpec.persistentRelative))
+    }.getOrDefault(false)
 
     private fun managedTreeMatches(spec: PluginSpec, directory: File): Boolean =
         runCatching { directoryTreeHash(directory, spec.assets) == assetTreeHash(spec) }.getOrDefault(false)
