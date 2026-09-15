@@ -24,7 +24,8 @@ PROFILE_SEED="$ROOT_DIR/core/runtime-android/src/main/assets/$(prop webProfileSe
 PROFILE_SEED_SHA=$(prop webProfileSeedSha256)
 MOBILE_CONTEXT_VERSION=$(prop mobileContextVersion)
 WEBVIEW_COMPAT_VERSION="0.1.2"
-MOBILE_UI_VERSION="0.2.0-dshm.1"
+MOBILE_UI_VERSION="0.3.2-dshm.1"
+TOKYO_THEME_VERSION="0.2.2-dshm.1"
 
 command -v bwrap >/dev/null
 command -v tar >/dev/null
@@ -143,6 +144,8 @@ mkdir -p "$TMP_ROOT/dsh-home/mobile-plugins/dsh-webview-compat"
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-webview-compat/." "$TMP_ROOT/dsh-home/mobile-plugins/dsh-webview-compat/"
 mkdir -p "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile"
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-client-ui-mobile/." "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile/"
+mkdir -p "$TMP_ROOT/dsh-home/mobile-plugins/dsh-plugin-tokyo-night"
+cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-plugin-tokyo-night/." "$TMP_ROOT/dsh-home/mobile-plugins/dsh-plugin-tokyo-night/"
 python3 - "$TMP_ROOT/dsh-home/profiles/web/package.json" <<'PY3'
 import json, pathlib, sys
 p = pathlib.Path(sys.argv[1])
@@ -150,25 +153,31 @@ profile = json.loads(p.read_text())
 deps = profile.setdefault('dependencies', {})
 deps['@dsh-mobile/dsh-webview-compat'] = 'file:/dsh-home/mobile-plugins/dsh-webview-compat'
 deps['dsh-client-ui-mobile'] = 'file:/dsh-home/mobile-plugins/dsh-client-ui-mobile'
+deps['dsh-plugin-tokyo-night'] = 'file:/dsh-home/mobile-plugins/dsh-plugin-tokyo-night'
 bundles = profile.setdefault('dsh', {}).setdefault('profile', {}).setdefault('bundles', [])
-for name in ['@dsh-mobile/dsh-webview-compat', 'dsh-client-ui-mobile']:
+for name in ['@dsh-mobile/dsh-webview-compat', 'dsh-client-ui-mobile', 'dsh-plugin-tokyo-night']:
     if name not in bundles:
         bundles.append(name)
 p.write_text(json.dumps(profile, indent=2) + '\n')
 assert deps['@dsh-mobile/dsh-mobile-context'] == 'file:/dsh-home/mobile-plugins/dsh-mobile-context'
 assert deps['@dsh-mobile/dsh-webview-compat'] == 'file:/dsh-home/mobile-plugins/dsh-webview-compat'
 assert deps['dsh-client-ui-mobile'] == 'file:/dsh-home/mobile-plugins/dsh-client-ui-mobile'
+assert deps['dsh-plugin-tokyo-night'] == 'file:/dsh-home/mobile-plugins/dsh-plugin-tokyo-night'
 assert '@dsh-mobile/dsh-mobile-context' in profile['dsh']['profile']['bundles']
 assert '@dsh-mobile/dsh-webview-compat' in profile['dsh']['profile']['bundles']
 assert 'dsh-client-ui-mobile' in profile['dsh']['profile']['bundles']
+assert 'dsh-plugin-tokyo-night' in profile['dsh']['profile']['bundles']
 print('embedded-mobile-ui-profile-offline-contract-ok')
 PY3
 mkdir -p "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-compat"
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-webview-compat/." "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-compat/"
 mkdir -p "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile"
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-client-ui-mobile/." "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile/"
+mkdir -p "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-plugin-tokyo-night"
+cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-plugin-tokyo-night/." "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-plugin-tokyo-night/"
 inside 'test -f /dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-compat/lib/client.js'
 inside 'test -f /dsh-home/profiles/web/node_modules/dsh-client-ui-mobile/lib/client.js'
+inside 'test -f /dsh-home/profiles/web/node_modules/dsh-plugin-tokyo-night/lib/client.js'
 python3 - "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-compat/package.json" <<'PYCOMPAT'
 import json, sys
 assert json.load(open(sys.argv[1]))['version'] == '0.1.2'
@@ -181,12 +190,29 @@ inside 'test -f /dsh-home/mobile-plugins/dsh-client-ui-mobile/package.json'
 python3 - "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile/package.json" "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile/package.json" <<'PYUI'
 import json, sys
 for path in sys.argv[1:]:
-    assert json.load(open(path))['version'] == '0.2.0-dshm.1'
+    assert json.load(open(path))['version'] == '0.3.2-dshm.1'
 print('active-mobile-ui-asset-ok')
 PYUI
 grep -q 'data-dshm-shell' "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile/lib/client.js"
 grep -q 'data-dshm-settings-panel' "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile/lib/client.js"
 ! grep -Eq '\[class[$*^]?=' "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile/lib/client.js"
+python3 - "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-plugin-tokyo-night/package.json" "$TMP_ROOT/dsh-home/mobile-plugins/dsh-plugin-tokyo-night/package.json" <<'PYTOKYO'
+import json, sys
+for path in sys.argv[1:]:
+    assert json.load(open(path))['version'] == '0.2.2-dshm.1'
+print('active-tokyo-theme-asset-ok')
+PYTOKYO
+grep -q 'colorScheme: "dark"' "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-plugin-tokyo-night/lib/client.js"
+grep -q 'settingsScope.bind({ namespace: "ui-theme" })' "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-plugin-tokyo-night/lib/client.js"
+grep -q 'status === "loading"' "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-plugin-tokyo-night/lib/client.js"
+! grep -q 'setTimeout(' "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-plugin-tokyo-night/lib/client.js"
+! grep -q 'colorScheme: "tokyo"' "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-plugin-tokyo-night/lib/client.js"
+! grep -q 'new MutationObserver' "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-plugin-tokyo-night/lib/client.js"
+
+echo '[e2e] Tokyo Night settings-adoption restore policy'
+mkdir -p "$TMP_ROOT/opt/dsh-mobile-tests"
+cp "$ROOT_DIR/scripts/test-tokyo-night-restore-policy.mjs" "$TMP_ROOT/opt/dsh-mobile-tests/test-tokyo-night-restore-policy.mjs"
+inside 'node /opt/dsh-mobile-tests/test-tokyo-night-restore-policy.mjs /dsh-home/profiles/web/node_modules/dsh-plugin-tokyo-night/lib/client.js'
 
 echo '[e2e] embedded fast-path DSH web token exchange'
 inside 'set -e; : >/tmp/dsh-web-seed.log; /usr/bin/node --expose-internals /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js web --host 127.0.0.1 --port 13081 --no-open >/tmp/dsh-web-seed.log 2>&1 & pid=$!; trap "kill $pid 2>/dev/null || true" EXIT; url=""; i=0; while [ $i -lt 120 ]; do url=$(sed -n "s#^dsh web: \(http://127.0.0.1:13081/?token=[^ ]*\).*#\1#p" /tmp/dsh-web-seed.log | tail -1); [ -n "$url" ] && break; if ! kill -0 $pid 2>/dev/null; then cat /tmp/dsh-web-seed.log >&2; exit 2; fi; i=$((i+1)); sleep 0.25; done; [ -n "$url" ] || { cat /tmp/dsh-web-seed.log >&2; exit 3; }; code=$(curl -sS -L -c /tmp/dsh-seed-cookies -o /tmp/dsh-seed-index.html -w "%{http_code}" "$url"); [ "$code" = 200 ]; grep -Eq "__DSH_BOOT__|<html" /tmp/dsh-seed-index.html; echo embedded-web-auth-ok'
@@ -250,6 +276,8 @@ mkdir -p "$TMP_ROOT/dsh-home/mobile-plugins/dsh-webview-compat"
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-webview-compat/." "$TMP_ROOT/dsh-home/mobile-plugins/dsh-webview-compat/"
 mkdir -p "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile"
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-client-ui-mobile/." "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile/"
+mkdir -p "$TMP_ROOT/dsh-home/mobile-plugins/dsh-plugin-tokyo-night"
+cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-plugin-tokyo-night/." "$TMP_ROOT/dsh-home/mobile-plugins/dsh-plugin-tokyo-night/"
 inside '/usr/local/bin/dsh plugin --profile web add file:/dsh-home/mobile-plugins/dsh-mobile-context'
 lock_before=$(sha256sum "$TMP_ROOT/dsh-home/profiles/web/pnpm-lock.yaml" | awk '{print $1}')
 mkdir -p "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile"
@@ -261,10 +289,13 @@ data = json.loads(p.read_text())
 data['userCustom'] = {'preserved': True}
 deps = data.setdefault('dependencies', {})
 deps['dsh-client-ui-mobile'] = 'file:/dsh-home/mobile-plugins/dsh-client-ui-mobile'
+deps['dsh-plugin-tokyo-night'] = 'file:/dsh-home/mobile-plugins/dsh-plugin-tokyo-night'
 profile = data.setdefault('dsh', {}).setdefault('profile', {})
 bundles = profile.setdefault('bundles', [])
 if 'dsh-client-ui-mobile' not in bundles:
     bundles.append('dsh-client-ui-mobile')
+if 'dsh-plugin-tokyo-night' not in bundles:
+    bundles.append('dsh-plugin-tokyo-night')
 p.write_text(json.dumps(data, indent=2) + '\n')
 PYOLD
 python3 - "$TMP_ROOT/dsh-home/profiles/web/package.json" <<'PYNATIVE'
@@ -274,9 +305,10 @@ data = json.loads(p.read_text())
 deps = data.setdefault('dependencies', {})
 deps['@dsh-mobile/dsh-webview-compat'] = 'file:/dsh-home/mobile-plugins/dsh-webview-compat'
 deps['dsh-client-ui-mobile'] = 'file:/dsh-home/mobile-plugins/dsh-client-ui-mobile'
+deps['dsh-plugin-tokyo-night'] = 'file:/dsh-home/mobile-plugins/dsh-plugin-tokyo-night'
 profile = data.setdefault('dsh', {}).setdefault('profile', {})
 bundles = profile.setdefault('bundles', [])
-for name in ['@dsh-mobile/dsh-webview-compat', 'dsh-client-ui-mobile']:
+for name in ['@dsh-mobile/dsh-webview-compat', 'dsh-client-ui-mobile', 'dsh-plugin-tokyo-night']:
     if name not in bundles:
         bundles.append(name)
 p.write_text(json.dumps(data, indent=2) + '\n')
@@ -286,6 +318,9 @@ cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-webview-compat
 rm -rf "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile"
 mkdir -p "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile"
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-client-ui-mobile/." "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile/"
+rm -rf "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-plugin-tokyo-night"
+mkdir -p "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-plugin-tokyo-night"
+cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-plugin-tokyo-night/." "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-plugin-tokyo-night/"
 lock_after=$(sha256sum "$TMP_ROOT/dsh-home/profiles/web/pnpm-lock.yaml" | awk '{print $1}')
 [[ "$lock_after" == "$lock_before" ]] || { echo 'Offline native-profile reconciliation unexpectedly modified pnpm lockfile' >&2; exit 2; }
 python3 - "$TMP_ROOT/dsh-home/profiles/web/package.json" <<'PYCHECK'
@@ -295,19 +330,28 @@ assert data['userCustom']['preserved'] is True
 assert data['dependencies']['@dsh-mobile/dsh-mobile-context'] == 'file:/dsh-home/mobile-plugins/dsh-mobile-context'
 assert data['dependencies']['@dsh-mobile/dsh-webview-compat'] == 'file:/dsh-home/mobile-plugins/dsh-webview-compat'
 assert data['dependencies']['dsh-client-ui-mobile'] == 'file:/dsh-home/mobile-plugins/dsh-client-ui-mobile'
+assert data['dependencies']['dsh-plugin-tokyo-night'] == 'file:/dsh-home/mobile-plugins/dsh-plugin-tokyo-night'
 assert '@dsh-mobile/dsh-mobile-context' in data['dsh']['profile']['bundles']
 assert '@dsh-mobile/dsh-webview-compat' in data['dsh']['profile']['bundles']
 assert 'dsh-client-ui-mobile' in data['dsh']['profile']['bundles']
+assert 'dsh-plugin-tokyo-night' in data['dsh']['profile']['bundles']
 print('old-profile-mobile-ui-reconcile-contract-ok')
 PYCHECK
 inside 'test -f /dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-compat/lib/client.js'
 inside 'test -f /dsh-home/profiles/web/node_modules/dsh-client-ui-mobile/lib/client.js'
+inside 'test -f /dsh-home/profiles/web/node_modules/dsh-plugin-tokyo-night/lib/client.js'
 inside 'test -f /dsh-home/mobile-plugins/dsh-client-ui-mobile/package.json'
+inside 'test -f /dsh-home/mobile-plugins/dsh-plugin-tokyo-night/package.json'
 python3 - "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile/package.json" <<'PYUI'
 import json, sys
-assert json.load(open(sys.argv[1]))['version'] == '0.2.0-dshm.1'
+assert json.load(open(sys.argv[1]))['version'] == '0.3.2-dshm.1'
 print('active-mobile-ui-asset-ok')
 PYUI
+python3 - "$TMP_ROOT/dsh-home/mobile-plugins/dsh-plugin-tokyo-night/package.json" <<'PYTOKYO2'
+import json, sys
+assert json.load(open(sys.argv[1]))['version'] == '0.2.2-dshm.1'
+print('active-tokyo-theme-asset-ok')
+PYTOKYO2
 
 echo '[e2e] DSH web token exchange + authenticated frontend'
 inside 'set -e; : >/tmp/dsh-web-e2e.log; /usr/bin/node --expose-internals /opt/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js web --host 127.0.0.1 --port 13082 --no-open >/tmp/dsh-web-e2e.log 2>&1 & pid=$!; trap "kill $pid 2>/dev/null || true" EXIT; url=""; i=0; while [ $i -lt 120 ]; do url=$(sed -n "s#^dsh web: \(http://127.0.0.1:13082/?token=[^ ]*\).*#\1#p" /tmp/dsh-web-e2e.log | tail -1); [ -n "$url" ] && break; if ! kill -0 $pid 2>/dev/null; then cat /tmp/dsh-web-e2e.log >&2; exit 2; fi; i=$((i+1)); sleep 0.25; done; [ -n "$url" ] || { cat /tmp/dsh-web-e2e.log >&2; exit 3; }; unauth=$(curl -sS -o /tmp/unauth.txt -w "%{http_code}" http://127.0.0.1:13082/); [ "$unauth" = 401 ]; grep -q "dsh web authentication required" /tmp/unauth.txt; code=$(curl -sS -L -c /tmp/dsh-cookies -o /tmp/dsh-index.html -w "%{http_code}" "$url"); [ "$code" = 200 ]; grep -Eq "__DSH_BOOT__|<html" /tmp/dsh-index.html; clean=$(curl -sS -b /tmp/dsh-cookies -o /dev/null -w "%{http_code}" http://127.0.0.1:13082/); [ "$clean" = 200 ]; echo web-auth-e2e-ok'

@@ -24,7 +24,8 @@ internal class MobilePluginProfileCoordinator(
     companion object {
         const val MOBILE_CONTEXT_PLUGIN_VERSION = "0.2.2"
         const val WEBVIEW_COMPAT_PLUGIN_VERSION = "0.1.2"
-        const val MOBILE_UI_PLUGIN_VERSION = "0.2.0-dshm.1"
+        const val MOBILE_UI_PLUGIN_VERSION = "0.3.2-dshm.1"
+        const val TOKYO_THEME_PLUGIN_VERSION = "0.2.2-dshm.1"
         const val MOBILE_WEB_PROFILE_MODE = "dsh-mobile-ui-v1"
 
         private val CONTEXT_ASSETS = listOf(
@@ -45,12 +46,20 @@ internal class MobilePluginProfileCoordinator(
             "lib/client.js",
             "LICENSE",
         )
+        private val TOKYO_THEME_ASSETS = listOf(
+            "package.json",
+            "cordis.patch.yml",
+            "lib/index.js",
+            "lib/client.js",
+        )
         private const val CONTEXT_PACKAGE = "@dsh-mobile/dsh-mobile-context"
         private const val COMPAT_PACKAGE = "@dsh-mobile/dsh-webview-compat"
         private const val UI_PACKAGE = "dsh-client-ui-mobile"
+        private const val TOKYO_THEME_PACKAGE = "dsh-plugin-tokyo-night"
         private const val CONTEXT_FILE_DEP = "file:/dsh-home/mobile-plugins/dsh-mobile-context"
         private const val COMPAT_FILE_DEP = "file:/dsh-home/mobile-plugins/dsh-webview-compat"
         private const val UI_FILE_DEP = "file:/dsh-home/mobile-plugins/dsh-client-ui-mobile"
+        private const val TOKYO_THEME_FILE_DEP = "file:/dsh-home/mobile-plugins/dsh-plugin-tokyo-night"
     }
 
     private data class PluginSpec(
@@ -90,6 +99,15 @@ internal class MobilePluginProfileCoordinator(
         "node_modules/dsh-client-ui-mobile",
         UI_FILE_DEP,
     )
+    private val tokyoThemeSpec = PluginSpec(
+        TOKYO_THEME_PACKAGE,
+        TOKYO_THEME_PLUGIN_VERSION,
+        "runtime/dsh-plugin-tokyo-night",
+        TOKYO_THEME_ASSETS,
+        "mobile-plugins/dsh-plugin-tokyo-night",
+        "node_modules/dsh-plugin-tokyo-night",
+        TOKYO_THEME_FILE_DEP,
+    )
 
     private val profileDir get() = File(layout.persistentDshHome, "profiles/web")
     private val packageFile get() = File(profileDir, "package.json")
@@ -105,6 +123,7 @@ internal class MobilePluginProfileCoordinator(
             contextSpec.packageName to assetTreeHash(contextSpec),
             compatSpec.packageName to assetTreeHash(compatSpec),
             uiSpec.packageName to assetTreeHash(uiSpec),
+            tokyoThemeSpec.packageName to assetTreeHash(tokyoThemeSpec),
         ),
     )
 
@@ -115,7 +134,7 @@ internal class MobilePluginProfileCoordinator(
 
         // All three APK-managed packages are materialized atomically. The compatibility and UI
         // concerns stay separate packages even though both participate in one presentation identity.
-        listOf(contextSpec, compatSpec, uiSpec).forEach { spec ->
+        listOf(contextSpec, compatSpec, uiSpec, tokyoThemeSpec).forEach { spec ->
             replaceManagedTree(
                 assetRoot = spec.assetRoot,
                 assetFiles = spec.assets,
@@ -145,6 +164,11 @@ internal class MobilePluginProfileCoordinator(
             assetFiles = uiSpec.assets,
             destination = File(profileDir, uiSpec.profileRelative),
         )
+        replaceManagedTree(
+            assetRoot = tokyoThemeSpec.assetRoot,
+            assetFiles = tokyoThemeSpec.assets,
+            destination = File(profileDir, tokyoThemeSpec.profileRelative),
+        )
 
         val profileJson = JSONObject(packageFile.readText(StandardCharsets.UTF_8))
         val dependencies = profileJson.optJSONObject("dependencies")
@@ -152,6 +176,7 @@ internal class MobilePluginProfileCoordinator(
         dependencies.put(contextSpec.packageName, contextSpec.dependencyValue)
         dependencies.put(compatSpec.packageName, compatSpec.dependencyValue)
         dependencies.put(uiSpec.packageName, uiSpec.dependencyValue)
+        dependencies.put(tokyoThemeSpec.packageName, tokyoThemeSpec.dependencyValue)
 
         val dsh = profileJson.optJSONObject("dsh") ?: JSONObject().also { profileJson.put("dsh", it) }
         val profile = dsh.optJSONObject("profile") ?: JSONObject().also { dsh.put("profile", it) }
@@ -159,6 +184,7 @@ internal class MobilePluginProfileCoordinator(
         if (!bundles.containsString(contextSpec.packageName)) bundles.put(contextSpec.packageName)
         if (!bundles.containsString(compatSpec.packageName)) bundles.put(compatSpec.packageName)
         if (!bundles.containsString(uiSpec.packageName)) bundles.put(uiSpec.packageName)
+        if (!bundles.containsString(tokyoThemeSpec.packageName)) bundles.put(tokyoThemeSpec.packageName)
         profile.put("bundles", bundles)
         writeAtomic(packageFile, profileJson.toString(2).toByteArray(StandardCharsets.UTF_8))
 
@@ -197,21 +223,27 @@ internal class MobilePluginProfileCoordinator(
         dependencies.optString(contextSpec.packageName) == contextSpec.dependencyValue &&
             dependencies.optString(compatSpec.packageName) == compatSpec.dependencyValue &&
             dependencies.optString(uiSpec.packageName) == uiSpec.dependencyValue &&
+            dependencies.optString(tokyoThemeSpec.packageName) == tokyoThemeSpec.dependencyValue &&
             bundles.containsString(contextSpec.packageName) &&
             bundles.containsString(compatSpec.packageName) &&
             bundles.containsString(uiSpec.packageName) &&
+            bundles.containsString(tokyoThemeSpec.packageName) &&
             packageVersion(File(profileDir, contextSpec.profileRelative)) == contextSpec.version &&
             packageVersion(File(profileDir, compatSpec.profileRelative)) == compatSpec.version &&
             packageVersion(File(profileDir, uiSpec.profileRelative)) == uiSpec.version &&
+            packageVersion(File(profileDir, tokyoThemeSpec.profileRelative)) == tokyoThemeSpec.version &&
             packageVersion(File(layout.persistentDshHome, contextSpec.persistentRelative)) == contextSpec.version &&
             packageVersion(File(layout.persistentDshHome, compatSpec.persistentRelative)) == compatSpec.version &&
             packageVersion(File(layout.persistentDshHome, uiSpec.persistentRelative)) == uiSpec.version &&
+            packageVersion(File(layout.persistentDshHome, tokyoThemeSpec.persistentRelative)) == tokyoThemeSpec.version &&
             managedTreeMatches(contextSpec, File(profileDir, contextSpec.profileRelative)) &&
             managedTreeMatches(compatSpec, File(profileDir, compatSpec.profileRelative)) &&
             managedTreeMatches(uiSpec, File(profileDir, uiSpec.profileRelative)) &&
+            managedTreeMatches(tokyoThemeSpec, File(profileDir, tokyoThemeSpec.profileRelative)) &&
             managedTreeMatches(contextSpec, File(layout.persistentDshHome, contextSpec.persistentRelative)) &&
             managedTreeMatches(compatSpec, File(layout.persistentDshHome, compatSpec.persistentRelative)) &&
-            managedTreeMatches(uiSpec, File(layout.persistentDshHome, uiSpec.persistentRelative))
+            managedTreeMatches(uiSpec, File(layout.persistentDshHome, uiSpec.persistentRelative)) &&
+            managedTreeMatches(tokyoThemeSpec, File(layout.persistentDshHome, tokyoThemeSpec.persistentRelative))
     }.getOrDefault(false)
 
     private fun managedTreeMatches(spec: PluginSpec, directory: File): Boolean =

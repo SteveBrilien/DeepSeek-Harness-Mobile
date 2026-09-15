@@ -28,8 +28,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -115,6 +117,7 @@ private fun DshWebClient(
     val webView = remember(hostState, context) {
         hostState.obtain(context).also { view ->
             hostState.ensurePresentationBridge(view, diagnostics)
+            hostState.ensureThemeBridge(view, diagnostics)
             diagnostics.append(
                 "host-obtain host=${hostState.id} view=${viewIdentity(view)} reused=$existing launch=$launchUrl",
             )
@@ -294,8 +297,11 @@ class DshWebViewHostState {
     var loadedLaunchUrl: String? = null
     private var webView: WebView? = null
     private var presentationBridgeView: WebView? = null
+    private var themeBridgeView: WebView? = null
     private val presentationNavigationState = DshPresentationNavigationState()
     internal var latestPresentationTelemetry: DshPresentationTelemetry? = null
+        private set
+    internal var latestThemeSnapshot by mutableStateOf<DshWebThemeSnapshot?>(null)
         private set
 
     fun peek(): WebView? = webView
@@ -314,6 +320,14 @@ class DshWebViewHostState {
                 return@install
             }
             latestPresentationTelemetry = telemetry
+        }
+    }
+
+    internal fun ensureThemeBridge(view: WebView, diagnostics: DshWebViewDiagnostics) {
+        if (themeBridgeView === view) return
+        themeBridgeView = view
+        DshThemeBridge.install(view, diagnostics) { snapshot ->
+            latestThemeSnapshot = snapshot
         }
     }
 
@@ -367,8 +381,10 @@ class DshWebViewHostState {
             webView = null
             loadedLaunchUrl = null
             presentationBridgeView = null
+            themeBridgeView = null
             presentationNavigationState.reset()
             latestPresentationTelemetry = null
+            latestThemeSnapshot = null
         }
     }
 
@@ -380,8 +396,10 @@ class DshWebViewHostState {
         webView = null
         loadedLaunchUrl = null
         presentationBridgeView = null
+        themeBridgeView = null
         presentationNavigationState.reset()
         latestPresentationTelemetry = null
+        latestThemeSnapshot = null
     }
 }
 

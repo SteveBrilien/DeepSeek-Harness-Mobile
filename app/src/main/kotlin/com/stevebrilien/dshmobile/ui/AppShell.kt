@@ -74,6 +74,7 @@ fun DshMobileApp() {
     val (themeMode, setThemeMode) = rememberDshThemePreference()
     val vault = remember(context) { RecoveryVault(context) }
     val webViewHostState = rememberDshWebViewHostState()
+    val webTheme = webViewHostState.latestThemeSnapshot
     val onboardingStore = remember(context) { OnboardingStateStore(context) }
     var onboardingComplete by remember(onboardingStore) { mutableStateOf(onboardingStore.isComplete()) }
     var showLaunchSplash by remember { mutableStateOf(true) }
@@ -83,7 +84,20 @@ fun DshMobileApp() {
         showLaunchSplash = false
     }
 
-    DshMobileTheme(themeMode) {
+    LaunchedEffect(webTheme) {
+        val snapshot = webTheme ?: return@LaunchedEffect
+        val syncedMode = when (snapshot.preference) {
+            "light" -> DshThemeMode.LIGHT
+            "dark" -> DshThemeMode.DARK
+            "tokyo-night" -> DshThemeMode.TOKYO_NIGHT
+            "system" -> DshThemeMode.SYSTEM
+            else -> if (snapshot.activeId == "tokyo-night") DshThemeMode.TOKYO_NIGHT
+            else if (snapshot.isDark) DshThemeMode.DARK else DshThemeMode.LIGHT
+        }
+        if (syncedMode != themeMode) setThemeMode(syncedMode)
+    }
+
+    DshMobileTheme(themeMode, webTheme) {
         val colors = LocalDshColors.current
         Box(Modifier.fillMaxSize().background(colors.base)) {
             AnimatedVisibility(
@@ -105,7 +119,6 @@ fun DshMobileApp() {
                         runtimeSupervisor = runtimeSupervisor,
                         webViewHostState = webViewHostState,
                         themeMode = themeMode,
-                        onThemeChange = setThemeMode,
                         onRunOnboarding = {
                             onboardingStore.reset()
                             onboardingComplete = false
@@ -130,7 +143,6 @@ private fun DshMobileShell(
     runtimeSupervisor: RuntimeSupervisor,
     webViewHostState: DshWebViewHostState,
     themeMode: DshThemeMode,
-    onThemeChange: (DshThemeMode) -> Unit,
     onRunOnboarding: () -> Unit,
 ) {
     val localContext = LocalContext.current
@@ -204,7 +216,6 @@ private fun DshMobileShell(
                         vault = vault,
                         controller = recoveryController,
                         themeMode = themeMode,
-                        onThemeChange = onThemeChange,
                         onRunOnboarding = onRunOnboarding,
                         modifier = contentModifier,
                     )

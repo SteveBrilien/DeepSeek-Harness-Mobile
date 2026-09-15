@@ -11,6 +11,7 @@ class PresentationCandidateIdentityTest {
         "@dsh-mobile/dsh-mobile-context" to "11".repeat(32),
         "@dsh-mobile/dsh-webview-compat" to "22".repeat(32),
         "dsh-client-ui-mobile" to "33".repeat(32),
+        "dsh-plugin-tokyo-night" to "44".repeat(32),
     )
 
     private fun generation(
@@ -51,6 +52,13 @@ class PresentationCandidateIdentityTest {
             generation(
                 artifacts = baseArtifacts +
                     ("dsh-client-ui-mobile" to "55".repeat(32)),
+            ),
+        )
+        assertNotEquals(
+            baseline,
+            generation(
+                artifacts = baseArtifacts +
+                    ("dsh-plugin-tokyo-night" to "66".repeat(32)),
             ),
         )
         assertNotEquals(baseline, generation(handshakeSchema = PresentationHandshakeContract.SCHEMA_VERSION + 1))

@@ -1,0 +1,4 @@
+# Register the APK-managed Tokyo Night browser theme in the DSH Web composition.
+- insert:
+    - id: theme-tokyo-night
+      name: dsh-plugin-tokyo-night

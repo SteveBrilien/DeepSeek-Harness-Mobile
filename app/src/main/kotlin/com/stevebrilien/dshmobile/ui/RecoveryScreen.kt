@@ -58,7 +58,6 @@ fun RecoveryScreen(
     vault: RecoveryVault,
     controller: NativeRecoveryController,
     themeMode: DshThemeMode,
-    onThemeChange: (DshThemeMode) -> Unit,
     onRunOnboarding: () -> Unit,
     modifier: Modifier = Modifier,
     onBack: (() -> Unit)? = null,
@@ -144,29 +143,16 @@ fun RecoveryScreen(
             Column(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
                 DshPageHeader(
                     title = if (onBack == null) "设置" else "运行时与恢复",
-                    subtitle = "主题、恢复与本地运行环境",
+                    subtitle = "恢复与本地运行环境",
                     trailing = onBack?.let { back ->
                         { DshButton("返回", back, icon = DshIconGlyph.ARROW_LEFT, style = DshButtonStyle.GHOST) }
                     },
                 )
                 DshSectionTitle(
                     title = "外观",
-                    description = "原生页面与 DSH Web Client 使用一致的视觉语义",
+                    description = "由 DSH Web Client 统一管理 · 当前 ${themeMode.labelZh}",
                     modifier = Modifier.padding(top = 16.dp),
                 )
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp).horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    DshThemeMode.entries.forEach { mode ->
-                        DshButton(
-                            text = mode.labelZh,
-                            onClick = { onThemeChange(mode) },
-                            icon = DshIconGlyph.PALETTE,
-                            style = if (themeMode == mode) DshButtonStyle.PRIMARY else DshButtonStyle.SECONDARY,
-                        )
-                    }
-                }
                 DshButton(
                     text = "重新运行环境引导",
                     onClick = onRunOnboarding,

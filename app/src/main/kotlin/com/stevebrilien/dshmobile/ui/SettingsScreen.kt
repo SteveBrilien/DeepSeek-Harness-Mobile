@@ -5,8 +5,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,12 +30,10 @@ import com.stevebrilien.dshmobile.core.recovery.RecoveryVault
 private enum class SettingsDetail { NONE, RUNTIME_RECOVERY }
 
 @Composable
-@OptIn(ExperimentalLayoutApi::class)
 fun SettingsScreen(
     vault: RecoveryVault,
     controller: NativeRecoveryController,
     themeMode: DshThemeMode,
-    onThemeChange: (DshThemeMode) -> Unit,
     onRunOnboarding: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -49,7 +45,6 @@ fun SettingsScreen(
             vault = vault,
             controller = controller,
             themeMode = themeMode,
-            onThemeChange = onThemeChange,
             onRunOnboarding = onRunOnboarding,
             onBack = { detail = SettingsDetail.NONE },
             modifier = modifier,
@@ -76,24 +71,9 @@ fun SettingsScreen(
                     SettingsRow(
                         icon = DshIconGlyph.PALETTE,
                         title = "外观",
-                        detail = themeMode.labelZh,
+                        detail = "跟随 DSH · ${themeMode.labelZh}",
                         trailing = null,
                     )
-                    FlowRow(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 50.dp, end = 12.dp, bottom = 10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(7.dp),
-                        verticalArrangement = Arrangement.spacedBy(7.dp),
-                    ) {
-                        DshThemeMode.entries.forEach { mode ->
-                            DshButton(
-                                text = mode.labelZh,
-                                onClick = { onThemeChange(mode) },
-                                style = if (themeMode == mode) DshButtonStyle.PRIMARY else DshButtonStyle.GHOST,
-                            )
-                        }
-                    }
                     SettingsDivider()
                     SettingsRow(
                         icon = DshIconGlyph.REFRESH,

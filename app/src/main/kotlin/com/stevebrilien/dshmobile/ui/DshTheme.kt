@@ -33,6 +33,7 @@ enum class DshThemeMode(val storageValue: String, val labelZh: String) {
     LIGHT("light", "浅色"),
     DARK("dark", "深色"),
     TOKYO_NIGHT("tokyo-night", "东京夜色"),
+    SYSTEM("system", "跟随系统"),
 }
 
 @Immutable
@@ -83,28 +84,29 @@ private val DarkDshColors = DshColors(
     shadow = Color(0x66000000), isDark = true,
 )
 
-// Values intentionally mirror the DSH Tokyo Night plugin alias/static tokens.
+// Bootstrap-only mirror of the DSH Tokyo Night semantic palette. Once the Web
+// theme handshake arrives, the live DSH token snapshot remains the color authority.
 private val TokyoNightColors = DshColors(
-    base = Color(0xFF16161E),
+    base = Color(0xFF1A1B26),
     layer1 = Color(0xFF1F2335),
     layer2 = Color(0xFF24283B),
     layer3 = Color(0xFF292E42),
     textPrimary = Color(0xFFC0CAF5),
     textSecondary = Color(0xFFA9B1D6),
     textTertiary = Color(0xFF808BC0),
-    border1 = Color(0x337AA2F7),
-    border2 = Color(0x477AA2F7),
+    border1 = Color(0x1F7AA2F7),
+    border2 = Color(0x337AA2F7),
     accent = Color(0xFF7AA2F7),
-    accentSoft = Color(0x3D7AA2F7),
+    accentSoft = Color(0xFF2F3549),
     accentText = Color(0xFF16161E),
     hover = Color(0x147AA2F7),
-    selected = Color(0xFF3B4261),
+    selected = Color(0xFF292E42),
     warning = Color(0xFFE0AF68),
     warningBg = Color(0xFF332B1E),
     warningBorder = Color(0x66E0AF68),
     success = Color(0xFF9ECE6A),
     danger = Color(0xFFF7768E),
-    codeBg = Color(0xFF1A1B26),
+    codeBg = Color(0xFF1B1E2E),
     shadow = Color(0x880B0C10),
     isDark = true,
 )
@@ -140,7 +142,7 @@ class DshThemePreference(private val context: Context) {
     fun load(): DshThemeMode {
         val stored = prefs.getString("theme", null)
         return DshThemeMode.entries.firstOrNull { it.storageValue == stored }
-            ?: if (isSystemInDarkThemeUnsafe(context)) DshThemeMode.DARK else DshThemeMode.LIGHT
+            ?: DshThemeMode.SYSTEM
     }
 
     fun save(mode: DshThemeMode) {
@@ -161,15 +163,19 @@ fun rememberDshThemePreference(): Pair<DshThemeMode, (DshThemeMode) -> Unit> {
 }
 
 @Composable
-fun DshMobileTheme(
+internal fun DshMobileTheme(
     mode: DshThemeMode,
+    webTheme: DshWebThemeSnapshot? = null,
     content: @Composable () -> Unit,
 ) {
-    val colors = when (mode) {
+    val systemDark = isSystemInDarkTheme()
+    val fallbackColors = when (mode) {
         DshThemeMode.LIGHT -> LightDshColors
         DshThemeMode.DARK -> DarkDshColors
         DshThemeMode.TOKYO_NIGHT -> TokyoNightColors
+        DshThemeMode.SYSTEM -> if (systemDark) DarkDshColors else LightDshColors
     }
+    val colors = webTheme?.toDshColors() ?: fallbackColors
 
     val scheme = if (colors.isDark) {
         darkColorScheme(
@@ -224,6 +230,38 @@ fun DshMobileTheme(
     }
 }
 
+
+private fun DshWebThemeSnapshot.toDshColors(): DshColors? = runCatching {
+    val p = palette
+    val warningColor = webColor(p.warning)
+    DshColors(
+        base = webColor(p.base),
+        layer1 = webColor(p.layer1),
+        layer2 = webColor(p.layer2),
+        layer3 = webColor(p.layer3),
+        textPrimary = webColor(p.textPrimary),
+        textSecondary = webColor(p.textSecondary),
+        textTertiary = webColor(p.textTertiary),
+        border1 = webColor(p.border1),
+        border2 = webColor(p.border2),
+        accent = webColor(p.accent),
+        accentSoft = webColor(p.accentSoft),
+        accentText = webColor(p.accentText),
+        hover = webColor(p.hover),
+        selected = webColor(p.selected),
+        warning = warningColor,
+        warningBg = webColor(p.warningBg),
+        warningBorder = warningColor.copy(alpha = .4f),
+        success = webColor(p.success),
+        danger = webColor(p.danger),
+        codeBg = webColor(p.codeBg),
+        shadow = if (isDark) Color(0x66000000) else Color(0x14000000),
+        isDark = isDark,
+    )
+}.getOrNull()
+
+private fun webColor(value: String): Color = Color(android.graphics.Color.parseColor(value))
+
 private fun Context.findActivity(): Activity? {
     var current: Context = this
     while (current is ContextWrapper) {
@@ -231,9 +269,4 @@ private fun Context.findActivity(): Activity? {
         current = current.baseContext
     }
     return current as? Activity
-}
-
-private fun isSystemInDarkThemeUnsafe(context: Context): Boolean {
-    val mask = context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
-    return mask == android.content.res.Configuration.UI_MODE_NIGHT_YES
 }

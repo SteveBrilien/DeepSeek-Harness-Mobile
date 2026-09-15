@@ -5,13 +5,13 @@ window.__ModuleLoader__.load({
     var exports = module.exports;
     Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 
-    const inject = ["layout"];
+    const inject = ["layout", "theme", "tokyoNightTheme"];
     const MOBILE_QUERY = "(max-width: 640px)";
     const ROOT_ATTR = "data-dsh-mobile-ui";
     const DRAWER_ATTR = "data-dshm-drawer";
     const SETTINGS_ATTR = "data-dshm-settings";
     const TRANSIENT_ATTR = "data-dshm-transient-layer";
-    const STYLE_ID = "dsh-client-ui-mobile/mobile-v2";
+    const STYLE_ID = "dsh-client-ui-mobile/mobile-v3";
     const TOGGLE_ID = "dshm-mobile-nav-toggle";
     const BACKDROP_ID = "dshm-mobile-nav-backdrop";
 
@@ -209,6 +209,41 @@ html[${ROOT_ATTR}="active"] [data-dshm-settings-options] select,
 html[${ROOT_ATTR}="active"] [data-dshm-settings-options] textarea {
   max-width: 100%;
 }
+html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] {
+  box-sizing: border-box;
+  flex: 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 84px;
+  padding: 20px 32px;
+  border: .5px solid var(--dsw-alias-border-l4);
+  border-radius: 20px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo]:active {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo][aria-pressed="true"] {
+  background: var(--dsw-alias-bg-module-platform);
+  border-color: var(--dsw-static-neutral-bluish-400);
+}
+html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo]:disabled {
+  cursor: default;
+  opacity: .4;
+}
+html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
+  width: 16px;
+  height: 16px;
+}
 `;
 
     function directElementChildren(node) {
@@ -272,6 +307,77 @@ html[${ROOT_ATTR}="active"] [data-dshm-settings-options] textarea {
       return found;
     }
 
+    function findAppearanceCubeRow(settings) {
+      if (!(settings instanceof HTMLElement)) return null;
+      const scope = settings.querySelector('[data-dshm-settings-options]') || settings;
+      const visited = new Set();
+      for (const candidate of scope.querySelectorAll('button[aria-pressed]')) {
+        const row = candidate.parentElement;
+        if (!(row instanceof HTMLElement) || visited.has(row)) continue;
+        visited.add(row);
+        const buttons = directElementChildren(row).filter((child) =>
+          child.tagName === "BUTTON" && child.hasAttribute("aria-pressed"),
+        );
+        if (buttons.length < 3) continue;
+        const labels = buttons.map((button) => String(button.textContent || "").trim().toLowerCase());
+        const hasLight = labels.some((label) => label === "light" || label.includes("浅色"));
+        const hasDark = labels.some((label) => label === "dark" || label.includes("深色"));
+        const hasSystem = labels.some((label) => label === "system" || label.includes("跟随系统"));
+        if (hasLight && hasDark && hasSystem) return { row, labels };
+      }
+      return null;
+    }
+
+    function ensureTokyoThemeCube(ctx, settings) {
+      const found = findAppearanceCubeRow(settings);
+      if (!found) return null;
+
+      // The official Appearance row currently owns light/dark/system. Capture an
+      // explicit built-in click before React's handler so the Tokyo extension
+      // preference is retired intentionally rather than inferred from startup
+      // adoption timing.
+      for (const child of directElementChildren(found.row)) {
+        if (child.tagName === "BUTTON" && child.hasAttribute("aria-pressed") &&
+            !child.hasAttribute("data-dshm-theme-tokyo")) {
+          child.setAttribute("data-dshm-theme-builtin", "");
+        }
+      }
+      if (!found.row.hasAttribute("data-dshm-theme-builtins-bound")) {
+        const onBuiltinClick = (event) => {
+          const target = event.target instanceof Element ? event.target.closest('button[data-dshm-theme-builtin]') : null;
+          if (target instanceof HTMLButtonElement && found.row.contains(target)) ctx.tokyoNightTheme.clear();
+        };
+        found.row.addEventListener("click", onBuiltinClick, true);
+        found.row.__dshmThemeBuiltinCleanup = () => found.row.removeEventListener("click", onBuiltinClick, true);
+        found.row.setAttribute("data-dshm-theme-builtins-bound", "");
+      }
+
+      let button = found.row.querySelector('[data-dshm-theme-tokyo]');
+      if (!(button instanceof HTMLButtonElement)) {
+        button = document.createElement("button");
+        button.type = "button";
+        button.setAttribute("data-dshm-theme-tokyo", "");
+        button.setAttribute("aria-label", "Tokyo Night");
+        const english = found.labels.some((label) => label === "light");
+        button.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.9 11.7A5 5 0 0 1 4.3 5.1 5.6 5.6 0 1 0 10.9 11.7Z" fill="currentColor"/><path d="M11.8 2.4l.35.8.8.35-.8.35-.35.8-.35-.8-.8-.35.8-.35.35-.8Zm2.1 3.1.25.55.55.25-.55.25-.25.55-.25-.55-.55-.25.55-.25.25-.55Z" fill="currentColor"/></svg><span>' + (english ? 'Tokyo Night' : '东京夜色') + '</span>';
+        button.addEventListener("click", () => {
+          const snapshot = ctx.theme.getTheme();
+          const registered = snapshot?.themes?.some((theme) => theme.id === "tokyo-night") === true;
+          if (registered) ctx.tokyoNightTheme.select();
+        });
+        found.row.appendChild(button);
+      }
+      const snapshot = ctx.theme.getTheme();
+      const registered = snapshot?.themes?.some((theme) => theme.id === "tokyo-night") === true;
+      button.disabled = !registered;
+      button.setAttribute("aria-disabled", registered ? "false" : "true");
+      button.setAttribute(
+        "aria-pressed",
+        snapshot?.preference === "tokyo-night" ? "true" : "false",
+      );
+      return button;
+    }
+
     function hasVisibleTransientLayer() {
       for (const node of document.querySelectorAll('[role="listbox"], [role="menu"], [role="dialog"][aria-modal="true"]')) {
         if (!(node instanceof HTMLElement)) continue;
@@ -301,7 +407,112 @@ html[${ROOT_ATTR}="active"] [data-dshm-settings-options] textarea {
       return button;
     }
 
+    const THEME_BRIDGE_SCHEMA = 1;
+    const THEME_TOKENS = Object.freeze({
+      base: "--dsw-alias-bg-base",
+      layer1: "--dsw-alias-bg-layer-1",
+      layer2: "--dsw-alias-bg-layer-2",
+      layer3: "--dsw-alias-bg-layer-3",
+      textPrimary: "--dsw-alias-label-primary",
+      textSecondary: "--dsw-alias-label-secondary",
+      textTertiary: "--dsw-alias-label-tertiary",
+      border1: "--dsw-alias-border-l1",
+      border2: "--dsw-alias-border-l2",
+      accent: "--dsw-alias-state-business-primary",
+      accentSoft: "--dsw-alias-state-business-tertiary",
+      accentText: "--dsw-alias-label-primary-foreground",
+      hover: "--dsw-alias-interactive-bg-hover",
+      selected: "--dsw-specific-sidebar-nav-item-active-accent",
+      warning: "--dsw-alias-state-warn-primary",
+      warningBg: "--dsw-alias-state-warn-tertiary",
+      success: "--dsw-alias-state-success-primary",
+      danger: "--dsw-alias-state-error-primary",
+      codeBg: "--dsw-alias-markdown-code-block",
+    });
+
+    function byteHex(value) {
+      return Math.max(0, Math.min(255, value)).toString(16).padStart(2, "0").toUpperCase();
+    }
+
+    function normalizeCssColor(value) {
+      const match = String(value || "").trim().match(/^rgba?\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)(?:\s*,\s*(\d+(?:\.\d+)?))?\s*\)$/i);
+      if (!match) return null;
+      const red = Math.round(Number(match[1]));
+      const green = Math.round(Number(match[2]));
+      const blue = Math.round(Number(match[3]));
+      const alpha = match[4] === undefined ? 255 : Math.round(Number(match[4]) * 255);
+      const rgb = `${byteHex(red)}${byteHex(green)}${byteHex(blue)}`;
+      return alpha === 255 ? `#${rgb}` : `#${byteHex(alpha)}${rgb}`;
+    }
+
+    function resolveThemeColors() {
+      if (!(document.body instanceof HTMLElement)) return null;
+      const probe = document.createElement("span");
+      probe.setAttribute("aria-hidden", "true");
+      probe.style.cssText = "position:fixed;left:-9999px;top:-9999px;pointer-events:none;color:transparent";
+      document.body.appendChild(probe);
+      const colors = {};
+      try {
+        for (const [name, token] of Object.entries(THEME_TOKENS)) {
+          probe.style.color = `var(${token})`;
+          const resolved = normalizeCssColor(getComputedStyle(probe).color);
+          if (!resolved) return null;
+          colors[name] = resolved;
+        }
+        return colors;
+      } finally {
+        probe.remove();
+      }
+    }
+
+    function postThemeSnapshot(snapshot) {
+      const bridge = window.dshMobileTheme;
+      if (!bridge || typeof bridge.postMessage !== "function" || !snapshot || !snapshot.active) return false;
+      const colors = resolveThemeColors();
+      if (!colors) return false;
+      const payload = {
+        schema: THEME_BRIDGE_SCHEMA,
+        preference: String(snapshot.preference || "system"),
+        activeId: String(snapshot.active.id || snapshot.active.colorScheme || "unknown"),
+        colorScheme: snapshot.active.colorScheme === "dark" ? "dark" : "light",
+        revision: Number.isInteger(snapshot.revision) ? snapshot.revision : 0,
+        colors,
+      };
+      bridge.postMessage(JSON.stringify(payload));
+      return true;
+    }
+
     function apply(ctx) {
+      ctx.effect(() => {
+        let themeRaf = 0;
+        let themeRetry = 0;
+        let pendingTheme = ctx.theme.getTheme();
+
+        const flushTheme = () => {
+          themeRaf = 0;
+          if (!postThemeSnapshot(pendingTheme) && !themeRetry) {
+            themeRetry = window.setTimeout(() => {
+              themeRetry = 0;
+              pendingTheme = ctx.theme.getTheme();
+              postThemeSnapshot(pendingTheme);
+            }, 120);
+          }
+        };
+        const scheduleTheme = (snapshot) => {
+          pendingTheme = snapshot || ctx.theme.getTheme();
+          if (themeRaf) cancelAnimationFrame(themeRaf);
+          themeRaf = requestAnimationFrame(flushTheme);
+        };
+        const offTheme = ctx.on("theme/change", scheduleTheme);
+        scheduleTheme(pendingTheme);
+
+        return () => {
+          if (themeRaf) cancelAnimationFrame(themeRaf);
+          if (themeRetry) clearTimeout(themeRetry);
+          if (typeof offTheme === "function") offTheme();
+        };
+      }, "ui-mobile-v3: native theme synchronization");
+
       ctx.effect(() => {
         const mql = window.matchMedia(MOBILE_QUERY);
         const html = document.documentElement;
@@ -339,6 +550,7 @@ html[${ROOT_ATTR}="active"] [data-dshm-settings-options] textarea {
           const settings = tagSettings();
           if (settings) html.setAttribute(SETTINGS_ATTR, "open");
           else html.removeAttribute(SETTINGS_ATTR);
+          if (mobile && settings) ensureTokyoThemeCube(ctx, settings);
           if (hasVisibleTransientLayer()) html.setAttribute(TRANSIENT_ATTR, "open");
           else html.removeAttribute(TRANSIENT_ATTR);
           if (!mobile || !frame) return;
@@ -378,17 +590,26 @@ html[${ROOT_ATTR}="active"] [data-dshm-settings-options] textarea {
           attributeFilter: ["data-sidebar-collapsed", "data-rightbar-collapsed", "data-rightbar-fullscreen", "aria-expanded"],
         });
         mql.addEventListener("change", schedule);
+        const offAdaptiveTheme = ctx.on("theme/change", schedule);
         synchronize();
 
         return () => {
           observer.disconnect();
           mql.removeEventListener("change", schedule);
+          if (typeof offAdaptiveTheme === "function") offAdaptiveTheme();
           toggle.removeEventListener("click", onToggle);
           backdrop.removeEventListener("click", onToggle);
           if (raf) cancelAnimationFrame(raf);
           toggle.remove();
           backdrop.remove();
           style.remove();
+          for (const row of document.querySelectorAll('[data-dshm-theme-builtins-bound]')) {
+            if (typeof row.__dshmThemeBuiltinCleanup === "function") row.__dshmThemeBuiltinCleanup();
+            delete row.__dshmThemeBuiltinCleanup;
+            row.removeAttribute("data-dshm-theme-builtins-bound");
+            for (const builtin of row.querySelectorAll('[data-dshm-theme-builtin]')) builtin.removeAttribute("data-dshm-theme-builtin");
+          }
+          for (const node of document.querySelectorAll('[data-dshm-theme-tokyo]')) node.remove();
           html.removeAttribute(ROOT_ATTR);
           html.removeAttribute(DRAWER_ATTR);
           html.removeAttribute(SETTINGS_ATTR);

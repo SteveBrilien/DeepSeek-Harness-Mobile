@@ -90,12 +90,17 @@ class MobilePluginProfileCoordinatorTest {
             "file:/dsh-home/mobile-plugins/dsh-client-ui-mobile",
             migrated.getJSONObject("dependencies").getString("dsh-client-ui-mobile"),
         )
+        assertEquals(
+            "file:/dsh-home/mobile-plugins/dsh-plugin-tokyo-night",
+            migrated.getJSONObject("dependencies").getString("dsh-plugin-tokyo-night"),
+        )
         val bundles = migrated.getJSONObject("dsh").getJSONObject("profile").getJSONArray("bundles")
         val bundleNames = (0 until bundles.length()).map(bundles::getString)
         assertTrue(bundleNames.contains("user-plugin"))
         assertTrue(bundleNames.contains("@dsh-mobile/dsh-mobile-context"))
         assertTrue(bundleNames.contains("@dsh-mobile/dsh-webview-compat"))
         assertTrue(bundleNames.contains("dsh-client-ui-mobile"))
+        assertTrue(bundleNames.contains("dsh-plugin-tokyo-night"))
         assertEquals(
             MobilePluginProfileCoordinator.MOBILE_CONTEXT_PLUGIN_VERSION,
             JSONObject(
@@ -118,6 +123,13 @@ class MobilePluginProfileCoordinatorTest {
             ).getString("version"),
         )
         assertEquals(
+            MobilePluginProfileCoordinator.TOKYO_THEME_PLUGIN_VERSION,
+            JSONObject(
+                File(profile, "node_modules/dsh-plugin-tokyo-night/package.json")
+                    .readText(StandardCharsets.UTF_8),
+            ).getString("version"),
+        )
+        assertEquals(
             MobilePluginProfileCoordinator.WEBVIEW_COMPAT_PLUGIN_VERSION,
             JSONObject(
                 File(store.layout.persistentDshHome, "mobile-plugins/dsh-webview-compat/package.json")
@@ -128,6 +140,13 @@ class MobilePluginProfileCoordinatorTest {
             MobilePluginProfileCoordinator.MOBILE_UI_PLUGIN_VERSION,
             JSONObject(
                 File(store.layout.persistentDshHome, "mobile-plugins/dsh-client-ui-mobile/package.json")
+                    .readText(StandardCharsets.UTF_8),
+            ).getString("version"),
+        )
+        assertEquals(
+            MobilePluginProfileCoordinator.TOKYO_THEME_PLUGIN_VERSION,
+            JSONObject(
+                File(store.layout.persistentDshHome, "mobile-plugins/dsh-plugin-tokyo-night/package.json")
                     .readText(StandardCharsets.UTF_8),
             ).getString("version"),
         )
@@ -194,6 +213,23 @@ class MobilePluginProfileCoordinatorTest {
         assertTrue(expected.contentEquals(uiClient.readBytes()))
         assertTrue(coordinator.isActivePresentationReconciled())
         assertTrue(coordinator.isReconciled())
+    }
+
+    @Test
+    fun activeTokyoThemePayloadDriftInvalidatesAndReconcilesPresentation() {
+        val profile = File(store.layout.persistentDshHome, "profiles/web")
+        seedMinimalExistingProfile(profile)
+        coordinator.reconcile { error("seed must not be used for an existing profile") }
+
+        val themeClient = File(profile, "node_modules/dsh-plugin-tokyo-night/lib/client.js")
+        val expected = themeClient.readBytes()
+        themeClient.appendText("\n// stale Tokyo theme bytes\n", StandardCharsets.UTF_8)
+
+        assertFalse(coordinator.isActivePresentationReconciled())
+        coordinator.reconcile { error("theme repair must not replace the profile") }
+
+        assertTrue(expected.contentEquals(themeClient.readBytes()))
+        assertTrue(coordinator.isActivePresentationReconciled())
     }
 
     @Test
