@@ -127,9 +127,15 @@ private fun DshWebClient(
     ) { result ->
         val callback = fileChooserCallback
         fileChooserCallback = null
-        callback?.onReceiveValue(
-            WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data),
+        val uris = WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
+        // Counts only: content URIs, display names and file contents are private.
+        // This differentiates Android picker/ClipData loss from downstream DSH
+        // attachment processing without claiming a multi-upload fix yet.
+        diagnostics.append(
+            "file-chooser resultCode=${result.resultCode} clipCount=${result.data?.clipData?.itemCount ?: 0} " +
+                "hasData=${result.data?.data != null} returnedCount=${uris?.size ?: 0} callbackPresent=${callback != null}",
         )
+        callback?.onReceiveValue(uris)
     }
     val latestAuthenticationRejected by rememberUpdatedState(onAuthenticationRejected)
     val latestFatalWebViewError by rememberUpdatedState(onFatalWebViewError)
@@ -196,10 +202,17 @@ private fun DshWebClient(
                 if (filePathCallback == null) return false
                 fileChooserCallback = filePathCallback
                 val intent = runCatching {
-                    fileChooserParams?.createIntent() ?: Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    val multiple = fileChooserParams?.mode == FileChooserParams.MODE_OPEN_MULTIPLE
+                    (fileChooserParams?.createIntent() ?: Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                         addCategory(Intent.CATEGORY_OPENABLE)
                         type = "*/*"
                         putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                    }).apply {
+                        // Android 11 provider implementations vary in how they
+                        // honor createIntent() for MODE_OPEN_MULTIPLE. Explicitly
+                        // propagate only the mode actually requested by DSH.
+                        if (multiple) putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
                 }.getOrElse { failure ->
                     diagnostics.append("file-chooser rejected reason=${failure.message ?: failure::class.java.simpleName}")
@@ -209,7 +222,10 @@ private fun DshWebClient(
                 }
                 return runCatching {
                     fileChooserLauncher.launch(intent)
-                    diagnostics.append("file-chooser launched mode=${fileChooserParams?.mode ?: -1}")
+                    diagnostics.append(
+                        "file-chooser launched mode=${fileChooserParams?.mode ?: -1} " +
+                            "allowsMultiple=${intent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)}",
+                    )
                     true
                 }.getOrElse { failure ->
                     diagnostics.append("file-chooser launch-failed reason=${failure.message ?: failure::class.java.simpleName}")

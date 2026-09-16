@@ -12,10 +12,12 @@ window.__ModuleLoader__.load({
     const RIGHTBAR_ATTR = "data-dshm-rightbar";
     const SETTINGS_ATTR = "data-dshm-settings";
     const TRANSIENT_ATTR = "data-dshm-transient-layer";
-    const STYLE_ID = "dsh-client-ui-mobile/mobile-v5";
+    const STYLE_ID = "dsh-client-ui-mobile/mobile-v6";
     const TOGGLE_ID = "dshm-mobile-nav-toggle";
+    const BACKDROP_ID = "dshm-mobile-drawer-backdrop";
 
     const css = `
+#${TOGGLE_ID}, #${BACKDROP_ID} { display: none; }
 html[${ROOT_ATTR}="active"] * {
   -webkit-tap-highlight-color: transparent;
 }
@@ -34,8 +36,8 @@ html[${ROOT_ATTR}="active"] [data-dshm-sidebar-col] {
   position: fixed !important;
   z-index: 320 !important;
   inset: 0 !important;
-  width: 100% !important;
-  max-width: none !important;
+  width: min(80vw, 360px) !important;
+  max-width: calc(100% - 48px) !important;
   min-width: 0 !important;
   overflow: hidden !important;
   pointer-events: none !important;
@@ -43,6 +45,36 @@ html[${ROOT_ATTR}="active"] [data-dshm-sidebar-col] {
   transition: transform .22s var(--ds-ease-in-out) !important;
   will-change: transform;
   background: var(--dsw-specific-sidebar-fill) !important;
+}
+html[${ROOT_ATTR}="active"] #${BACKDROP_ID} {
+  display: block;
+  position: fixed;
+  /* Keep the dismissal target outside the drawer so clicking its center is
+     not intercepted by the sidebar. Match the 48px minimum exposed edge on
+     narrow screens as well as the drawer's normal 80vw / 360px limit. */
+  inset: 0 0 0 min(80vw, 360px, calc(100% - 48px));
+  z-index: 310;
+  border: 0;
+  padding: 0;
+  background: rgba(0, 0, 0, .32);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity .22s var(--ds-ease-in-out), visibility 0s linear .22s;
+}
+html[${ROOT_ATTR}="active"][${DRAWER_ATTR}="open"] #${BACKDROP_ID} {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition-delay: 0s;
+}
+/* DSH modal surfaces own input while active, even if their owning drawer
+   remains logically open behind the Settings dialog. */
+html[${ROOT_ATTR}="active"][${SETTINGS_ATTR}="open"] #${BACKDROP_ID},
+html[${ROOT_ATTR}="active"][${TRANSIENT_ATTR}="open"] #${BACKDROP_ID} {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 html[${ROOT_ATTR}="active"] [data-dshm-sidebar-root] {
   box-sizing: border-box !important;
@@ -122,6 +154,20 @@ html[${ROOT_ATTR}="active"] #${TOGGLE_ID} {
     visibility 0s linear .16s,
     transform .12s var(--ds-ease-in-out);
   -webkit-tap-highlight-color: transparent;
+}
+html[${ROOT_ATTR}="active"] #${TOGGLE_ID}[data-dshm-nav-docked] {
+  position: relative;
+  top: auto;
+  left: auto;
+  z-index: auto;
+  flex: 0 0 36px;
+  margin-right: 6px;
+}
+html[${ROOT_ATTR}="active"] [data-dshm-title-row] {
+  min-width: 0 !important;
+}
+html[${ROOT_ATTR}="active"] [data-dshm-title-row] > :not(#${TOGGLE_ID}) {
+  min-width: 0 !important;
 }
 html[${ROOT_ATTR}="active"] #${TOGGLE_ID}:hover {
   background: var(--dsw-alias-interactive-bg-hover);
@@ -319,6 +365,7 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
   html[${ROOT_ATTR}="active"] [data-dshm-sidebar-col],
   html[${ROOT_ATTR}="active"] [data-dshm-rightbar-col],
   html[${ROOT_ATTR}="active"] #${TOGGLE_ID},
+  html[${ROOT_ATTR}="active"] #${BACKDROP_ID},
   html[${ROOT_ATTR}="active"] [role="listbox"],
   html[${ROOT_ATTR}="active"] [role="menu"],
   html[${ROOT_ATTR}="active"] [data-dshm-settings-overlay],
@@ -351,6 +398,26 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
         beforeOverlay[2].setAttribute("data-dshm-rightbar-col", "");
       }
       return frame;
+    }
+
+    // A session title is React-owned. Only move our plugin-owned button into
+    // the DSH semantic header row; never mutate the native title or its layout.
+    // Blank/hero screens have no visible session header, so keep the toggle in
+    // its original launcher position until the actual header becomes available.
+    function dockNavInSessionHeader(frame, toggle) {
+      const corner = frame?.querySelector('[data-dshm-center-col] [data-conversation-header-corner]');
+      const header = corner?.closest('header');
+      const row = header?.firstElementChild;
+      if (header instanceof HTMLElement && !header.hasAttribute('aria-hidden') &&
+          row instanceof HTMLElement && row.parentElement === header &&
+          getComputedStyle(header).display !== 'none') {
+        row.setAttribute('data-dshm-title-row', '');
+        if (toggle.parentElement !== row || row.firstElementChild !== toggle) row.prepend(toggle);
+        toggle.setAttribute('data-dshm-nav-docked', '');
+      } else {
+        if (toggle.parentElement !== document.body) document.body.append(toggle);
+        toggle.removeAttribute('data-dshm-nav-docked');
+      }
     }
 
     function tagSidebarRoot(frame) {
@@ -576,7 +643,7 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
       button.id = TOGGLE_ID;
       button.type = "button";
       button.setAttribute("aria-label", "打开侧边栏");
-      button.innerHTML = '<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><rect x="2.75" y="3.25" width="14.5" height="13.5" rx="2.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M7.25 3.75v12.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+      button.innerHTML = '<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>';
       return button;
     }
 
@@ -697,7 +764,11 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
         document.head.appendChild(style);
 
         const toggle = makeToggle();
-        document.body.append(toggle);
+        const backdrop = document.createElement('button');
+        backdrop.id = BACKDROP_ID;
+        backdrop.type = 'button';
+        backdrop.setAttribute('aria-label', '关闭侧边栏');
+        document.body.append(backdrop, toggle);
 
         let frame = null;
         let raf = 0;
@@ -724,6 +795,7 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
           frame = tagShell();
           tagSidebarRoot(frame);
           tagSidebarSearch(frame);
+          if (mobile) dockNavInSessionHeader(frame, toggle);
           const primaryView = readPrimaryConversationView(frame);
           if (mobile && primaryView) {
             if (primaryViewKey !== null && primaryView.key !== primaryViewKey &&
@@ -782,6 +854,13 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
           schedule();
         };
         toggle.addEventListener("click", onToggle);
+        const onBackdropClick = () => {
+          if (mql.matches && frame && !frame.hasAttribute('data-sidebar-collapsed')) {
+            ctx.layout.toggleSidebar();
+            schedule();
+          }
+        };
+        backdrop.addEventListener('click', onBackdropClick);
 
         const observer = new MutationObserver(schedule);
         observer.observe(document.documentElement, {
@@ -799,10 +878,12 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
           mql.removeEventListener("change", schedule);
           if (typeof offAdaptiveTheme === "function") offAdaptiveTheme();
           toggle.removeEventListener("click", onToggle);
+          backdrop.removeEventListener('click', onBackdropClick);
           if (raf) cancelAnimationFrame(raf);
           primaryViewAnimation?.cancel();
           primaryViewAnimation = null;
           toggle.remove();
+          backdrop.remove();
           style.remove();
           for (const row of document.querySelectorAll('[data-dshm-theme-builtins-bound]')) {
             if (typeof row.__dshmThemeBuiltinCleanup === "function") row.__dshmThemeBuiltinCleanup();
@@ -816,13 +897,13 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
           html.removeAttribute(RIGHTBAR_ATTR);
           html.removeAttribute(SETTINGS_ATTR);
           html.removeAttribute(TRANSIENT_ATTR);
-          for (const node of document.querySelectorAll('[data-dshm-shell], [data-dshm-shell-overlay], [data-dshm-sidebar-col], [data-dshm-sidebar-root], [data-dshm-sidebar-search], [data-dshm-sidebar-toolbar], [data-dshm-conversation-view], [data-dshm-center-col], [data-dshm-rightbar-col], [data-dshm-settings-overlay], [data-dshm-settings-panel], [data-dshm-settings-nav], [data-dshm-settings-nav-title], [data-dshm-settings-nav-list], [data-dshm-settings-content], [data-dshm-settings-header], [data-dshm-settings-options], [data-dshm-font-size-row], [data-dshm-font-size-copy], [data-dshm-font-size-control], [data-dshm-font-size-stepper], [data-dshm-font-size-arrows], [data-dshm-font-size-arrow], [data-dshm-desktop-config-action], [data-dshm-desktop-config-error]')) {
+          for (const node of document.querySelectorAll('[data-dshm-shell], [data-dshm-shell-overlay], [data-dshm-sidebar-col], [data-dshm-sidebar-root], [data-dshm-title-row], [data-dshm-sidebar-search], [data-dshm-sidebar-toolbar], [data-dshm-conversation-view], [data-dshm-center-col], [data-dshm-rightbar-col], [data-dshm-settings-overlay], [data-dshm-settings-panel], [data-dshm-settings-nav], [data-dshm-settings-nav-title], [data-dshm-settings-nav-list], [data-dshm-settings-content], [data-dshm-settings-header], [data-dshm-settings-options], [data-dshm-font-size-row], [data-dshm-font-size-copy], [data-dshm-font-size-control], [data-dshm-font-size-stepper], [data-dshm-font-size-arrows], [data-dshm-font-size-arrow], [data-dshm-desktop-config-action], [data-dshm-desktop-config-error]')) {
             for (const attribute of Array.from(node.attributes)) {
               if (attribute.name.startsWith("data-dshm-")) node.removeAttribute(attribute.name);
             }
           }
         };
-      }, "ui-mobile-v5: native-motion mobile shell and settings adaptation");
+      }, "ui-mobile-v6: native-motion mobile shell and settings adaptation");
     }
 
     exports.apply = apply;

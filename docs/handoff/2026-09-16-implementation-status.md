@@ -1,0 +1,57 @@
+# 2026-09-16｜Preview.4-dev 分阶段实现与真实验收状态
+
+状态：**未发布、未达到 G1/G2 完成条件**。本轮用户已明确授权依据 `2026-09-16-device-ui-issue-inventory.md` 与 `2026-09-16-ui-remediation-and-acceptance-plan.md` 开始实施，但要求未明确事项及时报告，不允许擅改架构/风险策略。原方案末尾“当时仅授权文档”是历史事实，本文件记录新的实施授权。G0 原始状态见 `2026-09-16-implementation-g0-baseline.md`。
+
+## 实际改动及状态
+
+| 阶段/问题 | 本轮实际交付 | 状态与不应宣称的结论 |
+|---|---|---|
+| G0 | 记录 HEAD/Preview.3/Preview.2 OTA 分离、原有 dirty/untracked、ADR/权限/真机可用性；明确开发候选身份 | 主机记录已完成；真实 Vivo 数据快照/ADB 基线未取得，不声称 G0 全设备门禁完成 |
+| G1 / WEB-01/03 | `dsh-client-ui-mobile/lib/client.js` 现以 `min(80vw,360px)`、至少 48px 遮罩区展示非全屏抽屉；遮罩调用官方 `ctx.layout.toggleSidebar()`；菜单按钮改为三横线、尝试挂入具名 DSH 会话标题行并占位，未找到标题行则保留原启动位置；加入弹窗遮罩交互保护、桌面断点隐藏 | **代码完成但仅静态门禁通过、真机与带登录会话的 Chromium DOM/React 验收待办**。没有实现跟手左右滑；右栏入口尚未定位；标题 React 重排和弹层 z-index 有潜在兼容风险，不可宣布 G1 完成 |
+| G1 / WEB-05/06/07/08 | 没有改官方 DSH 设置布局、IME/原生导航栏/26s 启动链；保留 Web root compat 不变 | **未修复、待可脱敏真机 IME/insets/DOM 帧证据**，不根据截图猜测键盘跳动根因 |
+| G2 / ATT-01 | `ChatScreen.kt` 在网页请求 `MODE_OPEN_MULTIPLE` 时显式设置 chooser `EXTRA_ALLOW_MULTIPLE` 与授权读取 flag；回调仅记录 resultCode、ClipData 个数、URI 个数与是否存在 callback 等匿名数据 | **诊断/桥接补充，不是“多文件已修复”**；须真机选取 1/2/3/5 件并核对每项 ready 和服务端最终收到的文件。未证实 `parseResult` 或 DSH 后端为根因，不打印原 URI、文件名、内容或 token |
+| G3 | 暂不重做官方附件 UI；拍照/相册/文件 sheet、最近预览涉及系统授权与文件选择链，应待 G2 闭环和权限设计确认 | 未开始 |
+| G4 | 旧 Project Registry 稳定 ID、DSH Session primary cwd 仍保留；未重写文件根校验/权限或 Trash schema | **未开始**。跨项目外部目录访问与 SAF、Trash 恢复元数据、批量事务若改变持久合同，先新 ADR/迁移/回滚评审；禁止直接删 `requireInsideBrowserRoot` |
+| G5 | 不伪造“完整恢复成功”；设置/运行时重组尚未修改 | 未开始。现有 backup create/verify/export 不能包装成完整恢复流程；真实恢复必须预检/快照/隔离/验证/回滚 |
+| G6 / TER-02 | Auto 模式中 `pm/am/dumpsys/settings/input/cmd/svc`（含 `/system/bin/` 直呼）不再以 App UID 假冒 ADB：未连接则显示不可用并保留命令；Android Local 仍明确 App UID；新增纯路由单测 `TerminalRoutingTest.kt` | 此安全冲突已修正且路由单元通过；不是已实现 ADB provider/完整交互式 PTY，也不宣称 shell 脚本深度静态识别 |
+| G7 | 本地 `0.4.0-preview.4-dev` / code24、Cordis `0.4.2-dshm.1`、`mobile-v6` marker；第三方 notices 记录本地差分与 hashes；`release/update.json` 未改 | **本地脏工作区测试候选，非可推广发行版**，禁止自动公开 APK/OTA |
+
+## 截至目前的测试证据（状态须以最终 Job terminal result 为准）
+
+- Node24 JavaScript syntax：PASS；`scripts/test-mobile-ui-policy.mjs`：PASS（旧 width100%/禁止 backdrop 断言被新的实际合同断言替换，而非删除）；`scripts/test-webview-compat-policy.mjs`：PASS（仅修复测试 fixture 对 Node24 只读 navigator 全局的设置/恢复）；`git diff --check`：PASS。
+- `android_unit_test`：首轮 PASS (`task-android_unit_test-a17cb47d134f490990c8`)；新增终端路由后复跑 PASS (`task-android_unit_test-d23dc719d62c47d79d1f`, 161 tasks)。
+- `android_lint`：PASS (`task-android_lint-38d465c834c7455f9bce`, 289 tasks)。
+- `android_debug`：PASS (`task-android_debug-d495587bd2a4419aa756`, dirty workspace candidate; not clean-release reproducibility)。
+- `android_signing_verify`：PASS (`task-android_signing_verify-70f08d59e47e46c6a9dc`)，证书维持旧指纹。
+- `runtime_alpine_e2e` 首轮 `task-runtime_alpine_e2e-b60fb3adad5c427dbadf` **FAIL/exit3**：前半段 embedded/online packages、兼容策略、profile reconciliation、native module passed；后半段在线 fallback DSH Web token exchange 在 120 × 250ms 内未得到 token。任务诊断笼统分类 SOURCE_COMPILE 与最后实际阶段不一致，不能写为 PASS；不公开日志里的 token URL。隔离复跑 `task-runtime_alpine_e2e-e94c3e6f8ef9497abf37` 在本文件创建时进行中，结果待追记。
+- `adb_devices`：没有已连接手机，无法完成 Vivo/OriginOS 原生 picker、多选最终发送、IME/正文弹跳、系统三键/截图、抽屉手势、冷/热启动 3 轮与覆盖安装数据保留检查。
+
+## 需要证据或设计确认才能动的阻断点
+
+1. Rightbar 恢复：必须获得真实“已打开会话”的 DSH header/Rightbar 控件 DOM、ARIA 与 bounding rect，对应回归截图；不能凭 icon/数组位置插一个伪按钮。当前 13083 临时 DSH Web 服务无运行，旧 Chromium 会话仅可看到缓存/断连页面。
+2. IME 弹跳：需要同一单调时间轴的 Android IME/systemBars/nav frame/WebView rect/Web visualViewport/Composer/scrollTop + 真机帧，确定第一处几何跃变；不得无证据修改 Insets 或 Web 滚动。
+3. 文件多选：需要匿名 `chooser clipCount / returnedCount`、DSH ready 数量与实际发送文件数，以定位 native/DSH 分界；否则不能决定是否需要上游 DSH patch。
+4. G3 最近媒体：若 Android11 系统能力/现有 URI grants 无法稳定提供最近预览，应降级三入口而不是增加全盘媒体权限；拍照 FileProvider 必须独立安全评审。
+5. G4 跨受权项目根、SAF、Trash 恢复原位置、批量复制中断与 G5 分类别恢复属于数据/权限合同变更，必须先 ADR、升级/降级路径、真实失败演练及用户审核，不能作为本 UI 切片的隐式副作用。
+
+## 回退与交接
+
+原有 Preview.3 的手动测试 APK/签名与 `release/update.json`（Preview.2）保持原状；此候选未推 Git、未改公开下载、未安装设备、未删 Runtime/DSH/Projects/Recovery Vault/SSH/分析证据。Git 原有变更与新候选变更混在同一工作区，正式 clean-release 前必须按文件分离提交、保持可定位源 commit 并运行全套设备门禁。此文档仅记录实际状态，不能替代两份完整方案与接受的 ADR。
+
+## 22:30 +08 续作验收增量（不覆盖以上历史状态）
+
+- 上轮隔离 E2E 复跑 `task-runtime_alpine_e2e-e94c3e6f8ef9497abf37` 最终 PASS；此前首轮 FAIL 保留。本次 CSS 微修复后再跑 `task-runtime_alpine_e2e-8fe8777e879f48c8a19a`，终态 **PASS / exit 0**，包括受控 Web auth 与移动 UI asset 验证。
+- 用 `runtime_presentation_debug_current` 的新临时 DSH Web 测试进程和 Chromium 360×708 完成真实授权访问：官方 Internal Testing Notice 的 Continue 在本次成功保存并消失，API key 提示选择 Configure later。先前“确认无法保存”不应泛化为稳定复现的产品缺陷；持久化触发原因尚未定位，未改官方 onboarding、未伪造用户确认。
+- 发现原遮罩 button 虽只在抽屉右侧可见，但 bounding rect 覆盖 360×708；按其几何中心点击可能命中抽屉下方。因此仅在 Cordis UI CSS 将遮罩左边界限于 `min(80vw,360px,calc(100% - 48px))`（源码保留空格格式），不另造开关状态。新增 mobile-ui-policy 遮罩几何断言；Node24 JS syntax、mobile-ui-policy、webview-compat-policy、`git diff --check` 均 PASS。
+- 在可清除的隔离浏览器测试根同步相同源码后重新载入：左抽屉实测约 288px / 360px；遮罩 `x=288,width=72,height=708`，点击遮罩后抽屉返回 `x=-288`。这仅证明 Home 上的非全屏抽屉与点击关闭，非真机或完整 G1。没有修改设备上的生产 profile。
+- 现有 Android unit/Lint 仍沿用此前 PASS；本次修复后 `android_debug` 重建 job `task-android_debug-1bc30fe9ef38434a96f5` PASS，`android_signing_verify` job `task-android_signing_verify-3e9c210a0aba47baac4c` PASS、指纹不变。dirty-workspace APK SHA256 `c602d109f1c6137276841bdd2b81867bb50b1287892c5eb5a9c4fd6380e87dd7`、88316312 bytes；**非正式发行，不可用此结果冒充 clean build**。
+- 13083 临时服务已主动取消、确认端口关闭；ADB `devices=[]`。浏览器可选择临时 workspace，但尚未取得真实会话 header/rightbar DOM。G1 的右栏入口、跟手手势、IME、官方设置完整交互，G2 的多选真正上传/发送仍阻断；G3–G5 未开始，G4/G5 数据/权限合同变更仍须 ADR/迁移/回退审核。
+- 本次没有 push、变更 `release/update.json`、清理用户数据或发布新 APK。阶段完成标准仍以原实施规范为准；无设备实测不得宣称 Preview.4 已修复用户所见弹跳/多选错误。
+
+## 2026-09-17 用户授权手动 APK 交付（仍非 OTA）
+
+用户要求继续推进，并将当前调整后的 APK 提供给本人安装反馈；据此仅授权 **Preview.4-dev 手动测试包交付**，并未将 G1/G2、真机回归或完整备份恢复视为通过。人工交付时仅对匹配 SHA-256 的 `versionCode=24` / `0.4.0-preview.4-dev` 包提供独立下载，`release/update.json` 继续指向 Preview.2；不修改签名、应用数据或公开 OTA 状态。用户安装必须使用覆盖安装，不能卸载/清除数据；安装器报签名/降级冲突时停止，不执行破坏性修复。
+
+2026-09-17 检查：MCP doctor `ready=true`，但此 secondary runtime 的 artifact server `running=false`、`remote_download_ready=false`；调用 `publish_artifact` 返回 `FILE_SERVER_NOT_CONFIGURED`，不能编造 MCP 已签名下载链接。采用与 Preview.3 相同的受控仓库 `release/` 手动测试包渠道时，应先冻结源提交、clean-build、签名/哈希验证、提交独立 APK，推送后核对真实 HTTP 下载与 SHA-256；不得发布更改过或未校验的链接。ADB 仍没有设备，G1/G2 和原生 IME/Settings/Workspace 验收保持阻断。
+
+此外，`THIRD_PARTY_NOTICES.md` 中本轮 CSS 最后一处差分后的 `lib/client.js` SHA-256 原记录仍是上一轮值，现已修正为 `5bf0b7fe80b94fd92eb95a80183013715b163246c119077f42b8f994c53fb82c`，Node24 syntax、mobile-ui-policy、webview-compat-policy、diff-check 复核 PASS。此操作只同步溯源文档，不修改此前打包的 APK 字节。

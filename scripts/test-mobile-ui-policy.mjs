@@ -10,7 +10,7 @@ const tokyoManifest = JSON.parse(await readFile(resolve(tokyoRoot, 'package.json
 const tokyoClient = await readFile(resolve(tokyoRoot, 'lib/client.js'), 'utf8');
 
 assert.equal(manifest.name, 'dsh-client-ui-mobile');
-assert.equal(manifest.version, '0.4.1-dshm.1');
+assert.equal(manifest.version, '0.4.2-dshm.1');
 assert.ok(manifest.dsh?.client, 'mobile UI must remain a DSH client plugin');
 assert.ok(manifest.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-theme'), 'mobile UI must inject the official DSH theme service');
 assert.ok(manifest.dsh.client.inject.includes('dsh-plugin-tokyo-night'), 'mobile UI must depend on the Tokyo extension service provider');
@@ -35,9 +35,14 @@ assert.ok(client.includes('Increase font size') && client.includes('增大字号
 assert.ok(client.includes('data-dshm-desktop-config-action'), 'desktop-only config action must be explicitly tagged for mobile suppression');
 assert.ok(client.includes('-webkit-tap-highlight-color: transparent'), 'mobile Web interactions must suppress Android blue tap highlights');
 assert.ok(client.includes('transform: translate3d(-100%, 0, 0)'), 'collapsed sidebar must stay mounted off-canvas for smooth transform animation');
-assert.ok(client.includes('width: 100% !important'), 'mobile sidebar must use the full WebView width rather than reserve a dead dismiss strip');
-assert.equal(client.includes('dshm-mobile-nav-backdrop'), false, 'mobile sidebar must not reintroduce a blank backdrop dismissal strip');
-assert.ok(client.includes('mobile-v5'), 'mobile shell must use the v5 motion contract');
+assert.ok(client.includes('width: min(80vw, 360px) !important'), 'mobile drawer must be narrower than screen and leave a tappable backdrop');
+assert.ok(client.includes('max-width: calc(100% - 48px) !important'), 'drawer must leave at least 48px dismissal surface');
+assert.ok(client.includes('dshm-mobile-drawer-backdrop'), 'drawer must have an explicit clickable backdrop instead of an empty strip');
+assert.ok(client.includes('inset: 0 0 0 min(80vw, 360px, calc(100% - 48px))'), 'backdrop click target must start outside the drawer, including at narrow widths');
+assert.ok(client.includes("backdrop.addEventListener('click', onBackdropClick)"), 'backdrop must close via the official layout state');
+assert.ok(client.includes('dockNavInSessionHeader(frame, toggle)'), 'mobile navigation must reserve space inside the native session header');
+assert.ok(client.includes('data-dshm-nav-docked'), 'header toggle must use in-flow rather than fixed positioning');
+assert.ok(client.includes('mobile-v6'), 'mobile shell must use the v6 motion contract');
 assert.ok(client.includes('data-dshm-conversation-view'), 'primary conversation view must be semantically tagged for bounded transitions');
 assert.ok(client.includes('aria-selected'), 'primary view transition must key off official tab selection semantics');
 assert.ok(client.includes('duration: 160'), 'primary view transition must stay short and bounded');

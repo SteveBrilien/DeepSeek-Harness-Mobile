@@ -293,6 +293,8 @@ Before architectural work, read:
 - `docs/UI_BASELINE.md`
 - `docs/ROADMAP.md`
 - `docs/NEXT_ACTIONS.md`
+- `docs/handoff/2026-09-16-device-ui-issue-inventory.md`
+- `docs/handoff/2026-09-16-ui-remediation-and-acceptance-plan.md`
 - `CHANGELOG.md`
 - relevant ADRs under `docs/adr/`
 
@@ -375,3 +377,11 @@ The release freeze introduced for `0.4.0-preview.1` has been satisfied for host-
 The exact candidate now passes Unit, Debug Build, Lint, Mobile Context, ARM64 Runtime E2E, stable signing, fresh `360x708` Chromium interaction and DSH file-upload behavior. The measured mobile presentation confirms the sidebar uses a 280 px panel with only a 32 px dismissal strip, Settings occupies a bounded 344x692 dialog at this viewport, font-size controls have correct accessible semantics and actually change state, Tokyo Night remains selectable, and the Composer/attachment card fit without the previous broad tap-highlight blocks.
 
 Android-specific host integration is implemented but remains device-gated: `WebChromeClient` bridges DSH file inputs to a user-authorized system chooser, `adjustResize`/IME insets keep native chrome out of the keyboard path, and immersive system bars are requested without weakening file/network security. Physical OriginOS evidence is required before promoting beyond Preview.2.
+
+## 15. 2026-09-16 Preview.3 user-feedback documentation checkpoint (no implementation)
+
+- Historical release and Preview.2 host-side statements above remain evidence for Preview.2 **only**. A `0.4.0-preview.3` (`versionCode=23`) candidate APK has separately been manually uploaded/downloaded and tested by the user; `release/update.json` continues to advertise Preview.2. Preview.3 build/signing/Unit/Lint host checks are not a substitute for true-device acceptance.
+- Owner's 19:40–20:24 screenshots/feedback identify overlapping conversation header toggle, missing visible rightbar entry, undesired fullscreen drawer, IME/body bounce, Android navigation overlap, incomplete multi-file upload, and native Workspace/Settings/Recovery/Terminal layout/feature issues. Do not mistake unverified explanations for proven root causes.
+- Read `docs/handoff/2026-09-16-device-ui-issue-inventory.md` for numbered issue evidence and `docs/handoff/2026-09-16-ui-remediation-and-acceptance-plan.md` for ownership, safeguards, staged tasks G0–G7 and release gates. `docs/UI_BASELINE.md` v0.3 records the user's revised **design target** (one hierarchical Workspace/file explorer with Project shortcuts; official DSH Settings visual style preserved), not shipped behavior.
+- ADR 0001 still owns Mobile Project/DSH Workspace/Session data semantics; ADR 0002 owns Native Recovery survivability; ADR 0007 owns actual terminal execution privileges; ADR 0008/0010/0011 and `docs/DSH_COMPATIBILITY.md` govern browser-plugin vs WebView responsibilities. New authorized-file-root, Trash manifest schema or Recovery transaction changes require a separate ADR and migration/rollback review.
+- The user's request at this checkpoint authorizes **documentation only**. No source changes, build, data reset, APK installation, release manifest mutation or remote Git push has been authorized by this handoff. Follow `docs/NEXT_ACTIONS.md` for the updated task queue and retain this section as a dated amendment rather than retroactively rewriting earlier acceptance claims.

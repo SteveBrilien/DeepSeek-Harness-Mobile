@@ -63,7 +63,8 @@ private enum class TerminalMode(val label: String) {
 
 private enum class TerminalDomain(val label: String) {
     LINUX("Linux"),
-    ANDROID("Android"),
+    ANDROID("Android · App UID"),
+    ADB_UNAVAILABLE("ADB Shell · 未连接"),
 }
 
 private enum class CommandShelf(val label: String) {
@@ -86,6 +87,13 @@ private data class TerminalRecord(
 private const val TERMINAL_PREFS = "terminal_preferences"
 private const val PINNED_COMMANDS_KEY = "pinned_commands"
 private const val MAX_RECENT_COMMANDS = 40
+
+/** ADR 0007: do not substitute App UID for Android's ADB shell identity. */
+internal fun requiresAdbShell(command: String): Boolean {
+    val executable = command.trimStart().takeWhile { !it.isWhitespace() }
+        .removePrefix("/system/bin/")
+    return executable in setOf("pm", "am", "dumpsys", "settings", "input", "cmd", "svc")
+}
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
@@ -154,8 +162,8 @@ fun TerminalScreen(
         TerminalMode.AUTO -> {
             val first = command.trim().substringBefore(' ').substringBefore('\t')
             when {
-                first in setOf("pm", "am", "dumpsys", "settings", "input", "cmd", "svc", "getprop", "setprop") ||
-                    command.startsWith("/system/bin/") -> TerminalDomain.ANDROID
+                requiresAdbShell(command) -> TerminalDomain.ADB_UNAVAILABLE
+                first == "getprop" || command.startsWith("/system/bin/") -> TerminalDomain.ANDROID
                 linuxAvailable -> TerminalDomain.LINUX
                 else -> TerminalDomain.ANDROID
             }
@@ -185,6 +193,12 @@ fun TerminalScreen(
                 lastDomain = domain
 
                 when (domain) {
+                    TerminalDomain.ADB_UNAVAILABLE -> {
+                        val message = "此命令要求 ADB Shell 身份，但当前没有已连接、已授权的 ADB 后端；已拒绝执行，不会以 App 权限冒充。"
+                        input = trimmed
+                        records += TerminalRecord(trimmed, "ADB Shell", domain, error = message)
+                        status = "ADB Shell · 不可用"
+                    }
                     TerminalDomain.ANDROID -> {
                         if (trimmed == "cd" || trimmed.startsWith("cd ")) {
                             val argument = trimmed.removePrefix("cd").trim().trim('"', '\'')
@@ -266,6 +280,7 @@ fun TerminalScreen(
         TerminalMode.ANDROID -> androidCwd.absolutePath
         TerminalMode.AUTO -> when (lastDomain) {
             TerminalDomain.LINUX -> linuxCwd
+            TerminalDomain.ADB_UNAVAILABLE -> "ADB Shell 未连接"
             else -> androidCwd.absolutePath
         }
     }
@@ -280,7 +295,7 @@ fun TerminalScreen(
             title = { Text("执行环境") },
             text = {
                 Text(
-                    "自动：优先 Linux，Android 系统命令使用 App 权限环境。\nLinux：本地 Runtime。\nAndroid：App 权限环境。",
+                    "自动：普通开发命令优先 Linux；要求 ADB Shell 的系统命令在后端未连接时拒绝执行。\nLinux：本地 Runtime（PRoot 不是 Android Root）。\nAndroid：仅 App UID，不能当作 ADB Shell。",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             },

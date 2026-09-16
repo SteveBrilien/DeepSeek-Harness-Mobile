@@ -26,3 +26,20 @@ ae55135f8ac8520600d83b95c2ac62772b29adfd8e861e0b24934830d313d1d3  lib/index.js
 ```
 
 Compatibility note: the plugin targets the Harness 0.1 series and depends on DSH client layout conventions. Runtime/DSH upgrades must verify the mobile profile before an A/B slot is promoted. If upstream ships an equivalent viewport fix, prefer returning to an unmodified upstream package and dropping the local suffix.
+
+
+## Current mobile layout derivative: 0.4.2-dshm.1 (Preview.4-dev candidate, 2026-09-16)
+
+The preceding 0.1.9-dshm.2 section records the historical dormant/compatibility experiment, **not** the current active package. The current APK-owned `dsh-client-ui-mobile` derivative is `0.4.2-dshm.1`, built from the already-managed local 0.4.1-dshm.1 presentation baseline (same upstream project and MIT license). The source code is kept under `core/runtime-android/src/main/assets/runtime/dsh-client-ui-mobile/`; any user DSH/Cordis plugins remain independent.
+
+Preview.4-dev changes only narrow-screen drawer width/backdrop and the plugin-owned menu affordance's location/icon, preserving official DSH layout state, Settings/Rightbar ownership and the separate root-only WebView compatibility plugin. It is a locally edited derivative, **not an upstream release**; physical-device and browser acceptance remain outstanding. The package marker must change with the derivative so managed profiles are reconciled rather than serving cached 0.4.1 assets.
+
+Current derivative file SHA-256 (must be refreshed if the candidate changes again):
+
+```text
+856c13afe60e9435e11670550baec51b1f0854bb62a6ea5f16f6551f28009ee2  package.json
+5bf0b7fe80b94fd92eb95a80183013715b163246c119077f42b8f994c53fb82c  lib/client.js
+ae55135f8ac8520600d83b95c2ac62772b29adfd8e861e0b24934830d313d1d3  lib/index.js
+26780ddc5c14a480645341bc0d606809d9cf0599a4080da8e44aec2dd5f371f1  cordis.patch.yml
+66ef15f1d96a34f0b8d788a5716493513ebc88477523299997eaf8e75ce74c3c  LICENSE
+```

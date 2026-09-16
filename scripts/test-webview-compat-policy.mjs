@@ -134,8 +134,10 @@ function runCase({ viewportUnitHeight, visualViewportHeight = 670, expectedMode,
     location: { href: 'http://127.0.0.1:3080/' },
   };
   for (const [key, value] of Object.entries(globals)) {
-    previous.set(key, globalThis[key]);
-    globalThis[key] = value;
+    previous.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
+    // Node 22+ exposes navigator as a configurable getter without a setter.
+    // This fake browser test owns its own global fixture, not production code.
+    Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   }
 
   try {
@@ -176,9 +178,9 @@ function runCase({ viewportUnitHeight, visualViewportHeight = 670, expectedMode,
     assert.equal(nestedStyle.getPropertyValue('max-height'), 'min(52vh, 480px)', 'cleanup must restore nested stylesheet value');
     assert.equal(dynamicStyle.getPropertyValue('height'), 'min(500px, 100dvh - 32px)', 'cleanup must restore dynamic viewport value');
   } finally {
-    for (const [key, value] of previous) {
-      if (value === undefined) delete globalThis[key];
-      else globalThis[key] = value;
+    for (const [key, descriptor] of previous) {
+      if (descriptor === undefined) delete globalThis[key];
+      else Object.defineProperty(globalThis, key, descriptor);
     }
   }
 }
