@@ -1,5 +1,11 @@
 # Immediate Next Actions
 
+## 2026-09-17 更新：Preview.4-dev 手动测试包（不是 OTA）
+
+用户明确要求交付当前整改候选 APK；`release/DeepSeek-Harness-Mobile-0.4.0-preview.4-dev.apk` 已经独立公开为**手动覆盖安装测试包**，SHA256=`c602d109f1c6137276841bdd2b81867bb50b1287892c5eb5a9c4fd6380e87dd7`。`release/update.json` 仍保留 Preview.2，不应把以下 2026-09-16 历史“仅文档”描述当作当下状态。详情及具体测试 job 见 `handoff/2026-09-16-implementation-status.md`。
+
+当前优先让用户安装反馈 G1 抽屉/会话标题/右栏、G2 1/2/3/5 件真实附件发送、IME/system bars；Vivo ADB 仍离线，未验收的功能必须保持未验收。之后独立处理项目文件层级 UI、设置/Recovery（后者必须先做授权根/迁移/回滚评审，不得隐式改变用户数据合同）。
+
 Last updated: 2026-09-16 (after Preview.3 owner feedback / documentation handoff).
 Current **manual-test APK**: `0.4.0-preview.3` (`versionCode=23`), candidate source commits `1039491` / `eaa26e4`; user has installed and reported regressions. **Public in-app update manifest remains Preview.2 (`versionCode=22`)**. The Preview.2 source freeze `4f11518e5ff2e4e45fb1d71877f2dc772a86730a` is historical, not the Preview.3 freeze. Target DSH generation: `0.1.5-rc.2` from `config/dsh-runtime.properties`.
 

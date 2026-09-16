@@ -1,6 +1,6 @@
 # 2026-09-16｜Preview.4-dev 分阶段实现与真实验收状态
 
-状态：**未发布、未达到 G1/G2 完成条件**。本轮用户已明确授权依据 `2026-09-16-device-ui-issue-inventory.md` 与 `2026-09-16-ui-remediation-and-acceptance-plan.md` 开始实施，但要求未明确事项及时报告，不允许擅改架构/风险策略。原方案末尾“当时仅授权文档”是历史事实，本文件记录新的实施授权。G0 原始状态见 `2026-09-16-implementation-g0-baseline.md`。
+当前总状态（2026-09-17）：**已按用户要求提供独立手动测试 APK，仍未达到 G1/G2 完成条件，也未发布 OTA**。本轮用户已明确授权依据 `2026-09-16-device-ui-issue-inventory.md` 与 `2026-09-16-ui-remediation-and-acceptance-plan.md` 开始实施，但要求未明确事项及时报告，不允许擅改架构/风险策略。原方案末尾“当时仅授权文档”是历史事实，本文件记录新的实施授权。G0 原始状态见 `2026-09-16-implementation-g0-baseline.md`。
 
 ## 实际改动及状态
 
@@ -55,3 +55,11 @@
 2026-09-17 检查：MCP doctor `ready=true`，但此 secondary runtime 的 artifact server `running=false`、`remote_download_ready=false`；调用 `publish_artifact` 返回 `FILE_SERVER_NOT_CONFIGURED`，不能编造 MCP 已签名下载链接。采用与 Preview.3 相同的受控仓库 `release/` 手动测试包渠道时，应先冻结源提交、clean-build、签名/哈希验证、提交独立 APK，推送后核对真实 HTTP 下载与 SHA-256；不得发布更改过或未校验的链接。ADB 仍没有设备，G1/G2 和原生 IME/Settings/Workspace 验收保持阻断。
 
 此外，`THIRD_PARTY_NOTICES.md` 中本轮 CSS 最后一处差分后的 `lib/client.js` SHA-256 原记录仍是上一轮值，现已修正为 `5bf0b7fe80b94fd92eb95a80183013715b163246c119077f42b8f994c53fb82c`，Node24 syntax、mobile-ui-policy、webview-compat-policy、diff-check 复核 PASS。此操作只同步溯源文档，不修改此前打包的 APK 字节。
+
+### 2026-09-17 手动测试包交付结果（16:23 UTC 之前的验证）
+
+- 受控源提交 `668d6ae8f164b78f38efc04c132541a491193b7d`；仅提交实现/测试/文档，不提交此前保留的三类真实设备/分析截图。项目 `.git/info/exclude` **仅本地**忽略这些已保留的证据，文件全部仍在原位置。干净工作树再构建 `task-android_debug-c6e1e7b7f18c42e28c91` **PASS，记录 `dirty=false`**，与先前未提交构建得到同一 APK SHA/大小；签名验证 `task-android_signing_verify-cc0ccf191ff441058372` **PASS**，稳定证书未变。
+- 固定 APK `release/DeepSeek-Harness-Mobile-0.4.0-preview.4-dev.apk` / versionCode 24 / SHA-256 `c602d109f1c6137276841bdd2b81867bb50b1287892c5eb5a9c4fd6380e87dd7` / 88,316,312 bytes；复制与本地 `release/SHA256SUMS` 全部校验通过。单独提交 APK `1bcfff3ac4d8adefd1750dfbf40afc9da73c768e`，仅通过允许的 `main` 普通 push 发布此手动测试资产，**没有修改 `release/update.json`（仍 Preview.2/code22）**。
+- GitHub Raw 手动下载地址：`https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.4.0-preview.4-dev.apk`；远端实际 HTTP 200、Content-Length=88316312；独立流式下载的 SHA-256 与上述完全一致。原 Preview.3/Preview.2 APK 未覆盖或删除。MCP artifact server 仍关闭；不使用虚构的 signed URL。
+- 当前源/资源 E2E `task-runtime_alpine_e2e-8fe8777e879f48c8a19a` PASS（上一轮 CSS 最终版）；本次 clean Git build 之后 `android_unit_test` `task-android_unit_test-8a35a93a83f74a4195ba` PASS（161 tasks）、`android_lint` `task-android_lint-7b0f604b7ebd479f8639` PASS（289 tasks）；Node24 syntax/UI/WebView policy/diff-check PASS。以上都不能替代无 ADB 连接的 OriginOS 真机验收。
+- 交付性质仅手动覆盖安装与采集反馈。请在不卸载、不清数据前提下核对：抽屉开关和遮罩关闭、已进入会话的标题/右栏、原生文件多选 1/2/3/5 项到实际发送、IME 收起弹跳、系统栏以及设置/工作区；保留失败和未修复项。签名或安装冲突立即停止，不建议卸载、清理持久 Runtime/DSH/项目或凭据。
