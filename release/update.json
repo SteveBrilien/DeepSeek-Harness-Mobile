@@ -1,7 +1,7 @@
 {
-  "versionCode": 17,
-  "versionName": "0.3.0-alpha.16",
-  "apkUrl": "https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.16.apk",
-  "sha256": "0b56a6e6de5f70bcd4634678368a746b3c0d8cc03a2d289be92cf9fbb6ff651b",
-  "notes": "Alpha.16 fixes the rc.1 -> rc.2 upgrade checkpoint failure seen on OriginOS/PRoot where canonicalized link2symlink backing files produced duplicate ZIP entries. Recovery snapshots now keep logical archive paths, prune rebuildable pnpm CAS store and .l2s implementation files, reject real archive-path collisions, verify temporary ZIPs before atomic publication, and clean failed partials. DSH remains unified on 0.1.5-rc.2 with Mobile Context 0.2.2. Validation passes for Recovery/Runtime/App unit tests, Mobile Context contract, ARM64 Alpine Runtime E2E including authenticated DSH Web, Android lint, native MCP Browser smoke at 390x844, clean-commit Android build from source commit 2f31d54c06ec055530182fa4fd588990623e8e99, byte-identical release packaging and stable signing. Physical OriginOS cover-install remains the manual validation target."
+  "versionCode": 22,
+  "versionName": "0.4.0-preview.2",
+  "apkUrl": "https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.4.0-preview.2.apk",
+  "sha256": "7c9b3d44cc8bc386910cd822fa972f7372a1553f5dfca3a45f263c075a583516",
+  "notes": "Preview.2 repairs Android WebView file upload, IME-aware chat layout and immersive navigation; simplifies native Settings with an in-app settings.yaml editor; upgrades the managed mobile DSH UI to 0.4.0-dshm.1 with narrower drawer dismissal, non-overlapping edge handles, tap-highlight cleanup and working font-size controls; and adds Runtime startup timing telemetry. Automated gates pass on ARM64: unit, lint, Mobile Context contract, Alpine Runtime E2E with authenticated DSH Web and old-profile reconciliation, fresh 360x708 Chromium mobile behavior, attachment upload, clean-commit build and stable signing. Physical Vivo/OriginOS validation remains manual for the Android system file chooser, keyboard raise behavior and immersive navigation gestures."
 }

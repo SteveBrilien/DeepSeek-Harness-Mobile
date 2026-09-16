@@ -362,3 +362,15 @@ Files:
 - Upgrade the APK-owned mobile UI package to `0.4.0-dshm.1`: reduce the open-sidebar dismissal band to 32 px, replace overlapping hamburger affordances with a bounded edge handle, suppress the handle while drawers/settings are open, remove mobile blue tap-highlight blocks, and repair DSH font-size stepper semantics/layout.
 - Add Runtime startup timing telemetry and tighten Web readiness polling from 1000 ms to 250 ms without changing the overall startup timeout.
 - Validation for the exact runtime/UI code before this metadata-only version bump: Android Unit PASS, Android Debug PASS, Android Lint PASS, Mobile Context Contract PASS, ARM64 Alpine Runtime E2E PASS with authenticated DSH Web and old-profile reconciliation, fresh 360×708 Chromium behavior PASS for sidebar/settings/font-size/Tokyo Night, and a real DSH attachment upload probe PASS. Physical Vivo/OriginOS checks remain manual for Android system file chooser, IME raise behavior and immersive navigation gestures.
+
+
+## 2026-09-16 — RELEASE: Package 0.4.0-preview.2 manual-test APK
+
+Packaged the exact clean-source Preview.2 candidate from commit `4f11518e5ff2e4e45fb1d71877f2dc772a86730a`. Clean-commit `android_debug` reports `dirty=false`; stable signing is unchanged; the release APK is byte-identical to the build artifact. `release/DeepSeek-Harness-Mobile-0.4.0-preview.2.apk` is `88,305,836` bytes with SHA-256 `7c9b3d44cc8bc386910cd822fa972f7372a1553f5dfca3a45f263c075a583516`, and the full release hash manifest verifies. Host-side Unit/Lint/Mobile Context/Runtime E2E plus fresh 360x708 Chromium and real DSH file-upload behavior are green. Physical Vivo/OriginOS acceptance remains manual for system chooser handoff, IME/Composer geometry and immersive navigation behavior.
+
+Files:
+- `release/DeepSeek-Harness-Mobile-0.4.0-preview.2.apk`
+- `release/SHA256SUMS`
+- `release/update.json`
+- `docs/HANDOFF.md`
+- `docs/NEXT_ACTIONS.md`

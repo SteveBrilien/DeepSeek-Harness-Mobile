@@ -1,7 +1,7 @@
 # DeepSeek Harness Mobile — Project Handoff
 
-Last updated: 2026-09-14
-Current app release: `0.3.0-alpha.16` (`versionCode = 17`)
+Last updated: 2026-09-16
+Current app release: `0.4.0-preview.2` (`versionCode = 22`)
 Base Git HEAD before alpha.8 changes: `f4f0344fed75186115d9e1e4b0ff3e6a7f6073c9`
 Primary branch: `main`
 Remote: `ssh://git@ssh.github.com:443/SteveBrilien/DeepSeek-Harness-Mobile.git`
@@ -203,54 +203,56 @@ This fix still requires device-side reproduction/regression verification because
 
 Current manual-test package:
 
-- file: `release/DeepSeek-Harness-Mobile-0.3.0-alpha.16.apk`
-- SHA-256: `0b56a6e6de5f70bcd4634678368a746b3c0d8cc03a2d289be92cf9fbb6ff651b`
-- size: `88,124,653` bytes
-- source-freeze commit: `2f31d54c06ec055530182fa4fd588990623e8e99`
+- file: `release/DeepSeek-Harness-Mobile-0.4.0-preview.2.apk`
+- SHA-256: `7c9b3d44cc8bc386910cd822fa972f7372a1553f5dfca3a45f263c075a583516`
+- size: `88,305,836` bytes
+- source-freeze commit: `4f11518e5ff2e4e45fb1d71877f2dc772a86730a`
 - update manifest: `release/update.json`
 
 The current update manifest advertises:
 
-- `versionCode`: 17
-- `versionName`: `0.3.0-alpha.16`
-- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.3.0-alpha.16.apk`
+- `versionCode`: 22
+- `versionName`: `0.4.0-preview.2`
+- download endpoint: `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.4.0-preview.2.apk`
 
-The project uses a stable development signing identity for alpha cover-install testing. Do not replace the signing identity casually; doing so breaks seamless upgrade/cover-install behavior.
+Preview.2 is a feedback/manual-test candidate, not a stable release. It supersedes the non-publishable `0.4.0-preview.1` diagnostic baseline. The project uses the same stable development signing identity as earlier cover-install builds; do not replace that identity casually because doing so breaks seamless cover-install behavior.
 
 ## 5. Validation status
 
-Verified on the Orange Pi ARM64 development host for alpha.16:
+Verified on the Orange Pi ARM64 development host for Preview.2:
 
-- `mobile_context_contract`: PASS with Mobile Context `0.2.2` / `@deepseek-ai/dsh-llm 0.1.5-rc.2`;
-- `android_unit_test`: PASS for Recovery, Runtime Android and App/Robolectric coverage, including PRoot link2symlink logical-path and backup-entry collision regression tests;
-- `runtime_alpine_e2e`: PASS for DSH `0.1.5-rc.2`, including embedded no-registry DSH/profile seeds, authenticated Web, online fallback, pinned ARM64/musl `node-pty`, real PTY behavior, source-build fallback, compiler cleanup, and old-profile reconciliation;
-- native MCP `browser_*` UI smoke: PASS at `390x844`; current-token auth, first-run onboarding skip, sidebar open, Settings open/close, and workspace picker interactions pass with no console errors or failed application requests. The upstream rc.2 Settings content is still visually squeezed on a 390px viewport and remains a P1 mobile-layout item;
+- `android_unit_test`: PASS for Recovery, Runtime Android and App/Robolectric coverage;
 - `android_lint`: PASS (`289 actionable tasks`, `18 executed`, `271 up-to-date`);
-- final clean-commit `android_debug`: PASS from source commit `2f31d54c06ec055530182fa4fd588990623e8e99`;
+- `mobile_context_contract`: PASS with Mobile Context `0.2.2` and DSH `0.1.5-rc.2`;
+- `runtime_alpine_e2e`: PASS for embedded/offline and online fallback installation, authenticated DSH Web, bundled and source-built `node-pty`, real PTY behavior, compiler cleanup and old-profile mobile-UI reconciliation;
+- fresh native MCP Chromium presentation test: PASS at exactly `360x708` with non-persistent browser state. Token authentication, first-run notice, 280 px sidebar, 32 px open-sidebar dismissal band, mobile Settings, Tokyo Night, workspace selection and active Composer all behave normally;
+- DSH font-size stepper: PASS at behavior level. ARIA exposes `Increase font size` / `Decrease font size`, and a real click changed conversation font size `14 -> 15 px`; it was then restored to `14 px`;
+- attachment pipeline: PASS in DSH Web. A real hidden `input[type=file]` accepted a 24-byte TXT test file, progressed from `Uploading…` to `TXT 24B`, and re-enabled Send;
+- Console after authenticated interaction had no new application errors; the only captured 401 came from the deliberate pre-auth bare-root request used to obtain the token flow;
+- clean-commit `android_debug`: PASS with task reproducibility reporting `dirty=false` and source commit `4f11518e5ff2e4e45fb1d71877f2dc772a86730a`;
 - stable signing certificate verification: PASS; certificate SHA-256 remains `08:5C:7B:7D:EA:58:2F:F9:29:5B:25:0F:88:D0:E9:0E:94:7B:D2:93:AC:72:7A:82:40:A7:47:C8:C9:B2:49:07`;
-- release APK is byte-identical to the clean-commit build artifact and has SHA-256 `0b56a6e6de5f70bcd4634678368a746b3c0d8cc03a2d289be92cf9fbb6ff651b`;
-- project path contamination check reports no known contamination.
+- release APK is byte-identical to the clean-commit build artifact; all entries in `release/SHA256SUMS` verify successfully.
 
-ADB HostCapability is healthy on the ARM64 host, but no physical device was connected during Alpha.16 release validation. Alpha.16 should be cover-installed over Alpha.15 without clearing data. The previously failed rc.1 -> rc.2 upgrade remains recoverable because Alpha.15 stopped during the pre-upgrade checkpoint; Alpha.16 retries that checkpoint with the PRoot-safe archive implementation before staging/switching the inactive slot.
+The remaining acceptance work is intentionally physical-device-only: confirm the Android system file chooser actually opens and returns its authorized `content://` URI into DSH, confirm the OriginOS soft keyboard raises the Composer rather than covering it, and confirm immersive three-button/system navigation hides and transiently reappears as intended. These are not claimed by Chromium.
 
 ## 6. Target-device validation sequence
 
-When the phone is available over ADB, prefer the existing controlled TaskProfiles instead of ad-hoc host shell commands.
+Preview.2 must be **cover-installed** over the current app. Do not clear app data, delete `persistent/dsh-home`, or remove Recovery Vault state merely to make the test clean.
 
-Recommended order:
+Recommended order on the Vivo/OriginOS Android 11 target:
 
-1. `android_device_smoke` or controlled replace-install;
-2. `android_device_cold_start_probe`;
-3. `android_device_runtime_probe`;
-4. reproduce first-run Runtime installation from a clean/known state;
-5. `android_runtime_install_watch` while installation is running;
-6. inspect fatal/ANR/runtime logs if anything fails;
-7. verify Runtime health at loopback and DSH Chat startup;
-8. verify reinstall/resource-reuse path;
-9. verify older-Runtime update-choice dialog and A/B upgrade path;
-10. verify onboarding page layout, animation, notification telemetry and icon appearance.
+1. cover-install `0.4.0-preview.2` and confirm existing Runtime/projects/sessions remain present;
+2. cold-start Home and record the new Runtime startup timing (`this / last / average`) until DSH Web becomes ready;
+3. open/close the DSH sidebar and right-side surfaces, confirming the edge handles do not cover native DSH content;
+4. open DSH Settings, change font size once, verify the conversation content changes, then restore the preferred value;
+5. tap **Add attachment**, confirm Android's system document chooser appears, choose a small file and confirm its attachment card reaches a ready size/type state;
+6. focus the Composer and type several lines with the soft keyboard visible; confirm the active input remains above the keyboard and readable;
+7. verify the system navigation bar is hidden during normal use and can be revealed transiently by the expected edge gesture without leaving a permanent bottom inset;
+8. open Native Settings -> DSH Config and verify `settings.yaml` can be read, edited and saved; avoid putting secrets into bug-report screenshots;
+9. switch Light/Dark/System/Tokyo Night and verify no full-width blue tap-highlight blocks return;
+10. if anything regresses, copy the timestamped Runtime/WebView diagnostics before changing app data.
 
-Do not delete user data just to create a clean test unless a backup/recovery path has already been verified.
+When ADB is available, the controlled `android_device_*` TaskProfiles remain preferred over ad-hoc host shell commands.
 
 ## 7. Important files and owners
 
@@ -342,8 +344,7 @@ Do not regress these constraints:
 
 ## 11. Current top priorities
 
-See `docs/NEXT_ACTIONS.md` for the active queue. The immediate priority is target-device cover-install validation of Alpha.16 over the failed Alpha.15 upgrade attempt: verify that the new PRoot-safe Recovery checkpoint completes, the rc.1 -> rc.2 A/B upgrade activates, then compare the in-app WebView against the exact current-token system-browser URL and collect `dsh-webview.log` if rendering is still blank. Only after render reliability is confirmed should narrow-screen DSH Web adaptation resume.
-
+See `docs/NEXT_ACTIONS.md` for the active queue. The immediate priority is physical Vivo/OriginOS cover-install acceptance of Preview.2, specifically the three behaviors Chromium cannot prove: Android document chooser handoff, IME/Composer geometry, and immersive system-navigation behavior. Do not reopen the older root-collapse/UI-composition investigation unless target evidence demonstrates a regression; the fresh 360x708 exact-composition Chromium gate and current Runtime E2E are green.
 
 ## 12. 2026-09-13 Alpha.15 Runtime-generation unification
 
@@ -367,12 +368,10 @@ See `docs/NEXT_ACTIONS.md` for the active queue. The immediate priority is targe
 - New Recovery unit tests cover link2symlink logical-path preservation, pnpm/L2S exclusion and collision detection. `android_unit_test` now includes `:core:recovery:testDebugUnitTest`.
 - Native MCP Browser smoke against DSH `0.1.5-rc.2` at `390x844` verifies auth/onboarding/sidebar/Settings/workspace interaction and records screenshot, console and network evidence. The upstream Settings layout remains narrow/squeezed and is intentionally deferred to the P1 mobile-adapter phase.
 
-## 9. WebView presentation checkpoint status (2026-09-14)
+## 14. 2026-09-16 Preview.2 mobile presentation checkpoint
 
-The WebView rendering investigation is now checkpointed separately from normal Runtime readiness. Checkpoint 1 introduced content-addressed presentation candidate identity and a fail-safe reuse policy. Checkpoint 2 has implemented a bounded, one-way WebMessage observability handshake (schema `2`) without changing the existing `100dvh` viewport repair.
+The release freeze introduced for `0.4.0-preview.1` has been satisfied for host-side presentation and Runtime gates. The active APK-owned `dsh-client-ui-mobile` package is now `0.4.0-dshm.1`; it keeps official DSH semantics while applying bounded narrow-screen adaptation rather than replacing DSH-owned surfaces.
 
-Current Checkpoint 2 host-side gates are green: full Unit, Debug Build, Lint, Mobile Context contract, Runtime Alpine E2E, signing and a fresh exact-composition Chromium sanity gate. The current Debug artifact is `artifact-3bc397be5d7a437084cd79ebd0226271`, SHA-256 `0a7b0ee893324e85a79ff83f914bad41ac7fa365dfe275b4930e16e536cf7fa0`.
+The exact candidate now passes Unit, Debug Build, Lint, Mobile Context, ARM64 Runtime E2E, stable signing, fresh `360x708` Chromium interaction and DSH file-upload behavior. The measured mobile presentation confirms the sidebar uses a 280 px panel with only a 32 px dismissal strip, Settings occupies a bounded 344x692 dialog at this viewport, font-size controls have correct accessible semantics and actually change state, Tokyo Night remains selectable, and the Composer/attachment card fit without the previous broad tap-highlight blocks.
 
-**Do not advance to the next viewport-repair checkpoint yet.** The remaining Checkpoint 2 acceptance step is to cover-install that exact APK on the target Android 11 device, cold-start it, and capture the schema-2 presentation handshake (`bootRev`, `comboRev`, viewport-unit measurements, root generation/height and final ready/degraded phase). The physical device was no longer visible to host ADB at the end of the current run, so this is an external test blocker rather than a known app regression.
-
-Detailed evidence and exact job IDs are in `analysis/debug/2026-09-14-cp2-observability/evidence.md`.
+Android-specific host integration is implemented but remains device-gated: `WebChromeClient` bridges DSH file inputs to a user-authorized system chooser, `adjustResize`/IME insets keep native chrome out of the keyboard path, and immersive system bars are requested without weakening file/network security. Physical OriginOS evidence is required before promoting beyond Preview.2.
