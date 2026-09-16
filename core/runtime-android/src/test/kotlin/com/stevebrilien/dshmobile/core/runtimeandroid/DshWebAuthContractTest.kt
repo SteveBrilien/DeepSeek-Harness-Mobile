@@ -30,6 +30,20 @@ class DshWebAuthContractTest {
     }
 
     @Test
+    fun warmReuseDiagnosticsKeepOriginalProcessTokenVisible() {
+        val originalUrl = "http://127.0.0.1:3080/?token=owned-process-token"
+        val originalStart = "=== DSH start 100 slot=A ===\ndsh web: $originalUrl\n"
+        val reused = originalStart + "[startup] fast-reuse-current-generation: ok durationMs=12\n"
+        assertEquals(originalUrl, DshWebAuthContract.latestLaunchUrl(reused))
+
+        // The startup coordinator must not add a new process marker when reusing.
+        // A marker intentionally revokes lookup of previous tokens until a new DSH
+        // process prints its own fresh URL; this is the old regression mechanism.
+        val incorrectReuse = reused + "=== DSH start 200 slot=A ===\n"
+        assertNull(DshWebAuthContract.latestLaunchUrl(incorrectReuse))
+    }
+
+    @Test
     fun statusContractRejectsTransitional404AndServerFailures() {
         assertTrue(DshWebAuthContract.isExpectedReadyStatusLine("HTTP/1.1 200 OK"))
         assertTrue(DshWebAuthContract.isExpectedReadyStatusLine("HTTP/1.1 303 See Other"))

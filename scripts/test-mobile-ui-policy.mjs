@@ -10,7 +10,7 @@ const tokyoManifest = JSON.parse(await readFile(resolve(tokyoRoot, 'package.json
 const tokyoClient = await readFile(resolve(tokyoRoot, 'lib/client.js'), 'utf8');
 
 assert.equal(manifest.name, 'dsh-client-ui-mobile');
-assert.equal(manifest.version, '0.4.0-dshm.1');
+assert.equal(manifest.version, '0.4.1-dshm.1');
 assert.ok(manifest.dsh?.client, 'mobile UI must remain a DSH client plugin');
 assert.ok(manifest.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-theme'), 'mobile UI must inject the official DSH theme service');
 assert.ok(manifest.dsh.client.inject.includes('dsh-plugin-tokyo-night'), 'mobile UI must depend on the Tokyo extension service provider');
@@ -25,13 +25,22 @@ assert.ok(client.includes('data-shell-overlay'), 'shell discovery must use the s
 assert.ok(client.includes('data-dshm-shell'), 'shell must be explicitly tagged before styling');
 assert.ok(client.includes('data-dshm-settings-panel'), 'settings must be explicitly tagged before styling');
 assert.ok(client.includes('aria-expanded'), 'mobile synchronization must observe expanded/collapsed interaction state');
+assert.ok(client.includes('data-dshm-sidebar-root'), 'native SidebarRoot must be semantically tagged before full-width mobile styling');
 assert.ok(client.includes('data-dshm-sidebar-search'), 'sidebar search must be semantically tagged before responsive styling');
+assert.ok(client.includes('data-dshm-sidebar-toolbar'), 'expanded sidebar search must own the entire toolbar, including the workspace heading');
+assert.ok(client.includes('> :not([data-dshm-sidebar-search])'), 'expanded sidebar search must hide competing toolbar siblings');
 assert.ok(client.includes('data-dshm-rightbar-col'), 'right sidebar must be semantically tagged before overlay styling');
 assert.ok(client.includes('data-dshm-font-size-stepper'), 'font-size control must be semantically tagged before touch styling');
 assert.ok(client.includes('Increase font size') && client.includes('增大字号'), 'font-size adaptation must use ARIA semantics rather than CSS-module hashes');
 assert.ok(client.includes('data-dshm-desktop-config-action'), 'desktop-only config action must be explicitly tagged for mobile suppression');
 assert.ok(client.includes('-webkit-tap-highlight-color: transparent'), 'mobile Web interactions must suppress Android blue tap highlights');
-assert.ok(client.includes('calc(100% - 32px)'), 'sidebar must retain only a narrow 32px dismiss strip');
+assert.ok(client.includes('transform: translate3d(-100%, 0, 0)'), 'collapsed sidebar must stay mounted off-canvas for smooth transform animation');
+assert.ok(client.includes('width: 100% !important'), 'mobile sidebar must use the full WebView width rather than reserve a dead dismiss strip');
+assert.equal(client.includes('dshm-mobile-nav-backdrop'), false, 'mobile sidebar must not reintroduce a blank backdrop dismissal strip');
+assert.ok(client.includes('mobile-v5'), 'mobile shell must use the v5 motion contract');
+assert.ok(client.includes('data-dshm-conversation-view'), 'primary conversation view must be semantically tagged for bounded transitions');
+assert.ok(client.includes('aria-selected'), 'primary view transition must key off official tab selection semantics');
+assert.ok(client.includes('duration: 160'), 'primary view transition must stay short and bounded');
 assert.ok(client.includes('data-dshm-rightbar=') || client.includes('RIGHTBAR_ATTR'), 'mobile nav affordance must track rightbar state');
 assert.ok(client.includes('role=\\"dialog\\"') || client.includes("role=\"dialog\""), 'settings discovery must be dialog-scoped');
 assert.ok(client.includes('data-dsh-mobile-ui'), 'all mobile rules must be gated by the mobile root marker');

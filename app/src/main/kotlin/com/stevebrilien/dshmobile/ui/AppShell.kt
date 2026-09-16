@@ -8,7 +8,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -18,12 +20,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.isImeVisible
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -42,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.stevebrilien.dshmobile.DshMobileApplication
@@ -166,7 +167,13 @@ private fun DshMobileShell(
     }
 
     val colors = LocalDshColors.current
-    val imeVisible = WindowInsets.isImeVisible
+    val density = LocalDensity.current
+    val imeBottomPx = WindowInsets.ime.getBottom(density)
+    val imeVisible = imeBottomPx > 0
+    // One bottom geometry source: the keyboard *replaces* navigation chrome instead
+    // of imePadding + a second animated bottom padding adding independent deltas.
+    // max() also prevents a one-frame jump when the IME visibility flag flips.
+    val bottomContentPadding = maxOf(BottomNavigationHeight, with(density) { imeBottomPx.toDp() })
 
     LaunchedEffect(vault) {
         withContext(Dispatchers.IO) { vault.ensureLayout() }
@@ -180,8 +187,7 @@ private fun DshMobileShell(
         val contentModifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .imePadding()
-            .padding(bottom = if (imeVisible) 0.dp else BottomNavigationHeight)
+            .padding(bottom = bottomContentPadding)
 
         // Keep the DSH WebView attached for the full shell lifetime. Recreating the Home
         // destination used to destroy/recreate WebView every time the bottom navigation
@@ -229,13 +235,15 @@ private fun DshMobileShell(
             }
         }
 
-        if (!imeVisible) {
+        AnimatedVisibility(
+            visible = !imeVisible,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter = fadeIn(tween(120)) + slideInVertically(tween(160)) { it / 3 },
+            exit = fadeOut(tween(90)) + slideOutVertically(tween(120)) { it / 3 },
+        ) {
             DshBottomNavigation(
                 selected = selected,
                 onSelect = { selected = it },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding(),
             )
         }
     }

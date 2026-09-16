@@ -1,6 +1,7 @@
 package com.stevebrilien.dshmobile.core.runtimeandroid
 
 import android.content.Context
+import android.os.SystemClock
 import android.system.Os
 import com.stevebrilien.dshmobile.core.model.RuntimeId
 import com.stevebrilien.dshmobile.core.recovery.RecoveryVault
@@ -106,16 +107,12 @@ class AndroidRuntimeManager(
 
     suspend fun start(progress: (RuntimeStartProgress) -> Unit): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val active = stateStore.read().activeSlot ?: error("No active runtime slot. Install a runtime first.")
+            val stateBeforeStart = stateStore.read()
+            val active = stateBeforeStart.activeSlot ?: error("No active runtime slot. Install a runtime first.")
             val desiredGeneration = profileCoordinator.desiredPresentationGeneration()
             val activeProfileCurrentBeforeReconcile = profileCoordinator.isActivePresentationReconciled()
             val logFile = File(stateStore.layout.logsDir, "dsh-web.log")
             logFile.parentFile?.let { check(it.exists() || it.mkdirs()) }
-            RuntimeLogWriter.append(
-                logFile,
-                "=== DSH start epochMillis=${System.currentTimeMillis()} slot=${active.name} desiredGeneration=$desiredGeneration ===",
-                leadingBlank = true,
-            )
 
             fun <T> startupStep(
                 name: String,
@@ -123,19 +120,78 @@ class AndroidRuntimeManager(
                 percent: Int,
                 block: () -> T,
             ): T {
+                val stepStarted = SystemClock.elapsedRealtime()
                 progress(RuntimeStartProgress(name, message, percent))
                 RuntimeLogWriter.append(logFile, "[startup] $name")
                 return try {
                     block().also {
-                        RuntimeLogWriter.append(logFile, "[startup] $name: ok")
-                        progress(RuntimeStartProgress(name, message, percent, "$name: ok"))
+                        val duration = SystemClock.elapsedRealtime() - stepStarted
+                        RuntimeLogWriter.append(logFile, "[startup] $name: ok durationMs=$duration")
+                        progress(RuntimeStartProgress(name, message, percent, "$name: ok · ${duration}ms"))
                     }
                 } catch (t: Throwable) {
+                    val duration = SystemClock.elapsedRealtime() - stepStarted
                     val detail = t.message?.lineSequence()?.firstOrNull().orEmpty().take(320)
-                    RuntimeLogWriter.append(logFile, "[startup] $name: failed${if (detail.isNotBlank()) ": $detail" else ""}")
+                    RuntimeLogWriter.append(
+                        logFile,
+                        "[startup] $name: failed durationMs=$duration${if (detail.isNotBlank()) ": $detail" else ""}",
+                    )
                     throw IllegalStateException("DSH startup preflight '$name' failed: ${t.message ?: t::class.java.simpleName}", t)
                 }
             }
+
+            // Warm-path first: an app/activity restart must not redo disk/profile work when this
+            // process still owns the exact desired DSH presentation and the endpoint is already
+            // reachable. The full reconcile path below remains authoritative for cold starts or
+            // any generation/profile mismatch.
+            if (activeProfileCurrentBeforeReconcile) {
+                val fastReuseStarted = SystemClock.elapsedRealtime()
+                val endpointReady = probeWebReady()
+                val existingLaunchUrl = if (endpointReady) webLaunchUrl() else null
+                val liveGeneration = RuntimeProcessRegistry.liveGenerationOrNull()
+                if (
+                    PresentationReusePolicy.canReuse(
+                        endpointReady = endpointReady,
+                        launchUrlAvailable = existingLaunchUrl != null,
+                        profileCurrentBeforeReconcile = true,
+                        profileReconciled = true,
+                        liveProcessGeneration = liveGeneration,
+                        persistedProcessGeneration = stateBeforeStart.presentationGeneration,
+                        desiredGeneration = desiredGeneration,
+                    )
+                ) {
+                    val duration = SystemClock.elapsedRealtime() - fastReuseStarted
+                    RuntimeLogWriter.append(
+                        logFile,
+                        "[startup] fast-reuse-current-generation: ok durationMs=$duration generation=$desiredGeneration; $lastWebProbeDetail",
+                    )
+                    progress(
+                        RuntimeStartProgress(
+                            "web-ready",
+                            "DSH Web 已就绪",
+                            100,
+                            "$lastWebProbeDetail; generation-current; fast-reuse=${duration}ms",
+                        ),
+                    )
+                    return@runCatching
+                }
+                RuntimeLogWriter.append(
+                    logFile,
+                    "[startup] fast-reuse-current-generation: miss durationMs=${SystemClock.elapsedRealtime() - fastReuseStarted} " +
+                        "endpointReady=$endpointReady liveGeneration=${liveGeneration ?: "none"} " +
+                        "persistedGeneration=${stateBeforeStart.presentationGeneration ?: "none"}",
+                )
+            }
+
+            // A new start marker invalidates every earlier DSH token by contract. Write it
+            // only after the warm reuse path has finished: the live process retains the
+            // original launch token, so appending a marker before reuse would make
+            // webLaunchUrl() and the subsequent presentation lookup return null.
+            RuntimeLogWriter.append(
+                logFile,
+                "=== DSH start epochMillis=${System.currentTimeMillis()} slot=${active.name} desiredGeneration=$desiredGeneration ===",
+                leadingBlank = true,
+            )
 
             startupStep("verify-start-prerequisites", "正在校验 Runtime 启动条件", 10) {
                 installer.verifyStartPrerequisites(active)
@@ -213,12 +269,18 @@ class AndroidRuntimeManager(
 
             progress(RuntimeStartProgress("spawn-dsh-web", "正在启动 DSH Web 进程", 65))
             RuntimeLogWriter.append(logFile, "[startup] spawn-dsh-web generation=$desiredGeneration")
+            val spawnStarted = SystemClock.elapsedRealtime()
             val launchSearchOffset = RuntimeProcessRegistry.start(
                 installer.buildProcess(active, command),
                 logFile,
                 desiredGeneration,
             )
+            RuntimeLogWriter.append(
+                logFile,
+                "[startup] spawn-dsh-web: process-started durationMs=${SystemClock.elapsedRealtime() - spawnStarted}",
+            )
             progress(RuntimeStartProgress("wait-web-ready", "正在等待本地 DSH Web 就绪", 75))
+            val waitWebStarted = SystemClock.elapsedRealtime()
             val deadline = System.currentTimeMillis() + WEB_STARTUP_TIMEOUT_MILLIS
             while (System.currentTimeMillis() < deadline) {
                 val currentEndpointReady = probeWebReady()
@@ -228,7 +290,8 @@ class AndroidRuntimeManager(
                     stateStore.recordPresentationLaunch(desiredGeneration)
                     RuntimeLogWriter.append(
                         logFile,
-                        "[startup] web-ready: $lastWebProbeDetail; current launch token observed; generation=$desiredGeneration",
+                        "[startup] web-ready: $lastWebProbeDetail; current launch token observed; " +
+                            "generation=$desiredGeneration waitDurationMs=${SystemClock.elapsedRealtime() - waitWebStarted}",
                     )
                     progress(
                         RuntimeStartProgress(

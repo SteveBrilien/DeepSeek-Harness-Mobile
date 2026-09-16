@@ -12,9 +12,8 @@ window.__ModuleLoader__.load({
     const RIGHTBAR_ATTR = "data-dshm-rightbar";
     const SETTINGS_ATTR = "data-dshm-settings";
     const TRANSIENT_ATTR = "data-dshm-transient-layer";
-    const STYLE_ID = "dsh-client-ui-mobile/mobile-v4";
+    const STYLE_ID = "dsh-client-ui-mobile/mobile-v5";
     const TOGGLE_ID = "dshm-mobile-nav-toggle";
-    const BACKDROP_ID = "dshm-mobile-nav-backdrop";
 
     const css = `
 html[${ROOT_ATTR}="active"] * {
@@ -22,7 +21,6 @@ html[${ROOT_ATTR}="active"] * {
 }
 html[${ROOT_ATTR}="active"] [data-dshm-shell] {
   grid-template-columns: 0 minmax(0, 1fr) 0 !important;
-  transition: none !important;
 }
 html[${ROOT_ATTR}="active"] [data-dshm-center-col] {
   grid-column: 2 !important;
@@ -31,103 +29,136 @@ html[${ROOT_ATTR}="active"] [data-dshm-center-col] {
   overflow-x: clip !important;
 }
 html[${ROOT_ATTR}="active"] [data-dshm-sidebar-col] {
-  display: none !important;
-}
-html[${ROOT_ATTR}="active"] [data-dshm-shell]:not([data-sidebar-collapsed]) [data-dshm-sidebar-col] {
   box-sizing: border-box !important;
   display: block !important;
   position: fixed !important;
   z-index: 320 !important;
-  inset: 0 auto 0 0 !important;
-  width: min(calc(100% - 32px), 360px) !important;
+  inset: 0 !important;
+  width: 100% !important;
+  max-width: none !important;
   min-width: 0 !important;
   overflow: hidden !important;
+  pointer-events: none !important;
+  transform: translate3d(-100%, 0, 0) !important;
+  transition: transform .22s var(--ds-ease-in-out) !important;
+  will-change: transform;
   background: var(--dsw-specific-sidebar-fill) !important;
-  border-right: .5px solid var(--dsw-alias-border-l3) !important;
-  box-shadow: var(--dsw-shadow-lv2) !important;
+}
+html[${ROOT_ATTR}="active"] [data-dshm-sidebar-root] {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: none !important;
+}
+html[${ROOT_ATTR}="active"] [data-dshm-shell]:not([data-sidebar-collapsed]) [data-dshm-sidebar-col] {
+  pointer-events: auto !important;
+  transform: translate3d(0, 0, 0) !important;
 }
 
-html[${ROOT_ATTR}="active"] [data-dshm-sidebar-search]:has(> button[aria-label="Search sessions"][aria-expanded="true"]) {
-  flex: 1 1 auto !important;
-  width: auto !important;
+/* Search becomes the sole toolbar occupant while expanded. Keeping the workspace
+   label flexed used to leave a four-pixel input on 360px Android WebView. */
+html[${ROOT_ATTR}="active"] [data-dshm-sidebar-toolbar]:has(> [data-dshm-sidebar-search] > button[aria-expanded="true"]) > :not([data-dshm-sidebar-search]) {
+  display: none !important;
+}
+html[${ROOT_ATTR}="active"] [data-dshm-sidebar-search]:has(> button[aria-expanded="true"]) {
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex: 1 1 100% !important;
+  width: 100% !important;
   min-width: 0 !important;
   max-width: none !important;
 }
-html[${ROOT_ATTR}="active"] [data-dshm-sidebar-search]:has(> button[aria-label="Search sessions"][aria-expanded="true"]) ~ * {
-  display: none !important;
-}
 html[${ROOT_ATTR}="active"] [data-dshm-sidebar-search] > input[placeholder="Search sessions..."] {
-  flex: 1 1 auto !important;
-  width: 100% !important;
+  box-sizing: border-box !important;
+  flex: 1 1 0 !important;
+  width: auto !important;
   min-width: 0 !important;
 }
 html[${ROOT_ATTR}="active"] [data-dshm-rightbar-col] {
+  box-sizing: border-box !important;
+  position: fixed !important;
+  z-index: 300 !important;
+  inset: 0 !important;
+  width: 100% !important;
+  max-width: none !important;
   min-width: 0 !important;
+  pointer-events: none !important;
+  transform: translate3d(100%, 0, 0) !important;
+  transition: transform .20s var(--ds-ease-in-out) !important;
+  will-change: transform;
+  background: var(--dsw-alias-bg-base) !important;
   --dsh-content-font-size-secondary: var(--dsh-content-font-size, 14px);
   --dsh-content-font-delta-secondary: var(--dsh-content-font-delta, 0px);
 }
 html[${ROOT_ATTR}="active"] [data-dshm-shell]:not([data-rightbar-collapsed]) [data-dshm-rightbar-col] {
-  position: fixed !important;
-  z-index: 300 !important;
-  inset: 0 0 0 auto !important;
-  width: min(92%, 360px) !important;
-  max-width: 100% !important;
-  background: var(--dsw-alias-bg-base) !important;
-  box-shadow: var(--dsw-shadow-lv2) !important;
+  pointer-events: auto !important;
+  transform: translate3d(0, 0, 0) !important;
 }
 html[${ROOT_ATTR}="active"] [data-dshm-shell][data-rightbar-fullscreen] [data-dshm-rightbar-col] {
   width: 100% !important;
-}
-html[${ROOT_ATTR}="active"] #${BACKDROP_ID} {
-  display: none;
-  position: fixed;
-  z-index: 310;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: min(calc(100% - 32px), 360px);
-  padding: 0;
-  border: 0;
-  background: var(--dsw-alias-bg-mask-1, rgba(0, 0, 0, .42));
-  -webkit-tap-highlight-color: transparent;
-}
-html[${ROOT_ATTR}="active"][${DRAWER_ATTR}="open"] #${BACKDROP_ID} {
-  display: block;
-}
-html[${ROOT_ATTR}="active"][${SETTINGS_ATTR}="open"] #${BACKDROP_ID} {
-  display: none !important;
 }
 html[${ROOT_ATTR}="active"] #${TOGGLE_ID} {
   box-sizing: border-box;
   display: inline-flex;
   position: fixed;
   z-index: 340;
-  top: 46%;
-  left: 0;
-  width: 24px;
-  height: 56px;
-  transform: translateY(-50%);
+  top: 10px;
+  left: 10px;
+  width: 36px;
+  height: 36px;
   padding: 0;
   align-items: center;
   justify-content: center;
   color: var(--dsw-alias-label-primary);
-  background: var(--dsw-alias-bg-layer-2);
-  border: .5px solid var(--dsw-alias-border-l3);
-  border-radius: 0 12px 12px 0;
-  box-shadow: var(--dsw-shadow-lv1);
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  box-shadow: none;
+  opacity: .92;
+  visibility: visible;
+  pointer-events: auto;
+  transition:
+    background-color .12s var(--ds-ease-in-out),
+    opacity .08s linear .16s,
+    visibility 0s linear .16s,
+    transform .12s var(--ds-ease-in-out);
   -webkit-tap-highlight-color: transparent;
+}
+html[${ROOT_ATTR}="active"] #${TOGGLE_ID}:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 html[${ROOT_ATTR}="active"][${DRAWER_ATTR}="open"] #${TOGGLE_ID},
 html[${ROOT_ATTR}="active"][${RIGHTBAR_ATTR}="open"] #${TOGGLE_ID},
 html[${ROOT_ATTR}="active"][${SETTINGS_ATTR}="open"] #${TOGGLE_ID},
 html[${ROOT_ATTR}="active"][${TRANSIENT_ATTR}="open"] #${TOGGLE_ID} {
-  display: none;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition-delay: 0s;
 }
 html[${ROOT_ATTR}="active"] #${TOGGLE_ID}:active {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--dsw-alias-interactive-bg-active);
+  transform: scale(.94);
 }
 
+@keyframes dshm-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes dshm-panel-in {
+  from { opacity: .65; transform: translate3d(0, 8px, 0) scale(.99); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+@keyframes dshm-pop-in {
+  from { opacity: .5; transform: translate3d(0, 4px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+html[${ROOT_ATTR}="active"] [role="listbox"],
+html[${ROOT_ATTR}="active"] [role="menu"] {
+  animation: dshm-pop-in .14s var(--ds-ease-in-out);
+  transform-origin: top center;
+}
 html[${ROOT_ATTR}="active"] [data-dshm-settings-overlay] {
+  animation: dshm-overlay-in .14s var(--ds-ease-in-out);
   box-sizing: border-box !important;
   align-items: stretch !important;
   justify-content: stretch !important;
@@ -135,6 +166,7 @@ html[${ROOT_ATTR}="active"] [data-dshm-settings-overlay] {
 }
 html[${ROOT_ATTR}="active"] [data-dshm-settings-panel] {
   box-sizing: border-box !important;
+  animation: dshm-panel-in .18s var(--ds-ease-in-out);
   flex-direction: column !important;
   width: 100% !important;
   max-width: none !important;
@@ -283,6 +315,18 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
   width: 16px;
   height: 16px;
 }
+@media (prefers-reduced-motion: reduce) {
+  html[${ROOT_ATTR}="active"] [data-dshm-sidebar-col],
+  html[${ROOT_ATTR}="active"] [data-dshm-rightbar-col],
+  html[${ROOT_ATTR}="active"] #${TOGGLE_ID},
+  html[${ROOT_ATTR}="active"] [role="listbox"],
+  html[${ROOT_ATTR}="active"] [role="menu"],
+  html[${ROOT_ATTR}="active"] [data-dshm-settings-overlay],
+  html[${ROOT_ATTR}="active"] [data-dshm-settings-panel] {
+    transition: none !important;
+    animation: none !important;
+  }
+}
 `;
 
     function directElementChildren(node) {
@@ -309,13 +353,67 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
       return frame;
     }
 
+    function tagSidebarRoot(frame) {
+      if (!(frame instanceof HTMLElement)) return;
+      const sidebar = frame.querySelector('[data-dshm-sidebar-col]');
+      if (!(sidebar instanceof HTMLElement)) return;
+      const toggle = sidebar.querySelector(
+        'button[aria-label="Collapse sidebar"], button[aria-label="Open sidebar"], ' +
+        'button[aria-label="收起侧边栏"], button[aria-label="打开侧边栏"]',
+      );
+      if (!(toggle instanceof HTMLElement)) return;
+      const sidebarRect = sidebar.getBoundingClientRect();
+      let node = toggle.parentElement;
+      while (node instanceof HTMLElement && node !== sidebar) {
+        const rect = node.getBoundingClientRect();
+        if (rect.width >= 120 && rect.height >= Math.max(320, sidebarRect.height * 0.8)) {
+          node.setAttribute("data-dshm-sidebar-root", "");
+          return;
+        }
+        node = node.parentElement;
+      }
+    }
+
     function tagSidebarSearch(frame) {
       if (!(frame instanceof HTMLElement)) return;
       const sidebar = frame.querySelector('[data-dshm-sidebar-col]');
       if (!(sidebar instanceof HTMLElement)) return;
       const button = sidebar.querySelector('button[aria-label="Search sessions"]');
       const host = button?.parentElement;
-      if (host instanceof HTMLElement) host.setAttribute("data-dshm-sidebar-search", "");
+      if (host instanceof HTMLElement) {
+        host.setAttribute("data-dshm-sidebar-search", "");
+        if (host.parentElement instanceof HTMLElement) {
+          host.parentElement.setAttribute("data-dshm-sidebar-toolbar", "");
+        }
+      }
+    }
+
+    function readPrimaryConversationView(frame) {
+      if (!(frame instanceof HTMLElement)) return null;
+      const center = frame.querySelector('[data-dshm-center-col]');
+      if (!(center instanceof HTMLElement)) return null;
+      const scroll = center.querySelector('[data-conversation-scroll]');
+      if (!(scroll instanceof HTMLElement)) return null;
+      let root = scroll.parentElement;
+      let header = null;
+      while (root instanceof HTMLElement && root !== center) {
+        const candidate = root.querySelector(':scope > header');
+        if (candidate instanceof HTMLElement && candidate.querySelector('[role="tablist"]')) {
+          header = candidate;
+          break;
+        }
+        root = root.parentElement;
+      }
+      if (!(header instanceof HTMLElement)) return null;
+      const selected = header.querySelector('[role="tab"][aria-selected="true"]');
+      const view = Array.from(scroll.children).find(
+        (child) => child instanceof HTMLElement && !child.hasAttribute("data-composer-seat"),
+      );
+      if (!(view instanceof HTMLElement)) return null;
+      view.setAttribute("data-dshm-conversation-view", "");
+      const tab = selected instanceof HTMLElement ? String(selected.textContent || "").trim() : "";
+      const title = String(header.textContent || "").replace(/\s+/g, " ").trim();
+      return { node: view, key: `${title}\u0000${tab}` };
     }
 
     function tagSettings() {
@@ -478,17 +576,10 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
       button.id = TOGGLE_ID;
       button.type = "button";
       button.setAttribute("aria-label", "打开侧边栏");
-      button.innerHTML = '<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M7.5 5.5 12 10l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      button.innerHTML = '<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><rect x="2.75" y="3.25" width="14.5" height="13.5" rx="2.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M7.25 3.75v12.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
       return button;
     }
 
-    function makeBackdrop() {
-      const button = document.createElement("button");
-      button.id = BACKDROP_ID;
-      button.type = "button";
-      button.setAttribute("aria-label", "关闭侧边栏");
-      return button;
-    }
 
     const THEME_BRIDGE_SCHEMA = 1;
     const THEME_TOKENS = Object.freeze({
@@ -606,12 +697,13 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
         document.head.appendChild(style);
 
         const toggle = makeToggle();
-        const backdrop = makeBackdrop();
-        document.body.append(backdrop, toggle);
+        document.body.append(toggle);
 
         let frame = null;
         let raf = 0;
         let normalizedInitialDrawer = false;
+        let primaryViewKey = null;
+        let primaryViewAnimation = null;
 
         const setMobileState = () => {
           const mobile = mql.matches;
@@ -630,7 +722,27 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
           raf = 0;
           const mobile = setMobileState();
           frame = tagShell();
+          tagSidebarRoot(frame);
           tagSidebarSearch(frame);
+          const primaryView = readPrimaryConversationView(frame);
+          if (mobile && primaryView) {
+            if (primaryViewKey !== null && primaryView.key !== primaryViewKey &&
+                !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+              primaryViewAnimation?.cancel();
+              primaryViewAnimation = primaryView.node.animate(
+                [
+                  { opacity: .72, transform: "translate3d(0, 3px, 0)" },
+                  { opacity: 1, transform: "translate3d(0, 0, 0)" },
+                ],
+                { duration: 160, easing: "cubic-bezier(.2, 0, 0, 1)" },
+              );
+            }
+            primaryViewKey = primaryView.key;
+          } else if (!mobile) {
+            primaryViewKey = null;
+            primaryViewAnimation?.cancel();
+            primaryViewAnimation = null;
+          }
           const settings = tagSettings();
           if (settings) html.setAttribute(SETTINGS_ATTR, "open");
           else html.removeAttribute(SETTINGS_ATTR);
@@ -670,14 +782,13 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
           schedule();
         };
         toggle.addEventListener("click", onToggle);
-        backdrop.addEventListener("click", onToggle);
 
         const observer = new MutationObserver(schedule);
         observer.observe(document.documentElement, {
           subtree: true,
           childList: true,
           attributes: true,
-          attributeFilter: ["data-sidebar-collapsed", "data-rightbar-collapsed", "data-rightbar-fullscreen", "aria-expanded"],
+          attributeFilter: ["data-sidebar-collapsed", "data-rightbar-collapsed", "data-rightbar-fullscreen", "aria-expanded", "aria-selected"],
         });
         mql.addEventListener("change", schedule);
         const offAdaptiveTheme = ctx.on("theme/change", schedule);
@@ -688,10 +799,10 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
           mql.removeEventListener("change", schedule);
           if (typeof offAdaptiveTheme === "function") offAdaptiveTheme();
           toggle.removeEventListener("click", onToggle);
-          backdrop.removeEventListener("click", onToggle);
           if (raf) cancelAnimationFrame(raf);
+          primaryViewAnimation?.cancel();
+          primaryViewAnimation = null;
           toggle.remove();
-          backdrop.remove();
           style.remove();
           for (const row of document.querySelectorAll('[data-dshm-theme-builtins-bound]')) {
             if (typeof row.__dshmThemeBuiltinCleanup === "function") row.__dshmThemeBuiltinCleanup();
@@ -705,13 +816,13 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
           html.removeAttribute(RIGHTBAR_ATTR);
           html.removeAttribute(SETTINGS_ATTR);
           html.removeAttribute(TRANSIENT_ATTR);
-          for (const node of document.querySelectorAll('[data-dshm-shell], [data-dshm-shell-overlay], [data-dshm-sidebar-col], [data-dshm-sidebar-search], [data-dshm-center-col], [data-dshm-rightbar-col], [data-dshm-settings-overlay], [data-dshm-settings-panel], [data-dshm-settings-nav], [data-dshm-settings-nav-title], [data-dshm-settings-nav-list], [data-dshm-settings-content], [data-dshm-settings-header], [data-dshm-settings-options], [data-dshm-font-size-row], [data-dshm-font-size-copy], [data-dshm-font-size-control], [data-dshm-font-size-stepper], [data-dshm-font-size-arrows], [data-dshm-font-size-arrow], [data-dshm-desktop-config-action], [data-dshm-desktop-config-error]')) {
+          for (const node of document.querySelectorAll('[data-dshm-shell], [data-dshm-shell-overlay], [data-dshm-sidebar-col], [data-dshm-sidebar-root], [data-dshm-sidebar-search], [data-dshm-sidebar-toolbar], [data-dshm-conversation-view], [data-dshm-center-col], [data-dshm-rightbar-col], [data-dshm-settings-overlay], [data-dshm-settings-panel], [data-dshm-settings-nav], [data-dshm-settings-nav-title], [data-dshm-settings-nav-list], [data-dshm-settings-content], [data-dshm-settings-header], [data-dshm-settings-options], [data-dshm-font-size-row], [data-dshm-font-size-copy], [data-dshm-font-size-control], [data-dshm-font-size-stepper], [data-dshm-font-size-arrows], [data-dshm-font-size-arrow], [data-dshm-desktop-config-action], [data-dshm-desktop-config-error]')) {
             for (const attribute of Array.from(node.attributes)) {
               if (attribute.name.startsWith("data-dshm-")) node.removeAttribute(attribute.name);
             }
           }
         };
-      }, "ui-mobile-v4: scoped interaction and settings adaptation");
+      }, "ui-mobile-v5: native-motion mobile shell and settings adaptation");
     }
 
     exports.apply = apply;

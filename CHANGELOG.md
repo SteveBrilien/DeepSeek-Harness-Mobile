@@ -2,6 +2,10 @@
 
 All notable architectural and product changes should be recorded here.
 
+## 2026-09-16 — CANDIDATE: Preview.3 mobile motion and startup visibility
+
+Replaced Preview.2 sidebar dead-strip/display toggling with full-width transform-only drawer, integrated top-left panel button and native header collapse; added bounded rightbar, modal and tab transitions with reduced-motion support. Added IME/bottom chrome transition and OriginOS immersive-sticky re-hide. Instrumented startup stages and added owned-generation warm-reuse fast path; corrected a token lookup regression by writing a new DSH start marker only on the cold path and added regression coverage. Bumped candidate app to `0.4.0-preview.3` (code 23), mobile UI bundle to `0.4.1-dshm.1`. Browser 360x708, Unit and Alpine E2E pass; physical Vivo keyboard/nav/startup timing validation remains required. See `docs/handoff/2026-09-16-ui-motion-and-startup-preview3.md`.
+
 ## [0.1.0-dev] - 2026-09-07
 
 ### Added
@@ -374,3 +378,13 @@ Files:
 - `release/update.json`
 - `docs/HANDOFF.md`
 - `docs/NEXT_ACTIONS.md`
+
+## 2026-09-16T07:41:39.678385Z — DOCS: Preview.3 candidate verification checkpoint; physical OriginOS gate still pending
+
+2026-09-16 continuation: android_debug task-android_debug-914d2d073d31430c9426 PASS (dirty-workspace candidate, not clean-release build); app-debug.apk 88,305,836 bytes, SHA-256 25bbb780d38f6a61d615250958c495db0155302e0d91a1d2af9c41b832880d84, versionName 0.4.0-preview.3/versionCode 23. android_unit_test task-android_unit_test-465e1ffa01a046d9ae29 PASS; android_lint task-android_lint-869ef91986ff43e9aa96 PASS (289 tasks, exit 0); android_signing_verify task-android_signing_verify-35b3eb11466645d0a616 PASS, stable certificate. Pinned Node24 JavaScript syntax, mobile-ui-policy and git diff --check PASS. Authenticated 360x708 Chromium inspection: sidebar fills 359/360px, native collapse, Settings open/close and session search 275px after animation, console messages empty. Earlier runtime_alpine_e2e task-runtime_alpine_e2e-f55f77ce2ca84b4d8084 PASS, but subsequent reruns failed independently on npm 'Exit handler never called!' and concurrent test temporary-directory deletion; do not report all reruns green. adb_devices found no connected device, so cold/warm startup 26s comparison, physical IME bounce, OriginOS nav recovery and chooser remain unverified. No clean-source promotion, Git push, public update.json change or publication performed.
+
+Files:
+- `docs/handoff/2026-09-16-ui-motion-and-startup-preview3.md`
+- `app/build.gradle.kts`
+- `app/src/main/kotlin/com/stevebrilien/dshmobile/ui/AppShell.kt`
+- `core/runtime-android/src/main/kotlin/com/stevebrilien/dshmobile/core/runtimeandroid/AndroidRuntimeManager.kt`
