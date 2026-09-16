@@ -1,6 +1,7 @@
 package com.stevebrilien.dshmobile.runtime
 
 import android.content.Context
+import android.os.SystemClock
 import com.stevebrilien.dshmobile.core.runtimeandroid.DshWebPresentationDescriptor
 import com.stevebrilien.dshmobile.core.runtimeandroid.RuntimeControlPlane
 import kotlinx.coroutines.CoroutineScope
@@ -23,6 +24,13 @@ import java.util.concurrent.atomic.AtomicLong
  * foreground-service operations.
  */
 class RuntimeSupervisor(context: Context) : AutoCloseable {
+    data class StartupMetrics(
+        val activeSinceElapsedMillis: Long? = null,
+        val lastDurationMillis: Long? = null,
+        val averageDurationMillis: Long? = null,
+        val sampleCount: Int = 0,
+    )
+
     sealed interface State {
         data object Idle : State
         data class Inspecting(val detail: String = "正在检查本地 Runtime…") : State
@@ -34,12 +42,15 @@ class RuntimeSupervisor(context: Context) : AutoCloseable {
     private val appContext = context.applicationContext
     private val runtime = RuntimeControlPlane(appContext)
     private val telemetry = RuntimeInstallTelemetry(appContext)
+    private val metricsPrefs = appContext.getSharedPreferences("runtime-startup-metrics", Context.MODE_PRIVATE)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lock = Any()
     private val attemptCounter = AtomicLong(0L)
 
     private val _state = MutableStateFlow<State>(State.Idle)
     val state: StateFlow<State> = _state.asStateFlow()
+    private val _startupMetrics = MutableStateFlow(loadStartupMetrics())
+    val startupMetrics: StateFlow<StartupMetrics> = _startupMetrics.asStateFlow()
 
     private var activeAttempt: Job? = null
 
@@ -77,6 +88,7 @@ class RuntimeSupervisor(context: Context) : AutoCloseable {
     }
 
     private suspend fun runAttempt(attemptId: Long) {
+        beginStartupAttempt(attemptId)
         updateIfCurrent(attemptId, State.Inspecting())
 
         val inventory = runCatching { runtime.inspectResources() }.getOrElse { failure ->
@@ -109,12 +121,13 @@ class RuntimeSupervisor(context: Context) : AutoCloseable {
                 return
             }
 
-        repeat(210) { index ->
+        repeat(STARTUP_POLL_COUNT) { index ->
             if (!isCurrent(attemptId)) return
             val snapshot = telemetry.snapshot(maxLogLines = 12)
             val presentation = runCatching { runtime.webPresentation() }.getOrNull()
             if (presentation != null) {
                 updateIfCurrent(attemptId, State.Ready(presentation))
+                finishStartupAttempt(attemptId)
                 return
             }
 
@@ -132,7 +145,7 @@ class RuntimeSupervisor(context: Context) : AutoCloseable {
                     State.Starting(snapshot.message.ifBlank { "正在启动本地 Runtime…" }),
                 )
             }
-            if (index < 209) delay(1_000)
+            if (index < STARTUP_POLL_COUNT - 1) delay(STARTUP_POLL_INTERVAL_MILLIS)
         }
 
         failIfCurrent(attemptId, "DSH 启动超时，可在设置 → 调试与日志中查看诊断")
@@ -145,7 +158,50 @@ class RuntimeSupervisor(context: Context) : AutoCloseable {
     }
 
     private fun failIfCurrent(attemptId: Long, detail: String) {
-        updateIfCurrent(attemptId, State.Failed(detail))
+        if (!isCurrent(attemptId)) return
+        _state.value = State.Failed(detail)
+        _startupMetrics.value = _startupMetrics.value.copy(activeSinceElapsedMillis = null)
+    }
+
+    private fun beginStartupAttempt(attemptId: Long) {
+        if (!isCurrent(attemptId)) return
+        _startupMetrics.value = _startupMetrics.value.copy(
+            activeSinceElapsedMillis = SystemClock.elapsedRealtime(),
+        )
+    }
+
+    private fun finishStartupAttempt(attemptId: Long) {
+        if (!isCurrent(attemptId)) return
+        val current = _startupMetrics.value
+        val started = current.activeSinceElapsedMillis ?: return
+        val duration = (SystemClock.elapsedRealtime() - started).coerceAtLeast(0L)
+        val count = current.sampleCount.coerceAtLeast(0)
+        val nextCount = (count + 1).coerceAtMost(10_000)
+        val previousAverage = current.averageDurationMillis ?: duration
+        val average = if (count <= 0) duration else ((previousAverage * count) + duration) / (count + 1)
+        val next = StartupMetrics(
+            activeSinceElapsedMillis = null,
+            lastDurationMillis = duration,
+            averageDurationMillis = average,
+            sampleCount = nextCount,
+        )
+        _startupMetrics.value = next
+        metricsPrefs.edit()
+            .putLong(KEY_LAST_DURATION_MILLIS, duration)
+            .putLong(KEY_AVERAGE_DURATION_MILLIS, average)
+            .putInt(KEY_SAMPLE_COUNT, nextCount)
+            .apply()
+    }
+
+    private fun loadStartupMetrics(): StartupMetrics {
+        val count = metricsPrefs.getInt(KEY_SAMPLE_COUNT, 0).coerceAtLeast(0)
+        val last = metricsPrefs.getLong(KEY_LAST_DURATION_MILLIS, -1L).takeIf { it >= 0L }
+        val average = metricsPrefs.getLong(KEY_AVERAGE_DURATION_MILLIS, -1L).takeIf { it >= 0L }
+        return StartupMetrics(
+            lastDurationMillis = last,
+            averageDurationMillis = average,
+            sampleCount = count,
+        )
     }
 
     private fun shortMessage(failure: Throwable): String =
@@ -154,5 +210,14 @@ class RuntimeSupervisor(context: Context) : AutoCloseable {
 
     override fun close() {
         scope.cancel()
+    }
+
+    private companion object {
+        const val STARTUP_POLL_INTERVAL_MILLIS = 250L
+        const val STARTUP_TIMEOUT_MILLIS = 210_000L
+        const val STARTUP_POLL_COUNT = (STARTUP_TIMEOUT_MILLIS / STARTUP_POLL_INTERVAL_MILLIS).toInt()
+        const val KEY_LAST_DURATION_MILLIS = "last-duration-ms"
+        const val KEY_AVERAGE_DURATION_MILLIS = "average-duration-ms"
+        const val KEY_SAMPLE_COUNT = "sample-count"
     }
 }

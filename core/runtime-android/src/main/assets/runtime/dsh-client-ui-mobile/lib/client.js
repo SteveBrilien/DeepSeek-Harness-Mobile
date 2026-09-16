@@ -9,13 +9,17 @@ window.__ModuleLoader__.load({
     const MOBILE_QUERY = "(max-width: 640px)";
     const ROOT_ATTR = "data-dsh-mobile-ui";
     const DRAWER_ATTR = "data-dshm-drawer";
+    const RIGHTBAR_ATTR = "data-dshm-rightbar";
     const SETTINGS_ATTR = "data-dshm-settings";
     const TRANSIENT_ATTR = "data-dshm-transient-layer";
-    const STYLE_ID = "dsh-client-ui-mobile/mobile-v3";
+    const STYLE_ID = "dsh-client-ui-mobile/mobile-v4";
     const TOGGLE_ID = "dshm-mobile-nav-toggle";
     const BACKDROP_ID = "dshm-mobile-nav-backdrop";
 
     const css = `
+html[${ROOT_ATTR}="active"] * {
+  -webkit-tap-highlight-color: transparent;
+}
 html[${ROOT_ATTR}="active"] [data-dshm-shell] {
   grid-template-columns: 0 minmax(0, 1fr) 0 !important;
   transition: none !important;
@@ -35,7 +39,7 @@ html[${ROOT_ATTR}="active"] [data-dshm-shell]:not([data-sidebar-collapsed]) [dat
   position: fixed !important;
   z-index: 320 !important;
   inset: 0 auto 0 0 !important;
-  width: min(88%, 320px) !important;
+  width: min(calc(100% - 32px), 360px) !important;
   min-width: 0 !important;
   overflow: hidden !important;
   background: var(--dsw-specific-sidebar-fill) !important;
@@ -59,6 +63,8 @@ html[${ROOT_ATTR}="active"] [data-dshm-sidebar-search] > input[placeholder="Sear
 }
 html[${ROOT_ATTR}="active"] [data-dshm-rightbar-col] {
   min-width: 0 !important;
+  --dsh-content-font-size-secondary: var(--dsh-content-font-size, 14px);
+  --dsh-content-font-delta-secondary: var(--dsh-content-font-delta, 0px);
 }
 html[${ROOT_ATTR}="active"] [data-dshm-shell]:not([data-rightbar-collapsed]) [data-dshm-rightbar-col] {
   position: fixed !important;
@@ -79,7 +85,7 @@ html[${ROOT_ATTR}="active"] #${BACKDROP_ID} {
   top: 0;
   right: 0;
   bottom: 0;
-  left: min(88%, 320px);
+  left: min(calc(100% - 32px), 360px);
   padding: 0;
   border: 0;
   background: var(--dsw-alias-bg-mask-1, rgba(0, 0, 0, .42));
@@ -96,21 +102,24 @@ html[${ROOT_ATTR}="active"] #${TOGGLE_ID} {
   display: inline-flex;
   position: fixed;
   z-index: 340;
-  top: 10px;
-  left: 10px;
-  width: 40px;
-  height: 40px;
+  top: 46%;
+  left: 0;
+  width: 24px;
+  height: 56px;
+  transform: translateY(-50%);
   padding: 0;
   align-items: center;
   justify-content: center;
   color: var(--dsw-alias-label-primary);
   background: var(--dsw-alias-bg-layer-2);
   border: .5px solid var(--dsw-alias-border-l3);
-  border-radius: 12px;
+  border-radius: 0 12px 12px 0;
   box-shadow: var(--dsw-shadow-lv1);
   -webkit-tap-highlight-color: transparent;
 }
 html[${ROOT_ATTR}="active"][${DRAWER_ATTR}="open"] #${TOGGLE_ID},
+html[${ROOT_ATTR}="active"][${RIGHTBAR_ATTR}="open"] #${TOGGLE_ID},
+html[${ROOT_ATTR}="active"][${SETTINGS_ATTR}="open"] #${TOGGLE_ID},
 html[${ROOT_ATTR}="active"][${TRANSIENT_ATTR}="open"] #${TOGGLE_ID} {
   display: none;
 }
@@ -200,14 +209,44 @@ html[${ROOT_ATTR}="active"] [data-dshm-settings-options] {
   overflow-y: auto !important;
   overscroll-behavior: contain !important;
 }
-html[${ROOT_ATTR}="active"] [data-dshm-settings-options] * {
-  min-width: 0;
-}
 html[${ROOT_ATTR}="active"] [data-dshm-settings-options] button,
 html[${ROOT_ATTR}="active"] [data-dshm-settings-options] input,
 html[${ROOT_ATTR}="active"] [data-dshm-settings-options] select,
 html[${ROOT_ATTR}="active"] [data-dshm-settings-options] textarea {
   max-width: 100%;
+}
+html[${ROOT_ATTR}="active"] [data-dshm-desktop-config-action],
+html[${ROOT_ATTR}="active"] [data-dshm-desktop-config-error] {
+  display: none !important;
+}
+html[${ROOT_ATTR}="active"] [data-dshm-font-size-row] {
+  align-items: center !important;
+  gap: 10px !important;
+  flex-wrap: nowrap !important;
+}
+html[${ROOT_ATTR}="active"] [data-dshm-font-size-copy] {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  padding-right: 8px !important;
+}
+html[${ROOT_ATTR}="active"] [data-dshm-font-size-control] {
+  flex: none !important;
+  min-width: 0 !important;
+  gap: 6px !important;
+}
+html[${ROOT_ATTR}="active"] [data-dshm-font-size-stepper] {
+  flex: none !important;
+  width: 78px !important;
+  min-width: 78px !important;
+}
+html[${ROOT_ATTR}="active"] [data-dshm-font-size-arrows] {
+  opacity: 1 !important;
+  right: 6px !important;
+}
+html[${ROOT_ATTR}="active"] [data-dshm-font-size-arrow] {
+  width: 20px !important;
+  min-width: 20px !important;
+  height: 13px !important;
 }
 html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] {
   box-sizing: border-box;
@@ -307,6 +346,50 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
       return found;
     }
 
+    function tagFontSizeControl(settings) {
+      if (!(settings instanceof HTMLElement)) return;
+      const scope = settings.querySelector('[data-dshm-settings-options]') || settings;
+      const increase = scope.querySelector(
+        'button[aria-label="增大字号"], button[aria-label="Increase font size"]',
+      );
+      if (!(increase instanceof HTMLButtonElement)) return;
+      const arrows = increase.parentElement;
+      const stepper = arrows?.parentElement;
+      const control = stepper?.parentElement;
+      const row = control?.parentElement;
+      if (!(arrows instanceof HTMLElement) || !(stepper instanceof HTMLElement) ||
+          !(control instanceof HTMLElement) || !(row instanceof HTMLElement)) return;
+      row.setAttribute("data-dshm-font-size-row", "");
+      control.setAttribute("data-dshm-font-size-control", "");
+      stepper.setAttribute("data-dshm-font-size-stepper", "");
+      arrows.setAttribute("data-dshm-font-size-arrows", "");
+      for (const button of arrows.querySelectorAll("button")) {
+        button.setAttribute("data-dshm-font-size-arrow", "");
+      }
+      const copy = row.firstElementChild;
+      if (copy instanceof HTMLElement && copy !== control) copy.setAttribute("data-dshm-font-size-copy", "");
+    }
+
+    function tagDesktopConfigAction(settings) {
+      if (!(settings instanceof HTMLElement)) return;
+      const header = settings.querySelector('[data-dshm-settings-header]');
+      if (!(header instanceof HTMLElement)) return;
+      for (const button of header.querySelectorAll("button")) {
+        const label = String(button.textContent || "").trim();
+        if (label !== "打开配置文件" && label !== "Open configuration file") continue;
+        button.setAttribute("data-dshm-desktop-config-action", "");
+        const parent = button.parentElement;
+        if (!(parent instanceof HTMLElement)) continue;
+        for (const sibling of directElementChildren(parent)) {
+          if (sibling === button) continue;
+          const text = String(sibling.textContent || "").trim();
+          if (text.includes("无法打开配置文件") || text.includes("Unable to open configuration file")) {
+            sibling.setAttribute("data-dshm-desktop-config-error", "");
+          }
+        }
+      }
+    }
+
     function findAppearanceCubeRow(settings) {
       if (!(settings instanceof HTMLElement)) return null;
       const scope = settings.querySelector('[data-dshm-settings-options]') || settings;
@@ -395,7 +478,7 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
       button.id = TOGGLE_ID;
       button.type = "button";
       button.setAttribute("aria-label", "打开侧边栏");
-      button.innerHTML = '<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>';
+      button.innerHTML = '<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M7.5 5.5 12 10l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
       return button;
     }
 
@@ -536,6 +619,7 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
           else {
             html.removeAttribute(ROOT_ATTR);
             html.removeAttribute(DRAWER_ATTR);
+            html.removeAttribute(RIGHTBAR_ATTR);
             html.removeAttribute(SETTINGS_ATTR);
             html.removeAttribute(TRANSIENT_ATTR);
           }
@@ -550,7 +634,11 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
           const settings = tagSettings();
           if (settings) html.setAttribute(SETTINGS_ATTR, "open");
           else html.removeAttribute(SETTINGS_ATTR);
-          if (mobile && settings) ensureTokyoThemeCube(ctx, settings);
+          if (mobile && settings) {
+            tagFontSizeControl(settings);
+            tagDesktopConfigAction(settings);
+            ensureTokyoThemeCube(ctx, settings);
+          }
           if (hasVisibleTransientLayer()) html.setAttribute(TRANSIENT_ATTR, "open");
           else html.removeAttribute(TRANSIENT_ATTR);
           if (!mobile || !frame) return;
@@ -564,7 +652,9 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
           }
 
           const drawerOpen = !frame.hasAttribute("data-sidebar-collapsed");
+          const rightbarOpen = !frame.hasAttribute("data-rightbar-collapsed");
           html.setAttribute(DRAWER_ATTR, drawerOpen ? "open" : "closed");
+          html.setAttribute(RIGHTBAR_ATTR, rightbarOpen ? "open" : "closed");
           toggle.setAttribute("aria-expanded", drawerOpen ? "true" : "false");
 
         };
@@ -612,15 +702,16 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
           for (const node of document.querySelectorAll('[data-dshm-theme-tokyo]')) node.remove();
           html.removeAttribute(ROOT_ATTR);
           html.removeAttribute(DRAWER_ATTR);
+          html.removeAttribute(RIGHTBAR_ATTR);
           html.removeAttribute(SETTINGS_ATTR);
           html.removeAttribute(TRANSIENT_ATTR);
-          for (const node of document.querySelectorAll('[data-dshm-shell], [data-dshm-shell-overlay], [data-dshm-sidebar-col], [data-dshm-sidebar-search], [data-dshm-center-col], [data-dshm-rightbar-col], [data-dshm-settings-overlay], [data-dshm-settings-panel], [data-dshm-settings-nav], [data-dshm-settings-nav-title], [data-dshm-settings-nav-list], [data-dshm-settings-content], [data-dshm-settings-header], [data-dshm-settings-options]')) {
+          for (const node of document.querySelectorAll('[data-dshm-shell], [data-dshm-shell-overlay], [data-dshm-sidebar-col], [data-dshm-sidebar-search], [data-dshm-center-col], [data-dshm-rightbar-col], [data-dshm-settings-overlay], [data-dshm-settings-panel], [data-dshm-settings-nav], [data-dshm-settings-nav-title], [data-dshm-settings-nav-list], [data-dshm-settings-content], [data-dshm-settings-header], [data-dshm-settings-options], [data-dshm-font-size-row], [data-dshm-font-size-copy], [data-dshm-font-size-control], [data-dshm-font-size-stepper], [data-dshm-font-size-arrows], [data-dshm-font-size-arrow], [data-dshm-desktop-config-action], [data-dshm-desktop-config-error]')) {
             for (const attribute of Array.from(node.attributes)) {
               if (attribute.name.startsWith("data-dshm-")) node.removeAttribute(attribute.name);
             }
           }
         };
-      }, "ui-mobile-v2: scoped shell and settings adaptation");
+      }, "ui-mobile-v4: scoped interaction and settings adaptation");
     }
 
     exports.apply = apply;

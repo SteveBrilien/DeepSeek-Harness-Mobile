@@ -2,7 +2,6 @@ package com.stevebrilien.dshmobile.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,6 +15,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,13 +26,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.stevebrilien.dshmobile.core.recovery.NativeRecoveryController
 import com.stevebrilien.dshmobile.core.recovery.RecoveryVault
+import com.stevebrilien.dshmobile.runtime.RuntimeSupervisor
 
-private enum class SettingsDetail { NONE, RUNTIME_RECOVERY }
+private enum class SettingsDetail { NONE, CONFIG, RUNTIME, BACKUP, UPDATE, ADVANCED }
 
 @Composable
 fun SettingsScreen(
     vault: RecoveryVault,
     controller: NativeRecoveryController,
+    runtimeSupervisor: RuntimeSupervisor,
     themeMode: DshThemeMode,
     onRunOnboarding: () -> Unit,
     modifier: Modifier = Modifier,
@@ -40,16 +42,48 @@ fun SettingsScreen(
     var detail by remember { mutableStateOf(SettingsDetail.NONE) }
     BackHandler(enabled = detail != SettingsDetail.NONE) { detail = SettingsDetail.NONE }
 
-    if (detail == SettingsDetail.RUNTIME_RECOVERY) {
+    if (detail == SettingsDetail.CONFIG) {
+        DshConfigScreen(
+            onBack = { detail = SettingsDetail.NONE },
+            modifier = modifier,
+        )
+        return
+    }
+
+    val recoveryView = when (detail) {
+        SettingsDetail.RUNTIME -> RecoveryView.RUNTIME
+        SettingsDetail.BACKUP -> RecoveryView.BACKUP
+        SettingsDetail.UPDATE -> RecoveryView.UPDATE
+        SettingsDetail.ADVANCED -> RecoveryView.ADVANCED
+        else -> null
+    }
+    if (recoveryView != null) {
         RecoveryScreen(
             vault = vault,
             controller = controller,
             themeMode = themeMode,
             onRunOnboarding = onRunOnboarding,
+            view = recoveryView,
             onBack = { detail = SettingsDetail.NONE },
             modifier = modifier,
         )
         return
+    }
+
+    val runtimeState by runtimeSupervisor.state.collectAsState()
+    val startupMetrics by runtimeSupervisor.startupMetrics.collectAsState()
+    val runtimeDetail = buildString {
+        append(
+            when (runtimeState) {
+                RuntimeSupervisor.State.Idle -> "未启动"
+                is RuntimeSupervisor.State.Inspecting -> "检查中"
+                is RuntimeSupervisor.State.Starting -> "启动中"
+                is RuntimeSupervisor.State.Ready -> "已就绪"
+                is RuntimeSupervisor.State.Failed -> "需要处理"
+            },
+        )
+        startupMetrics.lastDurationMillis?.let { append(" · 上次 ${formatSettingsDuration(it)}") }
+        startupMetrics.averageDurationMillis?.let { append(" · 平均 ${formatSettingsDuration(it)}") }
     }
 
     LazyColumn(
@@ -61,67 +95,70 @@ fun SettingsScreen(
         item {
             DshPageHeader(
                 title = "设置",
+                subtitle = "只保留真正不同的任务入口",
                 modifier = Modifier.padding(top = 12.dp, bottom = 6.dp),
             )
         }
 
         item {
-            SettingsGroup(title = "基础") {
+            SettingsGroup(title = "DSH") {
                 Column {
                     SettingsRow(
                         icon = DshIconGlyph.PALETTE,
                         title = "外观",
-                        detail = "跟随 DSH · ${themeMode.labelZh}",
+                        detail = "由 DSH 统一管理 · 当前 ${themeMode.labelZh}",
                         trailing = null,
                     )
                     SettingsDivider()
                     SettingsRow(
-                        icon = DshIconGlyph.REFRESH,
-                        title = "重新运行环境引导",
-                        detail = null,
-                        onClick = onRunOnboarding,
+                        icon = DshIconGlyph.FILE,
+                        title = "DSH 配置",
+                        detail = "应用内查看和编辑 settings.yaml",
+                        onClick = { detail = SettingsDetail.CONFIG },
                     )
                 }
             }
         }
 
         item {
-            SettingsGroup(title = "运行时") {
+            SettingsGroup(title = "本地环境") {
                 Column {
                     SettingsRow(
                         icon = DshIconGlyph.TERMINAL,
-                        title = "Runtime 管理",
-                        detail = "安装、启动、停止与回滚",
-                        onClick = { detail = SettingsDetail.RUNTIME_RECOVERY },
+                        title = "运行时",
+                        detail = runtimeDetail,
+                        onClick = { detail = SettingsDetail.RUNTIME },
                     )
                     SettingsDivider()
                     SettingsRow(
                         icon = DshIconGlyph.SHIELD,
-                        title = "恢复保险库",
-                        detail = "备份、恢复与跨卸载资产",
-                        onClick = { detail = SettingsDetail.RUNTIME_RECOVERY },
+                        title = "备份与恢复",
+                        detail = "保险库、快照与可移植备份",
+                        onClick = { detail = SettingsDetail.BACKUP },
                     )
                 }
             }
         }
 
         item {
-            SettingsGroup(title = "管理") {
-                Column {
-                    SettingsRow(
-                        icon = DshIconGlyph.REFRESH,
-                        title = "检查更新",
-                        detail = null,
-                        onClick = { detail = SettingsDetail.RUNTIME_RECOVERY },
-                    )
-                    SettingsDivider()
-                    SettingsRow(
-                        icon = DshIconGlyph.INFO,
-                        title = "调试与日志",
-                        detail = null,
-                        onClick = { detail = SettingsDetail.RUNTIME_RECOVERY },
-                    )
-                }
+            SettingsGroup(title = "应用") {
+                SettingsRow(
+                    icon = DshIconGlyph.REFRESH,
+                    title = "应用更新",
+                    detail = "检查并校验新安装包",
+                    onClick = { detail = SettingsDetail.UPDATE },
+                )
+            }
+        }
+
+        item {
+            SettingsGroup(title = "高级") {
+                SettingsRow(
+                    icon = DshIconGlyph.INFO,
+                    title = "高级维护",
+                    detail = "环境引导、日志、WebView 诊断与安全模式",
+                    onClick = { detail = SettingsDetail.ADVANCED },
+                )
             }
         }
 
@@ -162,7 +199,7 @@ private fun SettingsRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .then(if (onClick != null) Modifier.dshClickable(onClick = onClick) else Modifier)
             .padding(horizontal = 14.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -206,3 +243,7 @@ private fun SettingsDivider() {
         androidx.compose.foundation.layout.Spacer(Modifier.padding(top = 0.5.dp))
     }
 }
+
+private fun formatSettingsDuration(millis: Long): String =
+    if (millis < 10_000L) String.format(java.util.Locale.US, "%.1fs", millis / 1000.0)
+    else "${millis / 1000}s"

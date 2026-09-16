@@ -2,7 +2,6 @@ package com.stevebrilien.dshmobile.ui
 
 import android.content.Context
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -322,7 +321,7 @@ fun TerminalScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(10.dp))
-                                    .clickable {
+                                    .dshClickable {
                                         input = command
                                         showCommandShelf = false
                                     }
@@ -519,7 +518,7 @@ private fun TerminalIconButton(
         modifier = Modifier
             .size(42.dp)
             .clip(RoundedCornerShape(21.dp))
-            .clickable(enabled = enabled, onClick = onClick),
+            .dshClickable(enabled = enabled, onClick = onClick),
         color = container.copy(alpha = if (enabled) 1f else .35f),
         border = if (primary) null else BorderStroke(0.5.dp, colors.border2),
         shape = RoundedCornerShape(21.dp),

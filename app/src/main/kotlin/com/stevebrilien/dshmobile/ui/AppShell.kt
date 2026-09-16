@@ -12,14 +12,17 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -137,6 +140,7 @@ fun DshMobileApp() {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DshMobileShell(
     vault: RecoveryVault,
@@ -162,6 +166,7 @@ private fun DshMobileShell(
     }
 
     val colors = LocalDshColors.current
+    val imeVisible = WindowInsets.isImeVisible
 
     LaunchedEffect(vault) {
         withContext(Dispatchers.IO) { vault.ensureLayout() }
@@ -175,8 +180,8 @@ private fun DshMobileShell(
         val contentModifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .navigationBarsPadding()
-            .padding(bottom = BottomNavigationHeight)
+            .imePadding()
+            .padding(bottom = if (imeVisible) 0.dp else BottomNavigationHeight)
 
         // Keep the DSH WebView attached for the full shell lifetime. Recreating the Home
         // destination used to destroy/recreate WebView every time the bottom navigation
@@ -215,6 +220,7 @@ private fun DshMobileShell(
                     MainSection.Settings -> SettingsScreen(
                         vault = vault,
                         controller = recoveryController,
+                        runtimeSupervisor = runtimeSupervisor,
                         themeMode = themeMode,
                         onRunOnboarding = onRunOnboarding,
                         modifier = contentModifier,
@@ -223,13 +229,15 @@ private fun DshMobileShell(
             }
         }
 
-        DshBottomNavigation(
-            selected = selected,
-            onSelect = { selected = it },
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding(),
-        )
+        if (!imeVisible) {
+            DshBottomNavigation(
+                selected = selected,
+                onSelect = { selected = it },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding(),
+            )
+        }
     }
 }
 
@@ -255,7 +263,7 @@ private fun WorkspaceHubScreen(
                         .weight(1f)
                         .height(38.dp)
                         .clip(RoundedCornerShape(10.dp))
-                        .clickable { onSectionChange(item) },
+                        .dshClickable { onSectionChange(item) },
                     color = if (item == section) colors.selected else Color.Transparent,
                     border = BorderStroke(0.5.dp, colors.border1),
                     shape = RoundedCornerShape(10.dp),
@@ -313,7 +321,7 @@ private fun DshBottomNavigation(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxSize()
-                        .clickable { onSelect(section) },
+                        .dshClickable { onSelect(section) },
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {

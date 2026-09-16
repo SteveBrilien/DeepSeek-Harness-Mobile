@@ -10,7 +10,7 @@ const tokyoManifest = JSON.parse(await readFile(resolve(tokyoRoot, 'package.json
 const tokyoClient = await readFile(resolve(tokyoRoot, 'lib/client.js'), 'utf8');
 
 assert.equal(manifest.name, 'dsh-client-ui-mobile');
-assert.equal(manifest.version, '0.3.2-dshm.1');
+assert.equal(manifest.version, '0.4.0-dshm.1');
 assert.ok(manifest.dsh?.client, 'mobile UI must remain a DSH client plugin');
 assert.ok(manifest.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-theme'), 'mobile UI must inject the official DSH theme service');
 assert.ok(manifest.dsh.client.inject.includes('dsh-plugin-tokyo-night'), 'mobile UI must depend on the Tokyo extension service provider');
@@ -26,6 +26,13 @@ assert.ok(client.includes('data-dshm-shell'), 'shell must be explicitly tagged b
 assert.ok(client.includes('data-dshm-settings-panel'), 'settings must be explicitly tagged before styling');
 assert.ok(client.includes('aria-expanded'), 'mobile synchronization must observe expanded/collapsed interaction state');
 assert.ok(client.includes('data-dshm-sidebar-search'), 'sidebar search must be semantically tagged before responsive styling');
+assert.ok(client.includes('data-dshm-rightbar-col'), 'right sidebar must be semantically tagged before overlay styling');
+assert.ok(client.includes('data-dshm-font-size-stepper'), 'font-size control must be semantically tagged before touch styling');
+assert.ok(client.includes('Increase font size') && client.includes('增大字号'), 'font-size adaptation must use ARIA semantics rather than CSS-module hashes');
+assert.ok(client.includes('data-dshm-desktop-config-action'), 'desktop-only config action must be explicitly tagged for mobile suppression');
+assert.ok(client.includes('-webkit-tap-highlight-color: transparent'), 'mobile Web interactions must suppress Android blue tap highlights');
+assert.ok(client.includes('calc(100% - 32px)'), 'sidebar must retain only a narrow 32px dismiss strip');
+assert.ok(client.includes('data-dshm-rightbar=') || client.includes('RIGHTBAR_ATTR'), 'mobile nav affordance must track rightbar state');
 assert.ok(client.includes('role=\\"dialog\\"') || client.includes("role=\"dialog\""), 'settings discovery must be dialog-scoped');
 assert.ok(client.includes('data-dsh-mobile-ui'), 'all mobile rules must be gated by the mobile root marker');
 

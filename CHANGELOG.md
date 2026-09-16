@@ -351,3 +351,14 @@ Research-only pass. Documented pinned DSH/Cordis client-plugin lifecycle, DSH bo
 
 Files:
 - `docs/research/2026-09-14-webview-presentation-technical-route.md`
+
+
+## 2026-09-16 — RELEASE: 0.4.0-preview.2 mobile interaction and Settings repair candidate
+
+- Promote the post-diagnostic candidate to `versionCode 22` / `0.4.0-preview.2`; `0.4.0-preview.1` remains the frozen rendering-debug baseline and is not republished.
+- Restore Android WebView file upload by bridging DSH `<input type=file>` through a bounded native chooser while keeping `file://` disabled and accepting only user-authorized content URIs.
+- Make the chat host IME-aware and immersive: composer content can resize above the soft keyboard, system navigation is hidden by default, and native chrome yields to transient system bars.
+- Simplify native Settings into task-oriented DSH Config / Runtime / Backup & Restore / App Update / Advanced Maintenance surfaces, including an atomic in-app `settings.yaml` editor with size/NUL safeguards.
+- Upgrade the APK-owned mobile UI package to `0.4.0-dshm.1`: reduce the open-sidebar dismissal band to 32 px, replace overlapping hamburger affordances with a bounded edge handle, suppress the handle while drawers/settings are open, remove mobile blue tap-highlight blocks, and repair DSH font-size stepper semantics/layout.
+- Add Runtime startup timing telemetry and tighten Web readiness polling from 1000 ms to 250 ms without changing the overall startup timeout.
+- Validation for the exact runtime/UI code before this metadata-only version bump: Android Unit PASS, Android Debug PASS, Android Lint PASS, Mobile Context Contract PASS, ARM64 Alpine Runtime E2E PASS with authenticated DSH Web and old-profile reconciliation, fresh 360×708 Chromium behavior PASS for sidebar/settings/font-size/Tokyo Night, and a real DSH attachment upload probe PASS. Physical Vivo/OriginOS checks remain manual for Android system file chooser, IME raise behavior and immersive navigation gestures.

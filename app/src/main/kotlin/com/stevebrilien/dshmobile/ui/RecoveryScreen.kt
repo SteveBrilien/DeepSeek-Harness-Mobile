@@ -53,12 +53,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+enum class RecoveryView { RUNTIME, BACKUP, UPDATE, ADVANCED, ALL }
+
 @Composable
 fun RecoveryScreen(
     vault: RecoveryVault,
     controller: NativeRecoveryController,
     themeMode: DshThemeMode,
     onRunOnboarding: () -> Unit,
+    view: RecoveryView = RecoveryView.ALL,
     modifier: Modifier = Modifier,
     onBack: (() -> Unit)? = null,
 ) {
@@ -79,6 +82,24 @@ fun RecoveryScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var updateRelease by remember { mutableStateOf<AppUpdateManager.Release?>(null) }
+    val showRuntime = view == RecoveryView.RUNTIME || view == RecoveryView.ALL
+    val showBackup = view == RecoveryView.BACKUP || view == RecoveryView.ALL
+    val showUpdate = view == RecoveryView.UPDATE || view == RecoveryView.ALL
+    val showAdvanced = view == RecoveryView.ADVANCED || view == RecoveryView.ALL
+    val screenTitle = when (view) {
+        RecoveryView.RUNTIME -> "运行时"
+        RecoveryView.BACKUP -> "备份与恢复"
+        RecoveryView.UPDATE -> "应用更新"
+        RecoveryView.ADVANCED -> "高级维护"
+        RecoveryView.ALL -> "运行时与恢复"
+    }
+    val screenSubtitle = when (view) {
+        RecoveryView.RUNTIME -> "安装、启动、停止、回滚与健康状态"
+        RecoveryView.BACKUP -> "保险库、快照与可移植备份"
+        RecoveryView.UPDATE -> "检查并校验新安装包"
+        RecoveryView.ADVANCED -> "环境引导、日志、诊断与安全模式"
+        RecoveryView.ALL -> "恢复与本地运行环境"
+    }
 
     fun refresh() { refreshKey += 1 }
 
@@ -142,28 +163,30 @@ fun RecoveryScreen(
         item {
             Column(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
                 DshPageHeader(
-                    title = if (onBack == null) "设置" else "运行时与恢复",
-                    subtitle = "恢复与本地运行环境",
+                    title = if (onBack == null && view == RecoveryView.ALL) "设置" else screenTitle,
+                    subtitle = screenSubtitle,
                     trailing = onBack?.let { back ->
                         { DshButton("返回", back, icon = DshIconGlyph.ARROW_LEFT, style = DshButtonStyle.GHOST) }
                     },
                 )
-                DshSectionTitle(
-                    title = "外观",
-                    description = "由 DSH Web Client 统一管理 · 当前 ${themeMode.labelZh}",
-                    modifier = Modifier.padding(top = 16.dp),
-                )
-                DshButton(
-                    text = "重新运行环境引导",
-                    onClick = onRunOnboarding,
-                    modifier = Modifier.padding(top = 10.dp),
-                    icon = DshIconGlyph.REFRESH,
-                    style = DshButtonStyle.GHOST,
-                )
+                if (showAdvanced) {
+                    DshSectionTitle(
+                        title = "外观",
+                        description = "由 DSH Web Client 统一管理 · 当前 ${themeMode.labelZh}",
+                        modifier = Modifier.padding(top = 16.dp),
+                    )
+                    DshButton(
+                        text = "重新运行环境引导",
+                        onClick = onRunOnboarding,
+                        modifier = Modifier.padding(top = 10.dp),
+                        icon = DshIconGlyph.REFRESH,
+                        style = DshButtonStyle.GHOST,
+                    )
+                }
             }
         }
 
-        item {
+        if (showUpdate) item {
             DshPanel(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     DshSectionTitle("应用更新", description = "通过 GitHub 发布清单检查并校验新安装包")
@@ -219,7 +242,7 @@ fun RecoveryScreen(
             }
         }
 
-        item {
+        if (showBackup) item {
             DshPanel(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     DshSectionTitle("恢复保险库", description = "关键数据、配置与本地资产的恢复入口")
@@ -325,7 +348,7 @@ fun RecoveryScreen(
             }
         }
 
-        item {
+        if (showRuntime) item {
             DshPanel(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     DshSectionTitle(
@@ -394,7 +417,7 @@ fun RecoveryScreen(
             }
         }
 
-        items(runtimeHealth?.components.orEmpty(), key = { "runtime-${it.component.name}" }) { component ->
+        if (showRuntime) items(runtimeHealth?.components.orEmpty(), key = { "runtime-${it.component.name}" }) { component ->
             HealthRow(
                 title = component.component.name.replace('_', ' '),
                 detail = component.detail.orEmpty(),
@@ -402,7 +425,7 @@ fun RecoveryScreen(
             )
         }
 
-        item {
+        if (showAdvanced) item {
             DshPanel(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     DshSectionTitle("DSH Runtime 日志", description = "最近的本地 Runtime 输出")
@@ -418,7 +441,7 @@ fun RecoveryScreen(
             }
         }
 
-        item {
+        if (showAdvanced) item {
             DshPanel(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     DshSectionTitle(
@@ -437,9 +460,9 @@ fun RecoveryScreen(
             }
         }
 
-        item { DshSectionTitle("原生组件健康状态", modifier = Modifier.padding(top = 2.dp)) }
+        if (showAdvanced) item { DshSectionTitle("原生组件健康状态", modifier = Modifier.padding(top = 2.dp)) }
 
-        items(snapshot?.checks.orEmpty(), key = { "recovery-${it.component.name}" }) { check ->
+        if (showAdvanced) items(snapshot?.checks.orEmpty(), key = { "recovery-${it.component.name}" }) { check ->
             RecoveryCheckRow(check)
         }
 

@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.SystemClock
 import android.view.View
 import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
@@ -13,8 +14,11 @@ import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
+import android.webkit.ValueCallback
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,6 +32,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -40,6 +45,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.stevebrilien.dshmobile.BuildConfig
 import com.stevebrilien.dshmobile.runtime.RuntimeSupervisor
 import java.util.UUID
+import kotlinx.coroutines.delay
 
 @Composable
 fun ChatScreen(
@@ -49,6 +55,7 @@ fun ChatScreen(
     visible: Boolean = true,
 ) {
     val state by runtimeSupervisor.state.collectAsState()
+    val startupMetrics by runtimeSupervisor.startupMetrics.collectAsState()
 
     LaunchedEffect(runtimeSupervisor) {
         runtimeSupervisor.ensureStarted()
@@ -62,6 +69,7 @@ fun ChatScreen(
             detail = (current as? RuntimeSupervisor.State.Inspecting)?.detail ?: "正在准备本地 Runtime…",
             loading = true,
             onRetry = null,
+            metrics = startupMetrics,
             modifier = modifier,
         )
         is RuntimeSupervisor.State.Starting -> RuntimeStatusScreen(
@@ -69,6 +77,7 @@ fun ChatScreen(
             detail = current.detail,
             loading = true,
             onRetry = null,
+            metrics = startupMetrics,
             modifier = modifier,
         )
         is RuntimeSupervisor.State.Failed -> RuntimeStatusScreen(
@@ -76,6 +85,7 @@ fun ChatScreen(
             detail = current.detail,
             loading = false,
             onRetry = runtimeSupervisor::retry,
+            metrics = startupMetrics,
             modifier = modifier,
         )
         is RuntimeSupervisor.State.Ready -> DshWebClient(
@@ -111,6 +121,16 @@ private fun DshWebClient(
 ) {
     val context = LocalContext.current
     val diagnostics = remember(context) { DshWebViewDiagnostics(context.applicationContext) }
+    var fileChooserCallback by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
+    val fileChooserLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val callback = fileChooserCallback
+        fileChooserCallback = null
+        callback?.onReceiveValue(
+            WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data),
+        )
+    }
     val latestAuthenticationRejected by rememberUpdatedState(onAuthenticationRejected)
     val latestFatalWebViewError by rememberUpdatedState(onFatalWebViewError)
     val existing = hostState.peek() != null
@@ -140,6 +160,7 @@ private fun DshWebClient(
     DisposableEffect(webView, diagnostics) {
         diagnostics.append("client-enter host=${hostState.id} view=${viewIdentity(webView)}")
         onDispose {
+            fileChooserCallback?.onReceiveValue(null)
             // The WebView belongs to the shell-level host and deliberately survives this
             // composable leaving/re-entering composition. DSH keeps SPA state and cookies.
             diagnostics.append("client-leave host=${hostState.id} view=${viewIdentity(webView)}")
@@ -159,11 +180,45 @@ private fun DshWebClient(
         settings.displayZoomControls = false
         setInitialScale(0)
         settings.allowFileAccess = false
-        settings.allowContentAccess = false
+        // Android's document picker returns content:// URIs. Keep raw file:// access
+        // disabled, but allow the renderer to consume the user-selected content grant.
+        settings.allowContentAccess = true
         settings.javaScriptCanOpenWindowsAutomatically = false
         settings.setSupportMultipleWindows(false)
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
         webChromeClient = object : WebChromeClient() {
+            override fun onShowFileChooser(
+                webView: WebView?,
+                filePathCallback: ValueCallback<Array<Uri>>?,
+                fileChooserParams: FileChooserParams?,
+            ): Boolean {
+                fileChooserCallback?.onReceiveValue(null)
+                if (filePathCallback == null) return false
+                fileChooserCallback = filePathCallback
+                val intent = runCatching {
+                    fileChooserParams?.createIntent() ?: Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "*/*"
+                        putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                    }
+                }.getOrElse { failure ->
+                    diagnostics.append("file-chooser rejected reason=${failure.message ?: failure::class.java.simpleName}")
+                    fileChooserCallback = null
+                    filePathCallback.onReceiveValue(null)
+                    return false
+                }
+                return runCatching {
+                    fileChooserLauncher.launch(intent)
+                    diagnostics.append("file-chooser launched mode=${fileChooserParams?.mode ?: -1}")
+                    true
+                }.getOrElse { failure ->
+                    diagnostics.append("file-chooser launch-failed reason=${failure.message ?: failure::class.java.simpleName}")
+                    fileChooserCallback = null
+                    filePathCallback.onReceiveValue(null)
+                    false
+                }
+            }
+
             override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
                 consoleMessage?.let { message ->
                     diagnostics.append(
@@ -452,9 +507,19 @@ private fun RuntimeStatusScreen(
     detail: String,
     loading: Boolean,
     onRetry: (() -> Unit)?,
+    metrics: RuntimeSupervisor.StartupMetrics,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalDshColors.current
+    val activeSince = metrics.activeSinceElapsedMillis
+    var now by remember(activeSince) { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+    LaunchedEffect(activeSince) {
+        while (activeSince != null) {
+            now = SystemClock.elapsedRealtime()
+            delay(100)
+        }
+    }
+    val currentMillis = activeSince?.let { (now - it).coerceAtLeast(0L) }
     Column(
         modifier = modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.Center,
@@ -479,6 +544,19 @@ private fun RuntimeStatusScreen(
             style = MaterialTheme.typography.bodyMedium,
             color = colors.textSecondary,
         )
+        val timingParts = buildList {
+            currentMillis?.let { add("本次 ${formatStartupDuration(it)}") }
+            metrics.lastDurationMillis?.let { add("上次 ${formatStartupDuration(it)}") }
+            metrics.averageDurationMillis?.let { add("平均 ${formatStartupDuration(it)}") }
+        }
+        if (timingParts.isNotEmpty()) {
+            Text(
+                timingParts.joinToString("  ·  "),
+                modifier = Modifier.padding(top = 8.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textTertiary,
+            )
+        }
         onRetry?.let {
             DshButton(
                 text = "重试",
@@ -490,6 +568,10 @@ private fun RuntimeStatusScreen(
         }
     }
 }
+
+private fun formatStartupDuration(millis: Long): String =
+    if (millis < 10_000L) String.format(java.util.Locale.US, "%.1fs", millis / 1000.0)
+    else "${millis / 1000}s"
 
 private val WEBVIEW_BACK_HANDLER = """
     (function () {

@@ -24,7 +24,7 @@ PROFILE_SEED="$ROOT_DIR/core/runtime-android/src/main/assets/$(prop webProfileSe
 PROFILE_SEED_SHA=$(prop webProfileSeedSha256)
 MOBILE_CONTEXT_VERSION=$(prop mobileContextVersion)
 WEBVIEW_COMPAT_VERSION="0.1.2"
-MOBILE_UI_VERSION="0.3.2-dshm.1"
+MOBILE_UI_VERSION="0.4.0-dshm.1"
 TOKYO_THEME_VERSION="0.2.2-dshm.1"
 
 command -v bwrap >/dev/null
@@ -190,7 +190,7 @@ inside 'test -f /dsh-home/mobile-plugins/dsh-client-ui-mobile/package.json'
 python3 - "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile/package.json" "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile/package.json" <<'PYUI'
 import json, sys
 for path in sys.argv[1:]:
-    assert json.load(open(path))['version'] == '0.3.2-dshm.1'
+    assert json.load(open(path))['version'] == '0.4.0-dshm.1'
 print('active-mobile-ui-asset-ok')
 PYUI
 grep -q 'data-dshm-shell' "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile/lib/client.js"
@@ -344,7 +344,7 @@ inside 'test -f /dsh-home/mobile-plugins/dsh-client-ui-mobile/package.json'
 inside 'test -f /dsh-home/mobile-plugins/dsh-plugin-tokyo-night/package.json'
 python3 - "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile/package.json" <<'PYUI'
 import json, sys
-assert json.load(open(sys.argv[1]))['version'] == '0.3.2-dshm.1'
+assert json.load(open(sys.argv[1]))['version'] == '0.4.0-dshm.1'
 print('active-mobile-ui-asset-ok')
 PYUI
 python3 - "$TMP_ROOT/dsh-home/mobile-plugins/dsh-plugin-tokyo-night/package.json" <<'PYTOKYO2'
