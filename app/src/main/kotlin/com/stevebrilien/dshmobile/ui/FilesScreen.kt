@@ -106,6 +106,7 @@ fun FilesScreen(
     var editorPath by remember { mutableStateOf<String?>(null) }
     var editorText by remember { mutableStateOf("") }
     var editorOriginalText by remember { mutableStateOf("") }
+    var editorOriginalSha256 by remember { mutableStateOf<String?>(null) }
     var editorLoaded by remember { mutableStateOf(false) }
     var editorSaving by remember { mutableStateOf(false) }
     var confirmDiscardEditor by remember { mutableStateOf(false) }
@@ -329,6 +330,7 @@ fun FilesScreen(
                                         editorPath = entry.absolutePath
                                         editorText = content.content
                                         editorOriginalText = content.content
+                                        editorOriginalSha256 = content.sha256
                                         editorLoaded = true
                                         editorError = null
                                     }.onFailure {
@@ -336,6 +338,7 @@ fun FilesScreen(
                                         editorPath = entry.absolutePath
                                         editorText = ""
                                         editorOriginalText = ""
+                                        editorOriginalSha256 = null
                                         editorLoaded = false
                                     }
                                 }
@@ -474,7 +477,7 @@ fun FilesScreen(
                     editorSaving = true
                     scope.launch {
                         try {
-                            withContext(Dispatchers.IO) { fileManager.saveText(File(path), content) }
+                            withContext(Dispatchers.IO) { fileManager.saveText(File(path), content, editorOriginalSha256) }
                                 .onSuccess {
                                     error = null
                                     message = "已保存；适用时已自动创建旧内容快照"

@@ -29,6 +29,17 @@
             </intent-filter>
         </activity>
 
+        <!-- Camera output only: cache-scoped URI, separate from the APK update provider. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.captures"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/capture_file_paths" />
+        </provider>
+
         <service
             android:name=".runtime.RuntimeForegroundService"
             android:exported="false"

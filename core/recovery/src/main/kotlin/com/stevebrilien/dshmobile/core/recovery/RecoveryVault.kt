@@ -69,7 +69,9 @@ class RecoveryVault(private val context: Context) {
         val legacyTarget = context.applicationInfo.targetSdkVersion <= Build.VERSION_CODES.P
         val legacySharedAccess = legacyTarget && storagePermissionGranted
         val preRSharedAccess = Build.VERSION.SDK_INT < Build.VERSION_CODES.R && storagePermissionGranted
-        val managerAccess = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()
+        // A failed platform query must not grant shared storage or crash the recovery UI.
+        val managerAccess = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            runCatching { Environment.isExternalStorageManager() }.getOrDefault(false)
         val allFiles = legacySharedAccess || preRSharedAccess || managerAccess
         val externalRoot = runCatching { Environment.getExternalStorageDirectory() }.getOrNull()
         val canUsePersistentSharedRoot = allFiles && externalRoot != null

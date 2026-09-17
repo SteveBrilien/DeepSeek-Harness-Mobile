@@ -6,7 +6,7 @@ import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.Environment
 import java.io.File
-import java.nio.charset.Charset
+import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -33,6 +33,7 @@ data class TextFileContent(
     val file: NativeFileEntry,
     val content: String,
     val charsetName: String,
+    val sha256: String,
 )
 
 enum class FileClipboardMode { COPY, MOVE }
@@ -52,7 +53,8 @@ class NativeFileManager(
 
     fun browserRoot(): FileBrowserRoot {
         val vaultStatus = vault.status()
-        val allFiles = Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
+        val allFiles = Build.VERSION.SDK_INT < Build.VERSION_CODES.R ||
+            runCatching { Environment.isExternalStorageManager() }.getOrDefault(false)
         val shared = runCatching { Environment.getExternalStorageDirectory() }.getOrNull()
         val browseRoot = if (allFiles && shared != null) {
             shared
@@ -105,13 +107,24 @@ class NativeFileManager(
     }
 
     fun readText(file: File, maxBytes: Long = DEFAULT_MAX_TEXT_BYTES): Result<TextFileContent> = runCatching {
+        check(!java.nio.file.Files.isSymbolicLink(file.toPath())) { "Editing a symbolic link is not supported." }
         val safe = requireInsideBrowserRoot(file)
         check(safe.isFile) { "Not a file: ${safe.absolutePath}" }
         check(safe.length() <= maxBytes) { "File is larger than the editor limit (${maxBytes / 1024 / 1024} MiB)." }
-        val bytes = safe.readBytes()
-        check(!looksBinary(bytes)) { "Binary file preview is not supported by the text editor." }
-        val charset: Charset = StandardCharsets.UTF_8
-        TextFileContent(entry(safe), bytes.toString(charset), charset.name())
+        check(maxBytes > 0 && maxBytes < Int.MAX_VALUE) { "Invalid editor size limit." }
+        // Limit the read itself too: a file may grow after length() is checked.
+        val bytes = safe.inputStream().use { input ->
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            while (output.size() <= maxBytes) {
+                val count = input.read(buffer, 0, minOf(buffer.size.toLong(), maxBytes + 1 - output.size()).toInt())
+                if (count < 0) break
+                if (count > 0) output.write(buffer, 0, count)
+            }
+            output.toByteArray()
+        }
+        check(bytes.size <= maxBytes) { "File changed or exceeded the editor size limit." }
+        TextFileContent(entry(safe), TextFileSafety.decodeUtf8(bytes), StandardCharsets.UTF_8.name(), TextFileSafety.sha256(bytes))
     }
 
     /** Read-only, bounded decoding for the native browser; never exposes file:// to WebView. */
@@ -134,16 +147,26 @@ class NativeFileManager(
         image
     }
 
-    fun saveText(file: File, content: String): Result<File> = runCatching {
+    fun saveText(file: File, content: String, expectedSha256: String? = null): Result<File> = runCatching {
+        check(!java.nio.file.Files.isSymbolicLink(file.toPath())) { "Editing a symbolic link is not supported." }
         val safe = requireInsideBrowserRoot(file)
         check(!safe.isDirectory) { "Cannot save text into a directory." }
+        // Optimistic concurrency: do not overwrite changes from the terminal or another session.
+        if (expectedSha256 != null) TextFileSafety.requireUnchanged(safe, expectedSha256)
+        val bytes = TextFileSafety.encodeUtf8(content)
+        check(bytes.size <= DEFAULT_MAX_TEXT_BYTES) { "Edited content exceeds the editor limit." }
         if (safe.exists()) snapshotBeforeOverwrite(safe)
         val temp = File(safe.parentFile, ".${safe.name}.dshm-tmp-${System.nanoTime()}")
         try {
-            temp.writeText(content, StandardCharsets.UTF_8)
-            // Never fall back to truncating the only original file if replace fails.
-            // The existing file was snapshotted before this point.
-            check(temp.renameTo(safe)) { "Atomic file replacement failed; original file was preserved." }
+            temp.outputStream().use { output ->
+                output.write(bytes)
+                output.flush()
+                output.fd.sync()
+            }
+            // Recheck immediately before commit. This avoids a silent overwrite
+            // if another writer changed the file while a snapshot was being made.
+            if (expectedSha256 != null) TextFileSafety.requireUnchanged(safe, expectedSha256)
+            check(temp.renameTo(safe)) { "File replacement failed; original file was preserved." }
         } finally {
             if (temp.exists()) temp.delete()
         }
@@ -281,8 +304,4 @@ class NativeFileManager(
         hidden = file.isHidden,
     )
 
-    private fun looksBinary(bytes: ByteArray): Boolean {
-        val sample = bytes.take(4096)
-        return sample.any { it == 0.toByte() }
-    }
 }
