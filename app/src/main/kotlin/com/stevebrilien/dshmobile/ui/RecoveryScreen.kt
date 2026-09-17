@@ -84,6 +84,7 @@ fun RecoveryScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var updateRelease by remember { mutableStateOf<AppUpdateManager.Release?>(null) }
+    var backupDetailsExpanded by remember { mutableStateOf(false) }
     val showRuntime = view == RecoveryView.RUNTIME || view == RecoveryView.ALL
     val showBackup = view == RecoveryView.BACKUP || view == RecoveryView.ALL
     val showUpdate = view == RecoveryView.UPDATE || view == RecoveryView.ALL
@@ -242,22 +243,16 @@ fun RecoveryScreen(
         if (showBackup) item {
             DshPanel(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(14.dp)) {
-                    DshSectionTitle("恢复保险库", description = "关键数据、配置与本地资产的恢复入口")
+                    DshSectionTitle("保险库状态")
                     discovery?.let { d ->
-                        SelectionContainer {
-                            DshCodeText(
-                                "Vault  ${d.status.root.absolutePath}",
-                                modifier = Modifier.padding(top = 8.dp),
-                            )
-                        }
                         Text(
-                            "跨卸载保留：${if (d.status.persistentAcrossUninstall) "是" else "否"}  ·  Manifest：${if (d.manifestExists) "已发现" else "缺失"}",
-                            modifier = Modifier.padding(top = 5.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = colors.textSecondary,
+                            if (d.status.persistentAcrossUninstall) "已启用长期存储" else "当前文件可能随卸载清除",
+                            modifier = Modifier.padding(top = 6.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (d.status.persistentAcrossUninstall) colors.textSecondary else colors.warning,
                         )
                         Text(
-                            "项目 ${d.projectCount}  ·  会话 ${d.sessionCount}  ·  本地插件 ${d.localPluginCount}",
+                            "项目 ${d.projectCount} · 会话 ${d.sessionCount} · 插件 ${d.localPluginCount}",
                             modifier = Modifier.padding(top = 3.dp),
                             style = MaterialTheme.typography.bodySmall,
                             color = colors.textSecondary,
@@ -274,35 +269,28 @@ fun RecoveryScreen(
                             DshButton(
                                 text = "授权长期存储",
                                 onClick = { requestRecoveryStorageAccess(context) },
-                                modifier = Modifier.padding(top = 9.dp),
+                                modifier = Modifier.padding(top = 8.dp),
                                 icon = DshIconGlyph.SHIELD,
                                 style = DshButtonStyle.PRIMARY,
                             )
                         }
                     }
-
                     Text(
-                        "目前可创建、导出和校验备份；选择备份并恢复数据的安全流程尚未开放。",
+                        "可创建与导出备份；选择备份并恢复尚未开放。",
                         modifier = Modifier.padding(top = 8.dp),
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.textSecondary,
                     )
                     FlowRow(
                         modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        DshButton("刷新", ::refresh, icon = DshIconGlyph.REFRESH, enabled = !busy)
-                        DshButton(
-                            "校验保险库",
-                            { runRecoveryAction(RecoveryAction.VERIFY_PERSISTENT_DATA, "恢复保险库已校验 / 修复") },
-                            icon = DshIconGlyph.CHECK,
-                            enabled = !busy,
-                        )
                         DshButton(
                             "创建快照",
                             { runRecoveryAction(RecoveryAction.CREATE_CHECKPOINT, "已创建并校验本地恢复快照") },
                             icon = DshIconGlyph.COPY,
+                            style = DshButtonStyle.PRIMARY,
                             enabled = !busy,
                         )
                         DshButton(
@@ -312,11 +300,46 @@ fun RecoveryScreen(
                             enabled = !busy,
                         )
                         DshButton(
-                            "校验最新备份",
-                            { runRecoveryAction(RecoveryAction.VERIFY_LATEST_BACKUP, "最新恢复备份完整性校验通过") },
-                            icon = DshIconGlyph.CHECK,
-                            enabled = !busy,
+                            if (backupDetailsExpanded) "收起更多" else "更多操作",
+                            { backupDetailsExpanded = !backupDetailsExpanded },
+                            icon = DshIconGlyph.MORE,
+                            style = DshButtonStyle.GHOST,
                         )
+                    }
+                    if (backupDetailsExpanded) {
+                        discovery?.let { d ->
+                            SelectionContainer {
+                                DshCodeText(
+                                    "位置  ${d.status.root.absolutePath}",
+                                    modifier = Modifier.padding(top = 10.dp),
+                                )
+                            }
+                            Text(
+                                "Manifest：${if (d.manifestExists) "已发现" else "缺失"}",
+                                modifier = Modifier.padding(top = 4.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.textSecondary,
+                            )
+                        }
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(7.dp),
+                            verticalArrangement = Arrangement.spacedBy(7.dp),
+                        ) {
+                            DshButton("刷新", ::refresh, icon = DshIconGlyph.REFRESH, enabled = !busy)
+                            DshButton(
+                                "校验保险库",
+                                { runRecoveryAction(RecoveryAction.VERIFY_PERSISTENT_DATA, "恢复保险库已校验 / 修复") },
+                                icon = DshIconGlyph.CHECK,
+                                enabled = !busy,
+                            )
+                            DshButton(
+                                "校验最新备份",
+                                { runRecoveryAction(RecoveryAction.VERIFY_LATEST_BACKUP, "最新恢复备份完整性校验通过") },
+                                icon = DshIconGlyph.CHECK,
+                                enabled = !busy,
+                            )
+                        }
                     }
                 }
             }

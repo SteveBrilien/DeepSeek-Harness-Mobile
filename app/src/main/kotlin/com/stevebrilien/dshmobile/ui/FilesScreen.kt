@@ -8,6 +8,8 @@ import android.content.Intent
 import android.os.Build
 import android.provider.Settings
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -32,6 +34,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -303,6 +307,7 @@ fun FilesScreen(
                     FileRow(
                         entry = entry,
                         selected = selected,
+                        selectionMode = selectedPath != null,
                         onOpen = {
                             if (entry.isDirectory) {
                                 currentDirectory = File(entry.absolutePath)
@@ -516,7 +521,6 @@ fun FilesScreen(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun FilesHeader(
     rootInfo: FileBrowserRoot,
@@ -530,50 +534,87 @@ private fun FilesHeader(
     onGrantStorage: () -> Unit,
 ) {
     val colors = LocalDshColors.current
-    Column(modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp)) {
-        DshPageHeader(
-            title = "工作区",
-            subtitle = "本地文件与项目目录",
-            trailing = {
-                DshButton("管理项目", onManageProjects, icon = DshIconGlyph.PROJECT)
-            },
-        )
+    var overflowOpen by remember { mutableStateOf(false) }
+    var pathDetailsOpen by remember { mutableStateOf(false) }
+    // Only the relative breadcrumb belongs on the primary screen; the absolute
+    // Android storage path is available on demand, not a permanent heading.
+    val relative = runCatching {
+        currentDirectory.canonicalFile.relativeTo(rootInfo.root.canonicalFile).path
+    }.getOrDefault("")
+    val breadcrumb = if (relative.isBlank()) "根目录" else "根目录 / $relative"
 
-        // The path is useful for navigation and debugging but must not consume
-        // a full card or crowd the actual file list on a narrow handset.
-        SelectionContainer {
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             Text(
-                currentDirectory.absolutePath,
-                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                "工作区",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleLarge,
+                color = colors.textPrimary,
+                maxLines = 1,
+            )
+            DshButton("新建", onNew, icon = DshIconGlyph.PLUS, style = DshButtonStyle.PRIMARY)
+            Box {
+                DshButton("更多", { overflowOpen = true }, icon = DshIconGlyph.MORE)
+                DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }) {
+                    DropdownMenuItem(text = { Text("管理项目") }, onClick = {
+                        overflowOpen = false
+                        onManageProjects()
+                    })
+                    DropdownMenuItem(text = { Text("返回根目录") }, onClick = {
+                        overflowOpen = false
+                        onRoot()
+                    })
+                    DropdownMenuItem(text = { Text("刷新") }, onClick = {
+                        overflowOpen = false
+                        onRefresh()
+                    })
+                    DropdownMenuItem(text = { Text("查看完整路径") }, onClick = {
+                        overflowOpen = false
+                        pathDetailsOpen = true
+                    })
+                }
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            if (canGoUp) DshButton("上一级", onUp, icon = DshIconGlyph.ARROW_LEFT, style = DshButtonStyle.GHOST)
+            Text(
+                breadcrumb,
+                modifier = Modifier.weight(1f),
                 color = colors.textSecondary,
+                style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
-
-        FlowRow(
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            DshButton("新建", onNew, icon = DshIconGlyph.PLUS, style = DshButtonStyle.PRIMARY)
-            DshButton("上一级", onUp, icon = DshIconGlyph.ARROW_LEFT, enabled = canGoUp)
-            DshButton("根目录", onRoot, icon = DshIconGlyph.HOME)
-            DshButton("刷新", onRefresh, icon = DshIconGlyph.REFRESH)
-        }
-
         if (!rootInfo.persistentRecoveryAvailable) {
             DshMessageBanner(
-                title = "恢复保险库尚未启用长期存储",
-                detail = "当前使用应用专属目录，卸载应用后可能被清除。建议授权共享存储后作为长期备份。",
-                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                actionLabel = "立即授权",
+                title = "尚未启用长期存储",
+                detail = "应用卸载可能清除当前文件；可授权共享存储后备份。",
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                actionLabel = "授权",
                 onAction = onGrantStorage,
                 warning = true,
             )
         }
     }
+    if (pathDetailsOpen) AlertDialog(
+        onDismissRequest = { pathDetailsOpen = false },
+        title = { Text("当前目录") },
+        text = {
+            SelectionContainer {
+                Text(currentDirectory.absolutePath, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace))
+            }
+        },
+        confirmButton = { TextButton(onClick = { pathDetailsOpen = false }) { Text("关闭") } },
+    )
 }
 
 @Composable
@@ -632,10 +673,12 @@ private fun FileActions(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FileRow(
     entry: NativeFileEntry,
     selected: Boolean,
+    selectionMode: Boolean,
     onOpen: () -> Unit,
     onSelect: () -> Unit,
 ) {
@@ -649,7 +692,10 @@ private fun FileRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .dshClickable(onClick = onOpen)
+                .combinedClickable(
+                    onClick = { if (selectionMode) onSelect() else onOpen() },
+                    onLongClick = onSelect,
+                )
                 .padding(horizontal = 10.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -681,11 +727,9 @@ private fun FileRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            DshButton(
-                text = if (selected) "已选" else "选择",
-                onClick = onSelect,
-                style = if (selected) DshButtonStyle.PRIMARY else DshButtonStyle.GHOST,
-            )
+            if (selected) {
+                DshIcon(DshIconGlyph.CHECK, "已选中；点击取消", Modifier.size(20.dp), colors.accent)
+            }
         }
     }
 }

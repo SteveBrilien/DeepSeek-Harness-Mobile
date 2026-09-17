@@ -68,14 +68,14 @@ fun DshPageHeader(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.displaySmall,
+                style = MaterialTheme.typography.headlineSmall,
                 color = colors.textPrimary,
             )
             if (!subtitle.isNullOrBlank()) {
                 Text(
                     text = subtitle,
                     modifier = Modifier.padding(top = 3.dp),
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     color = colors.textSecondary,
                 )
             }
