@@ -37,3 +37,11 @@
 - 构建后 `android_signing_verify` 任务 `task-android_signing_verify-6f7640d0b48a46f1a76a` succeeded；包标识、versionCode=26、versionName=0.4.0-preview.6-dev、ZIP完整性及三项内置 Web 资源 SHA 均再次符合。
 - 在 `release/DeepSeek-Harness-Mobile-0.4.0-preview.6-dev.apk` 用原子独占创建方式保留该包，`release/SHA256SUMS` 只追加独立新条目，整包 `sha256sum -c` PASS；既有 release APK 和 `release/update.json` 未动。
 - MCP artifact HTTP server 仍未配置；尝试发布 `artifact-e74755ad3e1149ef9ca07c4bacf970cf` 之前需确认发布服务就绪，否则通过受控 Git 发行文件提交，并验证远端 HTTP 200、大小和哈希。普通项目 sandbox 对 SSH GitHub 严格主机密钥校验失败，不得使用 StrictHostKeyChecking=no 或假设已经上传。只有受控 Git API 的实际推送及公开文件校验成功方可声明可下载。
+
+
+## 2026-09-18 01:58 +08｜受控发布验收（手动测试文件，不是 OTA）
+
+- `release/` APK 与 SHA256SUMS 由 local commit `e850d348593d3093a1489a9002652e30795a4f10` 固定；随后通过 Project `git_push` 的非强制 main 推送成功，未使用禁用主机密钥检查等绕过方式。
+- 通过公开 HTTPS URL 完整重新下载 `https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.4.0-preview.6-dev.apk`：HTTP 200，实得 88,355,472 bytes，SHA256 严格匹配 `e69877e06981cc244df7077c5fa5c9224de34790bf8d780919b7e7ce6edae238`。这是已核实的独立手动测试版直链，不表示任何 G0–G7 真机门禁通过。
+- `release/update.json` 未更改；GitHub 对约84.26 MiB 单文件提示超过推荐的 50MB 但在本次受控推送中接受。未来建议使用 Release assets 或 Artifact server 而不是不断将大 APK 提交进仓库历史。
+- 重要：手机救援端口 22023 当前掉线且自动重连未通过，禁止本会话调用 ADB 安装/覆盖、停进程或清除数据。用户自行安装前应先恢复并复测救援链接、核验兼容签名和数据备份，不允许通过卸载解决覆盖安装问题。
