@@ -12,6 +12,14 @@ port_ok() { [[ $1 =~ ^[0-9]{1,5}$ ]] && (( 10#$1 >= 1024 && 10#$1 <= 65535 )); }
 port_ok "$PHONE_SSH_PORT" && port_ok "$PI_RESCUE_PORT" || { echo 'Port must be 1024..65535.' >&2; exit 2; }
 [[ $PI_SSH_ALIAS =~ ^[a-zA-Z0-9._-]+$ ]] || { echo 'Invalid SSH alias.' >&2; exit 2; }
 command -v ssh >/dev/null || { echo 'OpenSSH client is required on the phone.' >&2; exit 2; }
+# Reject a bare `orange` name. On some mobile DNS networks an unconfigured
+# hostname can resolve to an unrelated public IP. SSH host keys alone are not
+# evidence that this is the intended Orange Pi.
+resolved_host=$(ssh -G "$PI_SSH_ALIAS" 2>/dev/null | awk '$1 == "hostname" && !done { print $2; done=1 }')
+if [[ -z $resolved_host || ( $PI_SSH_ALIAS == orange && $resolved_host == orange ) ]]; then
+  echo 'The orange SSH alias is unconfigured. Verify and configure the trusted LAN or cloud route first; refusing remote connection.' >&2
+  exit 4
+fi
 
 if ! timeout 3 bash -c 'exec 3<>/dev/tcp/127.0.0.1/$1' _ "$PHONE_SSH_PORT" 2>/dev/null; then
     echo "No independent phone sshd responding at 127.0.0.1:$PHONE_SSH_PORT. Start it before this tunnel." >&2

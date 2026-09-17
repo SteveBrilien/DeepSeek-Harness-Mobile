@@ -4,7 +4,7 @@
 
 ## 1. 经过核查的基线及安全约束
 
-- 橙派 OpenSSH 22 正监听；现存 `orangepi-azure-tunnel@22022` service active/running，**必须保持不动**。既有手机 Termux SSH alias `orange` 据旧交接可通过云跳板连接橙派；本轮尚未从手机重新验证这一事实。
+- 橙派 OpenSSH 22 正监听；现存 `orangepi-azure-tunnel@22022` service active/running，**必须保持不动**。**手机实测否定了此前对别名的假设：** `ssh -G orange` 返回 `hostname orange`、`port 22`、无 ProxyJump，手机 DNS 把它解析到不可信的 `28.0.0.205:22`，SSH 在密钥交换前断开。禁止再次向这个地址尝试连接；先核对同网 LAN 或已有真实云跳板，并配置经主机指纹核验的 SSH 别名。
 - 新的橙派本地 TCP `127.0.0.1:22023`（反向 SSH 到手机 `127.0.0.1:8022`）、`127.0.0.1:25555`（可选 ADB 连接）与 `127.0.0.1:25554`（可选 ADB 临时配对）目前均没有监听。之前手机 LAN 地址不可达，`adb devices` 为零设备。
 - 新设备 SSH identity 在橙派项目 `.private/ssh/id_ed25519_dshmobile_device`，私钥 `0600`、目录 `0700`、`.private/` 由 `.gitignore` 排除；仅公钥放手机账号的 `authorized_keys`。不得将私钥、ADB pairing code、Wi-Fi pairing QR、用户私密文件放入 Git/MCP 日志/聊天。可在橙派上 `ssh-keygen -lf .private/ssh/id_ed25519_dshmobile_device.pub -E sha256` 核对公钥指纹。
 - 手机端 sshd/tmux 必须属于**与 DSH Mobile 不同的 Termux 或独立沙箱包 UID/进程树**，不能由正在覆盖安装的 App 自己启动并持有。APK 升级只设计为不主动停止救援通道；网络掉线、OriginOS 杀后台、手机重启、Termux 自身更新无法做零中断承诺。tmux 保留的是其宿主进程运行期间的 session，不提供重启后进程持久性。
