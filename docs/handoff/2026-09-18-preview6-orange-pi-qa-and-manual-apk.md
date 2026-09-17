@@ -28,3 +28,12 @@
 ## 使用说明
 
 本 APK 如发布，仅给项目所有者手动覆盖安装与反馈。不能卸载旧版或清除数据；安装器签名冲突/降级冲突需停止，不得以卸载或删数据修复。安全发布和手机更新仍为两个独立门禁。
+
+
+## 2026-09-18 01:55 +08｜冻结、clean-build 与本地手动包
+
+- 源代码与上述测试记录由 local commit `a55b15ce98fcf742fe9d5f6cd92e75a481423501` 固定，提交前后无未授权变动；构建时 `git_dirty=false`。
+- `dshm_preview6_clean_build_temp` 任务 `task-dshm_preview6_clean_build_temp-9337364438cd44cfb122` succeeded / exit 0，实际运行 `:app:clean :app:assembleDebug`，build successful；清理后的 APK 88,355,472 bytes、SHA256 仍为 `e69877e06981cc244df7077c5fa5c9224de34790bf8d780919b7e7ce6edae238`，与 dirty candidate 完全一致。构建重用已受控验证的缓存与依赖，并非重新下载所有工具链。
+- 构建后 `android_signing_verify` 任务 `task-android_signing_verify-6f7640d0b48a46f1a76a` succeeded；包标识、versionCode=26、versionName=0.4.0-preview.6-dev、ZIP完整性及三项内置 Web 资源 SHA 均再次符合。
+- 在 `release/DeepSeek-Harness-Mobile-0.4.0-preview.6-dev.apk` 用原子独占创建方式保留该包，`release/SHA256SUMS` 只追加独立新条目，整包 `sha256sum -c` PASS；既有 release APK 和 `release/update.json` 未动。
+- MCP artifact HTTP server 仍未配置；尝试发布 `artifact-e74755ad3e1149ef9ca07c4bacf970cf` 之前需确认发布服务就绪，否则通过受控 Git 发行文件提交，并验证远端 HTTP 200、大小和哈希。普通项目 sandbox 对 SSH GitHub 严格主机密钥校验失败，不得使用 StrictHostKeyChecking=no 或假设已经上传。只有受控 Git API 的实际推送及公开文件校验成功方可声明可下载。
