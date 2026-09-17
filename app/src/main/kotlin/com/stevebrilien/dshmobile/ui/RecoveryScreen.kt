@@ -12,6 +12,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -55,11 +57,11 @@ import kotlinx.coroutines.withContext
 
 enum class RecoveryView { RUNTIME, BACKUP, UPDATE, ADVANCED, ALL }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun RecoveryScreen(
     vault: RecoveryVault,
     controller: NativeRecoveryController,
-    themeMode: DshThemeMode,
     onRunOnboarding: () -> Unit,
     view: RecoveryView = RecoveryView.ALL,
     modifier: Modifier = Modifier,
@@ -170,11 +172,6 @@ fun RecoveryScreen(
                     },
                 )
                 if (showAdvanced) {
-                    DshSectionTitle(
-                        title = "外观",
-                        description = "由 DSH Web Client 统一管理 · 当前 ${themeMode.labelZh}",
-                        modifier = Modifier.padding(top = 16.dp),
-                    )
                     DshButton(
                         text = "重新运行环境引导",
                         onClick = onRunOnboarding,
@@ -284,9 +281,16 @@ fun RecoveryScreen(
                         }
                     }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp).horizontalScroll(rememberScrollState()),
+                    Text(
+                        "目前可创建、导出和校验备份；选择备份并恢复数据的安全流程尚未开放。",
+                        modifier = Modifier.padding(top = 8.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textSecondary,
+                    )
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
                         horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         DshButton("刷新", ::refresh, icon = DshIconGlyph.REFRESH, enabled = !busy)
                         DshButton(
@@ -311,18 +315,6 @@ fun RecoveryScreen(
                             "校验最新备份",
                             { runRecoveryAction(RecoveryAction.VERIFY_LATEST_BACKUP, "最新恢复备份完整性校验通过") },
                             icon = DshIconGlyph.CHECK,
-                            enabled = !busy,
-                        )
-                        DshButton(
-                            "导出诊断",
-                            { runRecoveryAction(RecoveryAction.EXPORT_DIAGNOSTICS, "诊断信息已导出到恢复保险库") },
-                            icon = DshIconGlyph.FILE,
-                            enabled = !busy,
-                        )
-                        DshButton(
-                            "安全模式",
-                            { runRecoveryAction(RecoveryAction.START_SAFE_MODE, "下次 Runtime 启动将进入安全模式") },
-                            icon = DshIconGlyph.SHIELD,
                             enabled = !busy,
                         )
                     }
@@ -423,6 +415,32 @@ fun RecoveryScreen(
                 detail = component.detail.orEmpty(),
                 state = component.state.name,
             )
+        }
+
+        if (showAdvanced) item {
+            DshPanel(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    DshSectionTitle("维护操作", description = "诊断导出和安全模式不属于备份恢复")
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        DshButton(
+                            "导出诊断",
+                            { runRecoveryAction(RecoveryAction.EXPORT_DIAGNOSTICS, "诊断信息已导出到恢复保险库") },
+                            icon = DshIconGlyph.FILE,
+                            enabled = !busy,
+                        )
+                        DshButton(
+                            "安全模式",
+                            { runRecoveryAction(RecoveryAction.START_SAFE_MODE, "下次 Runtime 启动将进入安全模式") },
+                            icon = DshIconGlyph.SHIELD,
+                            enabled = !busy,
+                        )
+                    }
+                }
+            }
         }
 
         if (showAdvanced) item {

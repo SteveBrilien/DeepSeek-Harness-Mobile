@@ -35,7 +35,6 @@ fun SettingsScreen(
     vault: RecoveryVault,
     controller: NativeRecoveryController,
     runtimeSupervisor: RuntimeSupervisor,
-    themeMode: DshThemeMode,
     onRunOnboarding: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -61,7 +60,6 @@ fun SettingsScreen(
         RecoveryScreen(
             vault = vault,
             controller = controller,
-            themeMode = themeMode,
             onRunOnboarding = onRunOnboarding,
             view = recoveryView,
             onBack = { detail = SettingsDetail.NONE },
@@ -71,19 +69,14 @@ fun SettingsScreen(
     }
 
     val runtimeState by runtimeSupervisor.state.collectAsState()
-    val startupMetrics by runtimeSupervisor.startupMetrics.collectAsState()
-    val runtimeDetail = buildString {
-        append(
-            when (runtimeState) {
-                RuntimeSupervisor.State.Idle -> "未启动"
-                is RuntimeSupervisor.State.Inspecting -> "检查中"
-                is RuntimeSupervisor.State.Starting -> "启动中"
-                is RuntimeSupervisor.State.Ready -> "已就绪"
-                is RuntimeSupervisor.State.Failed -> "需要处理"
-            },
-        )
-        startupMetrics.lastDurationMillis?.let { append(" · 上次 ${formatSettingsDuration(it)}") }
-        startupMetrics.averageDurationMillis?.let { append(" · 平均 ${formatSettingsDuration(it)}") }
+    // Settings navigation shows the actionable runtime state. Startup timing
+    // belongs in diagnostics, not in every entry-point summary.
+    val runtimeDetail = when (runtimeState) {
+        RuntimeSupervisor.State.Idle -> "未启动 · 查看运行环境"
+        is RuntimeSupervisor.State.Inspecting -> "检查中 · 查看运行环境"
+        is RuntimeSupervisor.State.Starting -> "启动中 · 查看运行环境"
+        is RuntimeSupervisor.State.Ready -> "已就绪 · 启动与健康状态"
+        is RuntimeSupervisor.State.Failed -> "需要处理 · 查看错误与修复"
     }
 
     LazyColumn(
@@ -95,70 +88,63 @@ fun SettingsScreen(
         item {
             DshPageHeader(
                 title = "设置",
-                subtitle = "只保留真正不同的任务入口",
+                subtitle = "应用配置、数据与运行环境",
                 modifier = Modifier.padding(top = 12.dp, bottom = 6.dp),
             )
         }
 
-        item {
-            SettingsGroup(title = "DSH") {
-                Column {
-                    SettingsRow(
-                        icon = DshIconGlyph.PALETTE,
-                        title = "外观",
-                        detail = "由 DSH 统一管理 · 当前 ${themeMode.labelZh}",
-                        trailing = null,
-                    )
-                    SettingsDivider()
-                    SettingsRow(
-                        icon = DshIconGlyph.FILE,
-                        title = "DSH 配置",
-                        detail = "应用内查看和编辑 settings.yaml",
-                        onClick = { detail = SettingsDetail.CONFIG },
-                    )
-                }
-            }
-        }
-
-        item {
-            SettingsGroup(title = "本地环境") {
-                Column {
-                    SettingsRow(
-                        icon = DshIconGlyph.TERMINAL,
-                        title = "运行时",
-                        detail = runtimeDetail,
-                        onClick = { detail = SettingsDetail.RUNTIME },
-                    )
-                    SettingsDivider()
-                    SettingsRow(
-                        icon = DshIconGlyph.SHIELD,
-                        title = "备份与恢复",
-                        detail = "保险库、快照与可移植备份",
-                        onClick = { detail = SettingsDetail.BACKUP },
-                    )
-                }
-            }
-        }
-
+        // DSH owns appearance, models and plugins. Do not display a fake
+        // clickable appearance row or duplicate the Web settings hierarchy.
         item {
             SettingsGroup(title = "应用") {
                 SettingsRow(
                     icon = DshIconGlyph.REFRESH,
-                    title = "应用更新",
-                    detail = "检查并校验新安装包",
+                    title = "检查更新",
+                    detail = "应用安装包检查与校验",
                     onClick = { detail = SettingsDetail.UPDATE },
                 )
             }
         }
 
         item {
-            SettingsGroup(title = "高级") {
+            SettingsGroup(title = "数据") {
                 SettingsRow(
-                    icon = DshIconGlyph.INFO,
-                    title = "高级维护",
-                    detail = "环境引导、日志、WebView 诊断与安全模式",
-                    onClick = { detail = SettingsDetail.ADVANCED },
+                    icon = DshIconGlyph.SHIELD,
+                    title = "备份与恢复",
+                    detail = "快照、备份校验 · 恢复操作尚未完整开放",
+                    onClick = { detail = SettingsDetail.BACKUP },
                 )
+            }
+        }
+
+        item {
+            SettingsGroup(title = "运行环境") {
+                SettingsRow(
+                    icon = DshIconGlyph.TERMINAL,
+                    title = "本地运行时",
+                    detail = runtimeDetail,
+                    onClick = { detail = SettingsDetail.RUNTIME },
+                )
+            }
+        }
+
+        item {
+            SettingsGroup(title = "开发者工具") {
+                Column {
+                    SettingsRow(
+                        icon = DshIconGlyph.FILE,
+                        title = "DSH 配置文件",
+                        detail = "查看和编辑 settings.yaml",
+                        onClick = { detail = SettingsDetail.CONFIG },
+                    )
+                    SettingsDivider()
+                    SettingsRow(
+                        icon = DshIconGlyph.INFO,
+                        title = "诊断与维护",
+                        detail = "环境引导、日志、WebView 诊断与安全模式",
+                        onClick = { detail = SettingsDetail.ADVANCED },
+                    )
+                }
             }
         }
 
@@ -243,7 +229,3 @@ private fun SettingsDivider() {
         androidx.compose.foundation.layout.Spacer(Modifier.padding(top = 0.5.dp))
     }
 }
-
-private fun formatSettingsDuration(millis: Long): String =
-    if (millis < 10_000L) String.format(java.util.Locale.US, "%.1fs", millis / 1000.0)
-    else "${millis / 1000}s"

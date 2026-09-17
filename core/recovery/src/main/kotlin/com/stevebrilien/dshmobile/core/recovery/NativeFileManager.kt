@@ -1,6 +1,8 @@
 package com.stevebrilien.dshmobile.core.recovery
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.Environment
 import java.io.File
@@ -112,22 +114,47 @@ class NativeFileManager(
         TextFileContent(entry(safe), bytes.toString(charset), charset.name())
     }
 
+    /** Read-only, bounded decoding for the native browser; never exposes file:// to WebView. */
+    fun previewImage(file: File, maxBytes: Long = 25L * 1024L * 1024L): Result<Bitmap> = runCatching {
+        check(!java.nio.file.Files.isSymbolicLink(file.toPath())) { "Image preview does not follow symbolic links." }
+        val safe = requireInsideBrowserRoot(file)
+        check(safe.isFile) { "Not a regular file." }
+        check(safe.length() in 1..maxBytes) { "Image is empty or exceeds preview size limit." }
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(safe.absolutePath, bounds)
+        check(bounds.outWidth > 0 && bounds.outHeight > 0) { "Not a supported image." }
+        check(bounds.outWidth <= 100_000 && bounds.outHeight <= 100_000) { "Invalid image dimensions." }
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 1600) sample *= 2
+        val image = BitmapFactory.decodeFile(safe.absolutePath, BitmapFactory.Options().apply {
+            inSampleSize = sample
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }) ?: error("Image decode failed.")
+        check(image.width <= 1600 && image.height <= 1600) { "Image preview exceeds pixel limit." }
+        image
+    }
+
     fun saveText(file: File, content: String): Result<File> = runCatching {
         val safe = requireInsideBrowserRoot(file)
         check(!safe.isDirectory) { "Cannot save text into a directory." }
         if (safe.exists()) snapshotBeforeOverwrite(safe)
         val temp = File(safe.parentFile, ".${safe.name}.dshm-tmp-${System.nanoTime()}")
-        temp.writeText(content, StandardCharsets.UTF_8)
-        if (!temp.renameTo(safe)) {
-            safe.outputStream().use { output -> temp.inputStream().use { it.copyTo(output) } }
-            temp.delete()
+        try {
+            temp.writeText(content, StandardCharsets.UTF_8)
+            // Never fall back to truncating the only original file if replace fails.
+            // The existing file was snapshotted before this point.
+            check(temp.renameTo(safe)) { "Atomic file replacement failed; original file was preserved." }
+        } finally {
+            if (temp.exists()) temp.delete()
         }
         safe
     }
 
     fun rename(file: File, newName: String): Result<File> = runCatching {
         validateName(newName)
+        check(!java.nio.file.Files.isSymbolicLink(file.toPath())) { "Renaming a symbolic link is not supported." }
         val safe = requireInsideBrowserRoot(file)
+        FileOperationSafety.requireNotProtectedRoot(safe, browserRoot().root, vault.status().root)
         val target = File(safe.parentFile, newName)
         requireInsideBrowserRoot(target)
         check(!target.exists()) { "Already exists: ${target.name}" }
@@ -136,7 +163,11 @@ class NativeFileManager(
     }
 
     fun deleteToTrash(file: File): Result<File> = runCatching {
+        check(!java.nio.file.Files.isSymbolicLink(file.toPath())) { "Moving symbolic links to Trash is not supported." }
         val safe = requireInsideBrowserRoot(file)
+        val recoveryRoot = vault.status().root
+        FileOperationSafety.requireNotProtectedRoot(safe, browserRoot().root, recoveryRoot)
+        FileOperationSafety.requireNoRecursiveSymlinks(safe, browserRoot().root)
         val trash = File(vault.ensureLayout().getOrThrow().root, ".Trash")
         check(trash.exists() || trash.mkdirs()) { "Unable to create Trash." }
         val stamp = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.US).format(Date())
@@ -146,19 +177,34 @@ class NativeFileManager(
     }
 
     fun copy(source: File, destinationDirectory: File): Result<File> = runCatching {
+        check(!java.nio.file.Files.isSymbolicLink(source.toPath())) { "Copying symbolic links is not supported." }
         val safeSource = requireInsideBrowserRoot(source)
         val safeDestination = requireInsideBrowserRoot(destinationDirectory)
         check(safeDestination.isDirectory) { "Destination is not a directory." }
+        FileOperationSafety.requireDestinationOutsideSource(safeSource, safeDestination)
+        FileOperationSafety.requireNoRecursiveSymlinks(safeSource, browserRoot().root)
         val target = uniqueTarget(safeDestination, safeSource.name)
-        copyRecursivelyStrict(safeSource, target)
+        val staging = File(safeDestination, ".${safeSource.name}.dshm-copy-${java.util.UUID.randomUUID()}")
+        check(!staging.exists()) { "Temporary copy path unexpectedly exists." }
+        try {
+            copyRecursivelyStrict(safeSource, staging)
+            check(!target.exists()) { "Destination changed while copying; original was preserved." }
+            check(staging.renameTo(target)) { "Could not commit copied data; original was preserved." }
+        } finally {
+            // Only discard incomplete staging data, never the source or a committed target.
+            if (staging.exists()) staging.deleteRecursively()
+        }
         target
     }
 
     fun move(source: File, destinationDirectory: File): Result<File> = runCatching {
+        check(!java.nio.file.Files.isSymbolicLink(source.toPath())) { "Moving symbolic links is not supported." }
         val safeSource = requireInsideBrowserRoot(source)
         val safeDestination = requireInsideBrowserRoot(destinationDirectory)
         check(safeDestination.isDirectory) { "Destination is not a directory." }
-        check(!isInside(safeDestination, safeSource)) { "Cannot move a directory into itself." }
+        FileOperationSafety.requireNotProtectedRoot(safeSource, browserRoot().root, vault.status().root)
+        FileOperationSafety.requireDestinationOutsideSource(safeSource, safeDestination)
+        FileOperationSafety.requireNoRecursiveSymlinks(safeSource, browserRoot().root)
         val target = uniqueTarget(safeDestination, safeSource.name)
         moveAcrossFilesystems(safeSource, target)
         target
@@ -185,7 +231,9 @@ class NativeFileManager(
     private fun copyRecursivelyStrict(source: File, target: File) {
         if (source.isDirectory) {
             check(target.mkdirs()) { "Unable to create ${target.absolutePath}" }
-            source.listFiles()?.forEach { child ->
+            val children = source.listFiles() ?: error("Unable to read directory during copy.")
+            children.forEach { child ->
+                check(!java.nio.file.Files.isSymbolicLink(child.toPath())) { "A symbolic link appeared during copy." }
                 copyRecursivelyStrict(child, File(target, child.name))
             }
         } else {

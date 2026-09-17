@@ -10,7 +10,7 @@ const tokyoManifest = JSON.parse(await readFile(resolve(tokyoRoot, 'package.json
 const tokyoClient = await readFile(resolve(tokyoRoot, 'lib/client.js'), 'utf8');
 
 assert.equal(manifest.name, 'dsh-client-ui-mobile');
-assert.equal(manifest.version, '0.4.2-dshm.1');
+assert.equal(manifest.version, '0.4.2-dshm.2');
 assert.ok(manifest.dsh?.client, 'mobile UI must remain a DSH client plugin');
 assert.ok(manifest.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-theme'), 'mobile UI must inject the official DSH theme service');
 assert.ok(manifest.dsh.client.inject.includes('dsh-plugin-tokyo-night'), 'mobile UI must depend on the Tokyo extension service provider');
@@ -30,11 +30,19 @@ assert.ok(client.includes('data-dshm-sidebar-search'), 'sidebar search must be s
 assert.ok(client.includes('data-dshm-sidebar-toolbar'), 'expanded sidebar search must own the entire toolbar, including the workspace heading');
 assert.ok(client.includes('> :not([data-dshm-sidebar-search])'), 'expanded sidebar search must hide competing toolbar siblings');
 assert.ok(client.includes('data-dshm-rightbar-col'), 'right sidebar must be semantically tagged before overlay styling');
+assert.ok(client.includes('[data-dshm-shell][data-rightbar-fullscreen] [data-dshm-rightbar-col]'), 'mobile fullscreen rightbar must be visible even when the desktop grid track is collapsed');
+assert.ok(client.includes('frame.hasAttribute("data-rightbar-fullscreen") ||'), 'rightbar open state must distinguish fullscreen presentation from zero-width desktop track');
+assert.ok(client.includes(':has([data-sidebar-right-panel="fullscreen"][data-sidebar-right-open])'), 'official rightbar open state must reveal its mobile column before deferred fullscreen presentation');
+assert.ok(client.includes('"data-sidebar-right-open", "aria-expanded"'), 'rightbar opening must schedule transient UI synchronization');
 assert.ok(client.includes('data-dshm-font-size-stepper'), 'font-size control must be semantically tagged before touch styling');
 assert.ok(client.includes('Increase font size') && client.includes('增大字号'), 'font-size adaptation must use ARIA semantics rather than CSS-module hashes');
 assert.ok(client.includes('data-dshm-desktop-config-action'), 'desktop-only config action must be explicitly tagged for mobile suppression');
 assert.ok(client.includes('-webkit-tap-highlight-color: transparent'), 'mobile Web interactions must suppress Android blue tap highlights');
-assert.ok(client.includes('transform: translate3d(-100%, 0, 0)'), 'collapsed sidebar must stay mounted off-canvas for smooth transform animation');
+assert.ok(client.includes('left: calc(0px - min(80vw, 360px, calc(100% - 48px))) !important'), 'collapsed drawer must leave the viewport without creating a fixed-position containing block');
+assert.ok(client.includes('left: 0 !important'), 'expanded drawer must reach the viewport left edge');
+const drawerRule = client.match(/html\[\$\{ROOT_ATTR\}=\"active\"\] \[data-dshm-sidebar-col\] \{([^}]*)\}/)?.[1];
+assert.ok(drawerRule, 'drawer style must be defined');
+assert.equal(/(?:^|\n)\s*(?:transform|translate|will-change)\s*:/.test(drawerRule), false, 'drawer must not establish a containing block for native DSH fixed Settings');
 assert.ok(client.includes('width: min(80vw, 360px) !important'), 'mobile drawer must be narrower than screen and leave a tappable backdrop');
 assert.ok(client.includes('max-width: calc(100% - 48px) !important'), 'drawer must leave at least 48px dismissal surface');
 assert.ok(client.includes('dshm-mobile-drawer-backdrop'), 'drawer must have an explicit clickable backdrop instead of an empty strip');
@@ -42,7 +50,7 @@ assert.ok(client.includes('inset: 0 0 0 min(80vw, 360px, calc(100% - 48px))'), '
 assert.ok(client.includes("backdrop.addEventListener('click', onBackdropClick)"), 'backdrop must close via the official layout state');
 assert.ok(client.includes('dockNavInSessionHeader(frame, toggle)'), 'mobile navigation must reserve space inside the native session header');
 assert.ok(client.includes('data-dshm-nav-docked'), 'header toggle must use in-flow rather than fixed positioning');
-assert.ok(client.includes('mobile-v6'), 'mobile shell must use the v6 motion contract');
+assert.ok(client.includes('mobile-v7'), 'mobile shell must use the v7 modal-isolation contract');
 assert.ok(client.includes('data-dshm-conversation-view'), 'primary conversation view must be semantically tagged for bounded transitions');
 assert.ok(client.includes('aria-selected'), 'primary view transition must key off official tab selection semantics');
 assert.ok(client.includes('duration: 160'), 'primary view transition must stay short and bounded');

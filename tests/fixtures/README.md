@@ -1,0 +1,7 @@
+# Non-personal, disposable browser attachment fixtures
+
+These six files are synthetic test inputs for the **isolated** DSH browser fixture; they contain no real user files, credentials, external links or device data. `dshm-multi-0{1,2,3}.txt` each contain only a distinct fixed test label. `dshm-multi-image-0{1,2,3}.png` are 32x32 generated solid-color RGB PNGs. They are intentionally small; larger-file and permission edge cases require separate bounded fixtures.
+
+Manual browser regression steps (not a replacement for Android device acceptance): start a disposable DSH test profile, select a workspace and session, then call browser file-upload on `input[type=file][multiple]` for all three TXT paths in one batch. Assert that all three draft tiles appear, each progresses to a ready/non-uploading state, the send button is enabled, and all items can be independently removed. Repeat with the three PNGs: all three images must have nonblank previews with independent remove buttons. Test a genuine send only with an authorized, disposable test model/backend and confirm attachment receipts on the server; do not reuse a personal API key in fixtures. Android `ClipData`/URI grants and OriginOS WebView still require physical-device testing and cannot be inferred from the Chromium result.
+
+No real user attachments may be copied here. Do not use these artificial tiny files to claim large-image memory, URI lifetime, system chooser, or cross-uninstall data guarantees.

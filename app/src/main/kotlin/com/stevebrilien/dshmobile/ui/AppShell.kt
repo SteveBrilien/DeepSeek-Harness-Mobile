@@ -63,11 +63,6 @@ private enum class MainSection(val label: String, val icon: DshIconGlyph) {
     Settings("设置", DshIconGlyph.SETTINGS),
 }
 
-private enum class WorkspaceSection(val label: String, val icon: DshIconGlyph) {
-    Projects("项目", DshIconGlyph.PROJECT),
-    Files("文件", DshIconGlyph.FILE),
-}
-
 private val BottomNavigationHeight = 56.dp
 
 @Composable
@@ -157,7 +152,6 @@ private fun DshMobileShell(
     val recoveryShell = remember(context) { NativeRecoveryShell(context, fileManager) }
     val recoveryController = remember(context) { NativeRecoveryController(context, vault) }
     var selected by remember { mutableStateOf(MainSection.Home) }
-    var workspaceSection by remember { mutableStateOf(WorkspaceSection.Projects) }
     BackHandler {
         if (selected != MainSection.Home) {
             selected = MainSection.Home
@@ -212,8 +206,6 @@ private fun DshMobileShell(
                 when (section) {
                     MainSection.Home -> Unit
                     MainSection.Workspace -> WorkspaceHubScreen(
-                        section = workspaceSection,
-                        onSectionChange = { workspaceSection = it },
                         registry = projectRegistry,
                         fileManager = fileManager,
                         modifier = contentModifier,
@@ -227,7 +219,6 @@ private fun DshMobileShell(
                         vault = vault,
                         controller = recoveryController,
                         runtimeSupervisor = runtimeSupervisor,
-                        themeMode = themeMode,
                         onRunOnboarding = onRunOnboarding,
                         modifier = contentModifier,
                     )
@@ -251,57 +242,33 @@ private fun DshMobileShell(
 
 @Composable
 private fun WorkspaceHubScreen(
-    section: WorkspaceSection,
-    onSectionChange: (WorkspaceSection) -> Unit,
     registry: ProjectRegistry,
     fileManager: NativeFileManager,
     modifier: Modifier = Modifier,
 ) {
-    val colors = LocalDshColors.current
-    Column(modifier = modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            WorkspaceSection.entries.forEach { item ->
-                Surface(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(38.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .dshClickable { onSectionChange(item) },
-                    color = if (item == section) colors.selected else Color.Transparent,
-                    border = BorderStroke(0.5.dp, colors.border1),
-                    shape = RoundedCornerShape(10.dp),
-                    tonalElevation = 0.dp,
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        DshIcon(
-                            glyph = item.icon,
-                            contentDescription = item.label,
-                            modifier = Modifier.size(17.dp),
-                            tint = if (item == section) colors.textPrimary else colors.textSecondary,
-                        )
-                        Text(
-                            item.label,
-                            modifier = Modifier.padding(start = 7.dp),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = if (item == section) colors.textPrimary else colors.textSecondary,
-                        )
-                    }
-                }
+    // File browsing is the primary workspace. Project registration remains
+    // an explicit second-level tool; it never changes DSH Workspace/Session.
+    var managingProjects by remember { mutableStateOf(false) }
+    BackHandler(enabled = managingProjects) { managingProjects = false }
+    if (managingProjects) {
+        Column(modifier = modifier.fillMaxSize()) {
+            Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                DshButton(
+                    "返回文件",
+                    onClick = { managingProjects = false },
+                    icon = DshIconGlyph.ARROW_LEFT,
+                    style = DshButtonStyle.GHOST,
+                )
             }
+            ProjectsScreen(registry = registry, modifier = Modifier.weight(1f))
         }
-        when (section) {
-            WorkspaceSection.Projects -> ProjectsScreen(registry = registry, modifier = Modifier.weight(1f))
-            WorkspaceSection.Files -> FilesScreen(fileManager = fileManager, modifier = Modifier.weight(1f))
-        }
+    } else {
+        FilesScreen(
+            fileManager = fileManager,
+            registry = registry,
+            onManageProjects = { managingProjects = true },
+            modifier = modifier,
+        )
     }
 }
 

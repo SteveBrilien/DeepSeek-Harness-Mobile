@@ -122,19 +122,30 @@ private fun DshWebClient(
     val context = LocalContext.current
     val diagnostics = remember(context) { DshWebViewDiagnostics(context.applicationContext) }
     var fileChooserCallback by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
+    var pendingFileChooserMode by remember { mutableStateOf(WebChromeClient.FileChooserParams.MODE_OPEN) }
     val fileChooserLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
         val callback = fileChooserCallback
         fileChooserCallback = null
-        val uris = WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
-        // Counts only: content URIs, display names and file contents are private.
-        // This differentiates Android picker/ClipData loss from downstream DSH
-        // attachment processing without claiming a multi-upload fix yet.
-        diagnostics.append(
-            "file-chooser resultCode=${result.resultCode} clipCount=${result.data?.clipData?.itemCount ?: 0} " +
-                "hasData=${result.data?.data != null} returnedCount=${uris?.size ?: 0} callbackPresent=${callback != null}",
+        val parsed = runCatching {
+            WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
+        }.getOrNull()
+        val uris = AndroidFileChooserResult.resolve(
+            resultCode = result.resultCode,
+            data = result.data,
+            mode = pendingFileChooserMode,
+            parsed = parsed,
         )
+        // Only anonymous counts and completion state are logged. Do not log
+        // filenames, content URIs, document data or picker intent payloads.
+        diagnostics.append(
+            "file-chooser resultCode=${result.resultCode} mode=$pendingFileChooserMode " +
+                "clipCount=${result.data?.clipData?.itemCount ?: 0} hasData=${result.data?.data != null} " +
+                "parsedCount=${parsed?.size ?: 0} returnedCount=${uris?.size ?: 0} " +
+                "callbackPresent=${callback != null}",
+        )
+        pendingFileChooserMode = WebChromeClient.FileChooserParams.MODE_OPEN
         callback?.onReceiveValue(uris)
     }
     val latestAuthenticationRejected by rememberUpdatedState(onAuthenticationRejected)
@@ -167,6 +178,8 @@ private fun DshWebClient(
         diagnostics.append("client-enter host=${hostState.id} view=${viewIdentity(webView)}")
         onDispose {
             fileChooserCallback?.onReceiveValue(null)
+            fileChooserCallback = null
+            pendingFileChooserMode = WebChromeClient.FileChooserParams.MODE_OPEN
             // The WebView belongs to the shell-level host and deliberately survives this
             // composable leaving/re-entering composition. DSH keeps SPA state and cookies.
             diagnostics.append("client-leave host=${hostState.id} view=${viewIdentity(webView)}")
@@ -198,15 +211,21 @@ private fun DshWebClient(
                 filePathCallback: ValueCallback<Array<Uri>>?,
                 fileChooserParams: FileChooserParams?,
             ): Boolean {
-                fileChooserCallback?.onReceiveValue(null)
                 if (filePathCallback == null) return false
+                // A launcher has one in-flight ActivityResult. Replacing its callback
+                // would deliver an older picker result to a different Web input.
+                // Reject only the new request; preserve the original chooser.
+                if (fileChooserCallback != null) {
+                    diagnostics.append("file-chooser rejected overlapping-request")
+                    filePathCallback.onReceiveValue(null)
+                    return true
+                }
                 fileChooserCallback = filePathCallback
                 val intent = runCatching {
                     val multiple = fileChooserParams?.mode == FileChooserParams.MODE_OPEN_MULTIPLE
                     (fileChooserParams?.createIntent() ?: Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                         addCategory(Intent.CATEGORY_OPENABLE)
                         type = "*/*"
-                        putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
                     }).apply {
                         // Android 11 provider implementations vary in how they
                         // honor createIntent() for MODE_OPEN_MULTIPLE. Explicitly
@@ -221,15 +240,17 @@ private fun DshWebClient(
                     return false
                 }
                 return runCatching {
+                    pendingFileChooserMode = fileChooserParams?.mode ?: FileChooserParams.MODE_OPEN
                     fileChooserLauncher.launch(intent)
                     diagnostics.append(
-                        "file-chooser launched mode=${fileChooserParams?.mode ?: -1} " +
+                        "file-chooser launched mode=$pendingFileChooserMode " +
                             "allowsMultiple=${intent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)}",
                     )
                     true
                 }.getOrElse { failure ->
                     diagnostics.append("file-chooser launch-failed reason=${failure.message ?: failure::class.java.simpleName}")
                     fileChooserCallback = null
+                    pendingFileChooserMode = FileChooserParams.MODE_OPEN
                     filePathCallback.onReceiveValue(null)
                     false
                 }

@@ -63,3 +63,27 @@
 - GitHub Raw 手动下载地址：`https://raw.githubusercontent.com/SteveBrilien/DeepSeek-Harness-Mobile/main/release/DeepSeek-Harness-Mobile-0.4.0-preview.4-dev.apk`；远端实际 HTTP 200、Content-Length=88316312；独立流式下载的 SHA-256 与上述完全一致。原 Preview.3/Preview.2 APK 未覆盖或删除。MCP artifact server 仍关闭；不使用虚构的 signed URL。
 - 当前源/资源 E2E `task-runtime_alpine_e2e-8fe8777e879f48c8a19a` PASS（上一轮 CSS 最终版）；本次 clean Git build 之后 `android_unit_test` `task-android_unit_test-8a35a93a83f74a4195ba` PASS（161 tasks）、`android_lint` `task-android_lint-7b0f604b7ebd479f8639` PASS（289 tasks）；Node24 syntax/UI/WebView policy/diff-check PASS。以上都不能替代无 ADB 连接的 OriginOS 真机验收。
 - 交付性质仅手动覆盖安装与采集反馈。请在不卸载、不清数据前提下核对：抽屉开关和遮罩关闭、已进入会话的标题/右栏、原生文件多选 1/2/3/5 项到实际发送、IME 收起弹跳、系统栏以及设置/工作区；保留失败和未修复项。签名或安装冲突立即停止，不建议卸载、清理持久 Runtime/DSH/项目或凭据。
+
+
+## 2026-09-17 真实 Preview.4 反馈：先纠偏，不能拿构建通过作交付完成
+
+新增真机截图与按阶段需求核对见 `2026-09-17-preview4-device-regressions-and-scope.md`，保留以上旧状态为历史记录。Preview.4 实际仍存在设置模态缩窄、右侧栏入口不可见、抽屉文字闪影/遮罩不统一、多文件仍上传失败；三入口/预览、统一工作区、终端交互与原生设置/备份恢复仍未交付。用户并未认可先前 G1/G2 或整体软件完工。
+
+局部定位：上游 Settings 在 `sidebar.settings` slot 内渲染 fixed overlay，Preview.4 抽屉 transform/will-change 使它受限到 288px 侧栏。源码已在未发布 Preview.5-dev/code25、UI 0.4.2-dshm.2 改为 fixed drawer 的 `left` 动画（未修改上游 DSH Settings CSS / WebView root-only compat）。隔离 Chromium 360×708 对照 Settings panel 宽 268→341 CSS px、320×708 新面板宽 301px；打开/关闭抽屉可操作；320px 内容仍有狭窄说明行，完整 Settings 体验和 OriginOS 实机仍未通过。Node24 syntax、mobile-ui-policy（新增防 transform containing-block 负断言）、webview-compat-policy 与 diff-check PASS。不能把未采样的闪影/速度改善写 PASS。
+
+具体执行顺序、权限/数据 ADR 门禁及未实现项由新文档逐项列明；不能把无真机、无最终附件送达和无恢复演练的方案或单测当功能交付。新候选没有替换旧 release APK/更新清单，也没有安装在用户手机上。
+
+### 2026-09-17 自动化测试终态及设备阻断
+
+- 当前未发布源的 `runtime_alpine_e2e`：`task-runtime_alpine_e2e-f4f4ecb8b916447cb273` **PASS / exit0**（embedded/online fallback、Web auth 与 mobile UI asset/version 同步）。
+- `android_unit_test`：`task-android_unit_test-29cab7a566cd4044a0a2` **PASS / exit0**（161 Gradle tasks）；`android_lint`：`task-android_lint-c45a4bcfbcfa48229ddc` **PASS / exit0**（289 Gradle tasks）。Node24 syntax、mobile UI policy、WebView compat policy、diff check PASS。
+- 独立 Chromium 中正式验证的是 Settings modal 几何（360宽：268→341；320宽：301）和抽屉遮罩关闭；**没有验证**所有顶部标签/授权文案的排版通过，更没有证明 OriginOS 动画、闪影、右栏入口、多附件最终送达或其他 G3–G6 功能。
+- 最新 `adb_devices` 返回 `devices=[]`；没有安装、清理、读取手机个人数据。原 Preview.4 APK、签名与 OTA 清单均未改；Preview.5-dev 仍只是代码候选，未产出/提供新版 APK。
+
+### 2026-09-17 follow-up WEB-02/ATT-01 限定证据
+
+见 `2026-09-17-preview4-device-regressions-and-scope.md` 末尾 follow-up。对照冻结官方 DSH 布局与右侧插件，修复右栏全屏虽展示而桌面 track 仍 collapsed 时 UI plugin 隐藏整列的条件错误；加官方 `[data-sidebar-right-panel="fullscreen"][data-sidebar-right-open]` 早期 reveal，防止依赖延后的 fullscreen report 产生两段滑动。真实已选 Session 的 320/360/390 CSS px Chromium 完整右栏开/关及菜单入口宽度通过；DSH Settings modal 在同 Session 宽 341（360 viewport）。浏览器合成 3 TXT 与 3 PNG 各作为一批进入 DSH 原生 input，三项全部显示、TXT 终止上传且发送键启用、PNG 缩略图齐全，但 Android `ClipData` 与真正发送仍无数据，原生图片选择 sheet G3/工作区 G4/设置 G5/终端 G6 未实施。每项仍有明确阻断，不将浏览器上传算用户 bug 修复。此 follow-up 源码改动后的全量 E2E/Unit/Lint 若未重新跑完，必须单独注明，不借用先前 PASS。
+
+### 2026-09-17 follow-up 后测试终态（以此为本轮最新，不更改早期历史）
+
+Rightbar 全屏/原生 open marker 逻辑最终版后 Alpine E2E `task-runtime_alpine_e2e-e970db2688224076b974` PASS；Android Unit `task-android_unit_test-b098920e0ee44f74a160` PASS；Android Lint `task-android_lint-5996ee1eac6b410aa043` PASS；本地 Debug APK 构建 `task-android_debug-2dab3457f65544d3aaca` PASS；既有证书签名 `task-android_signing_verify-1dc441258c454e498334` PASS。内含候选插件的 APK 与源码 SHA 精确一致，APK versionCode25 / Preview.5-dev，仅在 `app/build/outputs/apk/debug/app-debug.apk`，未公开发布；详情哈希与所有功能阻断以 2026-09-17 回归文档的“本轮源码测试完成”节为准。ADB 仍无设备。G2 Android 多文件最终发送、G3 预选择、G4–G6 App 原生页、手势/键盘/动画实机仍不可宣称完成。

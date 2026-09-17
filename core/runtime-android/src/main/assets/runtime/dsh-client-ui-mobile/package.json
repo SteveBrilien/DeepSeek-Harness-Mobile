@@ -1,6 +1,6 @@
 {
   "name": "dsh-client-ui-mobile",
-  "version": "0.4.2-dshm.1",
+  "version": "0.4.2-dshm.2",
   "description": "Scoped mobile interaction layer for DSH Web: overlay navigation, phone settings, touch ergonomics, preview typography, and host-safe mobile affordances",
   "type": "module",
   "main": "lib/index.js",

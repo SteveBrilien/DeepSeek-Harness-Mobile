@@ -1,17 +1,21 @@
 package com.stevebrilien.dshmobile.ui
 
 import android.Manifest
+import android.graphics.Bitmap
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -44,12 +48,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.core.net.toUri
+import com.stevebrilien.dshmobile.core.model.Project
+import com.stevebrilien.dshmobile.core.recovery.ProjectRegistry
 import com.stevebrilien.dshmobile.core.recovery.FileBrowserRoot
 import com.stevebrilien.dshmobile.core.recovery.FileClipboard
 import com.stevebrilien.dshmobile.core.recovery.FileClipboardMode
@@ -64,9 +72,15 @@ import java.util.Date
 
 private enum class CreateKind { FILE, DIRECTORY }
 
+internal fun isNativePreviewImage(name: String): Boolean =
+    name.substringAfterLast('.', missingDelimiterValue = "").lowercase(java.util.Locale.ROOT) in
+        setOf("png", "jpg", "jpeg", "webp", "gif", "bmp")
+
 @Composable
 fun FilesScreen(
     fileManager: NativeFileManager,
+    registry: ProjectRegistry,
+    onManageProjects: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -77,23 +91,36 @@ fun FilesScreen(
     var entries by remember { mutableStateOf<List<NativeFileEntry>>(emptyList()) }
     var selectedPath by remember { mutableStateOf<String?>(null) }
     var clipboard by remember { mutableStateOf<FileClipboard?>(null) }
+    var pasteInFlight by remember { mutableStateOf(false) }
     var refreshKey by remember { mutableIntStateOf(0) }
     var error by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var createKind by remember { mutableStateOf<CreateKind?>(null) }
+    var showCreateChooser by remember { mutableStateOf(false) }
+    var projects by remember { mutableStateOf<List<Project>>(emptyList()) }
+    var projectError by remember { mutableStateOf<String?>(null) }
     var createName by remember { mutableStateOf("") }
     var renamePath by remember { mutableStateOf<String?>(null) }
     var renameName by remember { mutableStateOf("") }
     var deletePath by remember { mutableStateOf<String?>(null) }
     var editorPath by remember { mutableStateOf<String?>(null) }
     var editorText by remember { mutableStateOf("") }
+    var editorOriginalText by remember { mutableStateOf("") }
+    var editorLoaded by remember { mutableStateOf(false) }
+    var editorSaving by remember { mutableStateOf(false) }
+    var confirmDiscardEditor by remember { mutableStateOf(false) }
     var editorError by remember { mutableStateOf<String?>(null) }
+    var imagePreviewPath by remember { mutableStateOf<String?>(null) }
+    var imagePreviewBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var imagePreviewError by remember { mutableStateOf<String?>(null) }
 
     fun reloadRoot() {
         rootInfo = fileManager.browserRoot()
         val rootCanonical = runCatching { rootInfo.root.canonicalFile }.getOrDefault(rootInfo.root)
         val currentCanonical = runCatching { currentDirectory.canonicalFile }.getOrDefault(currentDirectory)
-        if (!currentCanonical.path.startsWith(rootCanonical.path)) currentDirectory = rootCanonical
+        if (currentCanonical != rootCanonical &&
+            !currentCanonical.path.startsWith(rootCanonical.path + File.separator)
+        ) currentDirectory = rootCanonical
         refreshKey += 1
     }
 
@@ -107,6 +134,12 @@ fun FilesScreen(
                 refreshKey += 1
             }.onFailure { error = it.message ?: it::class.java.simpleName }
         }
+    }
+
+    LaunchedEffect(registry, refreshKey) {
+        withContext(Dispatchers.IO) { registry.list() }
+            .onSuccess { projects = it; projectError = null }
+            .onFailure { projectError = "项目快捷入口暂不可用：${it.message ?: "读取失败"}" }
     }
 
     LaunchedEffect(currentDirectory.absolutePath, refreshKey) {
@@ -128,6 +161,7 @@ fun FilesScreen(
         FilesHeader(
             rootInfo = rootInfo,
             currentDirectory = currentDirectory,
+            onManageProjects = onManageProjects,
             canGoUp = fileManager.parent(currentDirectory) != null,
             onUp = {
                 fileManager.parent(currentDirectory)?.let {
@@ -141,52 +175,58 @@ fun FilesScreen(
                 reloadRoot()
             },
             onRefresh = ::reloadRoot,
-            onNew = {
-                createKind = CreateKind.FILE
-                createName = ""
-            },
+            onNew = { showCreateChooser = true },
             onGrantStorage = { requestAllFilesAccess(context) },
         )
 
-        FileActions(
-            selected = selectedPath != null,
-            hasClipboard = clipboard != null,
-            onNewFile = {
-                createKind = CreateKind.FILE
-                createName = ""
-            },
-            onNewDirectory = {
-                createKind = CreateKind.DIRECTORY
-                createName = ""
-            },
-            onCopy = {
-                selectedPath?.let { clipboard = FileClipboard(it, FileClipboardMode.COPY) }
-                message = "已复制到文件剪贴板"
-            },
-            onCut = {
-                selectedPath?.let { clipboard = FileClipboard(it, FileClipboardMode.MOVE) }
-                message = "已标记为移动"
-            },
-            onPaste = {
-                val pending = clipboard ?: return@FileActions
-                runAction(
-                    block = {
-                        when (pending.mode) {
-                            FileClipboardMode.COPY -> fileManager.copy(File(pending.sourcePath), currentDirectory)
-                            FileClipboardMode.MOVE -> fileManager.move(File(pending.sourcePath), currentDirectory)
+        if (selectedPath != null || clipboard != null) {
+            FileActions(
+                selected = selectedPath != null,
+                hasClipboard = clipboard != null && !pasteInFlight,
+                onCopy = {
+                    selectedPath?.let { clipboard = FileClipboard(it, FileClipboardMode.COPY) }
+                    message = "已复制到文件剪贴板"
+                },
+                onCut = {
+                    selectedPath?.let { clipboard = FileClipboard(it, FileClipboardMode.MOVE) }
+                    message = "已标记为移动"
+                },
+                onPaste = {
+                    val pending = clipboard ?: return@FileActions
+                    if (!pasteInFlight) {
+                        pasteInFlight = true
+                        val destination = currentDirectory
+                        scope.launch {
+                            try {
+                                val result = withContext(Dispatchers.IO) {
+                                    when (pending.mode) {
+                                        FileClipboardMode.COPY -> fileManager.copy(File(pending.sourcePath), destination)
+                                        FileClipboardMode.MOVE -> fileManager.move(File(pending.sourcePath), destination)
+                                    }
+                                }
+                                result.onSuccess {
+                                    error = null
+                                    message = if (pending.mode == FileClipboardMode.COPY) "复制完成" else "移动完成"
+                                    selectedPath = null
+                                    // A failed move must retain the clipboard so it can be
+                                    // retried. Do not clear it before the IO result arrives.
+                                    if (pending.mode == FileClipboardMode.MOVE && clipboard == pending) clipboard = null
+                                    refreshKey += 1
+                                }.onFailure { error = it.message ?: it::class.java.simpleName }
+                            } finally {
+                                pasteInFlight = false
+                            }
                         }
-                    },
-                    success = if (pending.mode == FileClipboardMode.COPY) "复制完成" else "移动完成",
-                )
-                if (pending.mode == FileClipboardMode.MOVE) clipboard = null
-            },
-            onRename = {
-                val path = selectedPath ?: return@FileActions
-                renamePath = path
-                renameName = File(path).name
-            },
-            onDelete = { deletePath = selectedPath },
-        )
+                    }
+                },
+                onRename = {
+                    val path = selectedPath ?: return@FileActions
+                    renamePath = path
+                    renameName = File(path).name
+                },
+                onDelete = { deletePath = selectedPath },
+            )
+        }
 
         if (error != null || message != null) {
             val isError = error != null
@@ -205,7 +245,8 @@ fun FilesScreen(
             }
         }
 
-        if (entries.isEmpty() && error == null) {
+        val atRoot = currentDirectory.absolutePath == rootInfo.root.absolutePath
+        if (entries.isEmpty() && error == null && !(atRoot && (projects.isNotEmpty() || projectError != null))) {
             DshEmptyState(
                 title = "此文件夹为空",
                 detail = "可新建文件、文件夹，或从其他位置粘贴内容",
@@ -216,6 +257,46 @@ fun FilesScreen(
                 modifier = Modifier.fillMaxSize().padding(top = 8.dp, bottom = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
+                if (atRoot) {
+                    projectError?.let { problem ->
+                        item(key = "project-error") {
+                            Text(problem, color = colors.warning, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    if (projects.isNotEmpty()) {
+                        item(key = "project-heading") {
+                            Text(
+                                "项目快捷入口",
+                                modifier = Modifier.padding(vertical = 5.dp),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = colors.textSecondary,
+                            )
+                        }
+                        items(projects, key = { "project-${it.id.value}" }) { project ->
+                            ProjectShortcutRow(project) {
+                                // The manager enforces canonical containment, even for
+                                // manually registered projects outside the current grant.
+                                scope.launch {
+                                    val directory = File(project.path)
+                                    withContext(Dispatchers.IO) { fileManager.list(directory) }
+                                        .onSuccess {
+                                            currentDirectory = directory
+                                            selectedPath = null
+                                            error = null
+                                        }
+                                        .onFailure {
+                                            error = "无法打开项目「${project.displayName}」：目录不可访问或超出授权范围"
+                                        }
+                                }
+                            }
+                        }
+                    }
+                }
+                if (entries.isEmpty() && error == null) {
+                    item(key = "empty-folder") {
+                        DshEmptyState(title = "此文件夹为空", detail = "可新建文件或文件夹")
+                    }
+                }
                 items(entries, key = { it.absolutePath }) { entry ->
                     val selected = selectedPath == entry.absolutePath
                     FileRow(
@@ -225,6 +306,20 @@ fun FilesScreen(
                             if (entry.isDirectory) {
                                 currentDirectory = File(entry.absolutePath)
                                 selectedPath = null
+                            } else if (isNativePreviewImage(entry.name)) {
+                                val path = entry.absolutePath
+                                imagePreviewPath = path
+                                imagePreviewBitmap = null
+                                imagePreviewError = null
+                                scope.launch {
+                                    val result = withContext(Dispatchers.IO) {
+                                        fileManager.previewImage(File(path))
+                                    }
+                                    if (imagePreviewPath == path) {
+                                        result.onSuccess { imagePreviewBitmap = it }
+                                            .onFailure { imagePreviewError = "图片无法预览：${it.message ?: "解码失败"}" }
+                                    }
+                                }
                             } else {
                                 scope.launch {
                                     val result = withContext(Dispatchers.IO) {
@@ -233,11 +328,15 @@ fun FilesScreen(
                                     result.onSuccess { content ->
                                         editorPath = entry.absolutePath
                                         editorText = content.content
+                                        editorOriginalText = content.content
+                                        editorLoaded = true
                                         editorError = null
                                     }.onFailure {
                                         editorError = it.message ?: it::class.java.simpleName
                                         editorPath = entry.absolutePath
                                         editorText = ""
+                                        editorOriginalText = ""
+                                        editorLoaded = false
                                     }
                                 }
                             }
@@ -249,6 +348,28 @@ fun FilesScreen(
                 }
             }
         }
+    }
+
+    if (showCreateChooser) {
+        AlertDialog(
+            onDismissRequest = { showCreateChooser = false },
+            title = { Text("新建") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DshButton("新建文件", onClick = {
+                        showCreateChooser = false
+                        createKind = CreateKind.FILE
+                        createName = ""
+                    }, icon = DshIconGlyph.FILE, modifier = Modifier.fillMaxWidth())
+                    DshButton("新建文件夹", onClick = {
+                        showCreateChooser = false
+                        createKind = CreateKind.DIRECTORY
+                        createName = ""
+                    }, icon = DshIconGlyph.FOLDER, modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = { TextButton(onClick = { showCreateChooser = false }) { Text("取消") } },
+        )
     }
 
     createKind?.let { kind ->
@@ -300,33 +421,104 @@ fun FilesScreen(
         )
     }
 
+    imagePreviewPath?.let { path ->
+        Dialog(onDismissRequest = {
+            imagePreviewPath = null
+            imagePreviewBitmap = null
+        }) {
+            DshPanel(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.82f), elevated = true) {
+                Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+                    Text(File(path).name, style = MaterialTheme.typography.titleMedium, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis)
+                    Box(modifier = Modifier.fillMaxWidth().weight(1f).padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center) {
+                        val bitmap = imagePreviewBitmap
+                        when {
+                            bitmap != null -> Image(
+                                bitmap = remember(bitmap) { bitmap.asImageBitmap() },
+                                contentDescription = "图片预览",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Fit,
+                            )
+                            imagePreviewError != null -> Text(imagePreviewError.orEmpty(),
+                                color = LocalDshColors.current.danger)
+                            else -> Text("正在读取图片…", color = LocalDshColors.current.textSecondary)
+                        }
+                    }
+                    DshButton("关闭预览", onClick = {
+                        imagePreviewPath = null
+                        imagePreviewBitmap = null
+                    }, modifier = Modifier.fillMaxWidth())
+                }
+            }
+        }
+    }
+
     editorPath?.let { path ->
         TextEditorDialog(
             path = path,
             text = editorText,
             error = editorError,
-            onTextChange = { editorText = it },
+            canEdit = editorLoaded,
+            saving = editorSaving,
+            onTextChange = { editorText = it; if (editorLoaded) editorError = null },
             onDismiss = {
-                editorPath = null
-                editorError = null
+                if (!editorSaving) {
+                    if (editorLoaded && editorText != editorOriginalText) confirmDiscardEditor = true
+                    else { editorPath = null; editorError = null }
+                }
             },
             onSave = {
-                val content = editorText
-                runAction(
-                    block = { fileManager.saveText(File(path), content) },
-                    success = "已保存；适用时已自动创建旧内容快照",
-                )
-                editorPath = null
-                editorError = null
+                if (editorLoaded && !editorSaving) {
+                    val content = editorText
+                    editorSaving = true
+                    scope.launch {
+                        try {
+                            withContext(Dispatchers.IO) { fileManager.saveText(File(path), content) }
+                                .onSuccess {
+                                    error = null
+                                    message = "已保存；适用时已自动创建旧内容快照"
+                                    editorOriginalText = content
+                                    editorPath = null
+                                    editorError = null
+                                    refreshKey += 1
+                                }.onFailure {
+                                    // Keep the user's edits in memory on write failure.
+                                    editorError = it.message ?: it::class.java.simpleName
+                                }
+                        } finally {
+                            editorSaving = false
+                        }
+                    }
+                }
+            },
+        )
+    }
+    if (confirmDiscardEditor) {
+        AlertDialog(
+            onDismissRequest = { confirmDiscardEditor = false },
+            title = { Text("放弃尚未保存的修改？") },
+            text = { Text("编辑内容尚未保存。放弃后这些更改将丢失。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDiscardEditor = false
+                    editorPath = null
+                    editorError = null
+                }) { Text("放弃修改") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDiscardEditor = false }) { Text("继续编辑") }
             },
         )
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun FilesHeader(
     rootInfo: FileBrowserRoot,
     currentDirectory: File,
+    onManageProjects: () -> Unit,
     canGoUp: Boolean,
     onUp: () -> Unit,
     onRoot: () -> Unit,
@@ -336,30 +528,31 @@ private fun FilesHeader(
 ) {
     val colors = LocalDshColors.current
     Column(modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp)) {
-        DshPageHeader(title = "文件", subtitle = "管理文件与数据")
+        DshPageHeader(
+            title = "工作区",
+            subtitle = "本地文件与项目目录",
+            trailing = {
+                DshButton("管理项目", onManageProjects, icon = DshIconGlyph.PROJECT)
+            },
+        )
 
-        DshPanel(modifier = Modifier.fillMaxWidth().padding(top = 14.dp)) {
-            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                Text("当前位置", style = MaterialTheme.typography.labelMedium, color = colors.textTertiary)
-                SelectionContainer {
-                    Text(
-                        currentDirectory.absolutePath,
-                        modifier = Modifier.padding(top = 5.dp),
-                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                        color = colors.textPrimary,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
+        // The path is useful for navigation and debugging but must not consume
+        // a full card or crowd the actual file list on a narrow handset.
+        SelectionContainer {
+            Text(
+                currentDirectory.absolutePath,
+                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                color = colors.textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 10.dp)
-                .horizontalScroll(rememberScrollState()),
+        FlowRow(
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             DshButton("新建", onNew, icon = DshIconGlyph.PLUS, style = DshButtonStyle.PRIMARY)
             DshButton("上一级", onUp, icon = DshIconGlyph.ARROW_LEFT, enabled = canGoUp)
@@ -376,23 +569,43 @@ private fun FilesHeader(
                 onAction = onGrantStorage,
                 warning = true,
             )
-        } else {
-            DshMessageBanner(
-                title = "恢复保险库已启用",
-                detail = rootInfo.recoveryRoot.absolutePath,
-                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                warning = false,
-            )
         }
     }
 }
 
 @Composable
+private fun ProjectShortcutRow(project: Project, onOpen: () -> Unit) {
+    val colors = LocalDshColors.current
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = colors.layer1,
+        shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(.5.dp, colors.border1),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().dshClickable(onClick = onOpen)
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            DshIcon(DshIconGlyph.PROJECT, project.displayName, Modifier.size(22.dp))
+            Text(
+                project.displayName,
+                modifier = Modifier.weight(1f).padding(start = 10.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.textPrimary,
+            )
+            Text("打开 ›", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
 private fun FileActions(
     selected: Boolean,
     hasClipboard: Boolean,
-    onNewFile: () -> Unit,
-    onNewDirectory: () -> Unit,
     onCopy: () -> Unit,
     onCut: () -> Unit,
     onPaste: () -> Unit,
@@ -400,19 +613,18 @@ private fun FileActions(
     onDelete: () -> Unit,
 ) {
     DshPanel(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(4.dp)) {
-            Row(modifier = Modifier.fillMaxWidth()) {
-                DshCompactAction("新建文件", DshIconGlyph.FILE, onNewFile, Modifier.weight(1f))
-                DshCompactAction("新建文件夹", DshIconGlyph.PROJECT, onNewDirectory, Modifier.weight(1f))
-                DshCompactAction("复制", DshIconGlyph.COPY, onCopy, Modifier.weight(1f), enabled = selected)
-                DshCompactAction("移动", DshIconGlyph.ARROW_LEFT, onCut, Modifier.weight(1f), enabled = selected)
+        FlowRow(
+            modifier = Modifier.fillMaxWidth().padding(7.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            if (selected) {
+                DshButton("复制", onCopy, icon = DshIconGlyph.COPY)
+                DshButton("移动", onCut, icon = DshIconGlyph.ARROW_LEFT)
+                DshButton("重命名", onRename, icon = DshIconGlyph.RENAME)
+                DshButton("移入回收站", onDelete, icon = DshIconGlyph.DELETE)
             }
-            Row(modifier = Modifier.fillMaxWidth()) {
-                DshCompactAction("粘贴", DshIconGlyph.PASTE, onPaste, Modifier.weight(1f), enabled = hasClipboard)
-                DshCompactAction("重命名", DshIconGlyph.RENAME, onRename, Modifier.weight(1f), enabled = selected)
-                DshCompactAction("删除", DshIconGlyph.DELETE, onDelete, Modifier.weight(1f), enabled = selected)
-                Spacer(Modifier.weight(1f))
-            }
+            if (hasClipboard) DshButton("粘贴到此处", onPaste, icon = DshIconGlyph.PASTE)
         }
     }
 }
@@ -504,6 +716,8 @@ private fun TextEditorDialog(
     path: String,
     text: String,
     error: String?,
+    canEdit: Boolean,
+    saving: Boolean,
     onTextChange: (String) -> Unit,
     onDismiss: () -> Unit,
     onSave: () -> Unit,
@@ -530,14 +744,14 @@ private fun TextEditorDialog(
                     value = text,
                     onValueChange = onTextChange,
                     modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 8.dp),
-                    enabled = error == null,
+                    enabled = canEdit && !saving,
                     textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
                     label = { Text("UTF-8 文本") },
                 )
                 Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
-                    DshButton("关闭", onDismiss, style = DshButtonStyle.GHOST)
+                    DshButton("关闭", onDismiss, enabled = !saving, style = DshButtonStyle.GHOST)
                     Spacer(Modifier.width(8.dp))
-                    DshButton("保存", onSave, enabled = error == null, style = DshButtonStyle.PRIMARY)
+                    DshButton(if (saving) "保存中…" else "保存", onSave, enabled = canEdit && !saving, style = DshButtonStyle.PRIMARY)
                 }
             }
         }

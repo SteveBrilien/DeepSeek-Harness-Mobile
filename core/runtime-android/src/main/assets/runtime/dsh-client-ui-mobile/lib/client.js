@@ -12,7 +12,7 @@ window.__ModuleLoader__.load({
     const RIGHTBAR_ATTR = "data-dshm-rightbar";
     const SETTINGS_ATTR = "data-dshm-settings";
     const TRANSIENT_ATTR = "data-dshm-transient-layer";
-    const STYLE_ID = "dsh-client-ui-mobile/mobile-v6";
+    const STYLE_ID = "dsh-client-ui-mobile/mobile-v7";
     const TOGGLE_ID = "dshm-mobile-nav-toggle";
     const BACKDROP_ID = "dshm-mobile-drawer-backdrop";
 
@@ -35,15 +35,18 @@ html[${ROOT_ATTR}="active"] [data-dshm-sidebar-col] {
   display: block !important;
   position: fixed !important;
   z-index: 320 !important;
-  inset: 0 !important;
+  inset: 0 auto 0 0 !important;
   width: min(80vw, 360px) !important;
   max-width: calc(100% - 48px) !important;
   min-width: 0 !important;
   overflow: hidden !important;
   pointer-events: none !important;
-  transform: translate3d(-100%, 0, 0) !important;
-  transition: transform .22s var(--ds-ease-in-out) !important;
-  will-change: transform;
+  /* DSH mounts its fixed-position Settings dialog inside sidebar.settings.
+     A transformed (or will-change: transform) drawer becomes its containing
+     block and shrinks the viewport-wide dialog to the drawer width.
+     Animate the fixed drawer's left edge without transforming modal ancestors. */
+  left: calc(0px - min(80vw, 360px, calc(100% - 48px))) !important;
+  transition: left .22s var(--ds-ease-in-out) !important;
   background: var(--dsw-specific-sidebar-fill) !important;
 }
 html[${ROOT_ATTR}="active"] #${BACKDROP_ID} {
@@ -83,7 +86,7 @@ html[${ROOT_ATTR}="active"] [data-dshm-sidebar-root] {
 }
 html[${ROOT_ATTR}="active"] [data-dshm-shell]:not([data-sidebar-collapsed]) [data-dshm-sidebar-col] {
   pointer-events: auto !important;
-  transform: translate3d(0, 0, 0) !important;
+  left: 0 !important;
 }
 
 /* Search becomes the sole toolbar occupant while expanded. Keeping the workspace
@@ -121,7 +124,15 @@ html[${ROOT_ATTR}="active"] [data-dshm-rightbar-col] {
   --dsh-content-font-size-secondary: var(--dsh-content-font-size, 14px);
   --dsh-content-font-delta-secondary: var(--dsh-content-font-delta, 0px);
 }
-html[${ROOT_ATTR}="active"] [data-dshm-shell]:not([data-rightbar-collapsed]) [data-dshm-rightbar-col] {
+/* On a narrow viewport upstream chooses a fullscreen Rightbar with *no grid
+   track*. The frame then keeps data-rightbar-collapsed even while the panel is
+   shown; fullscreen is the separate authoritative presentation signal. */
+html[${ROOT_ATTR}="active"] [data-dshm-shell]:not([data-rightbar-collapsed]) [data-dshm-rightbar-col],
+html[${ROOT_ATTR}="active"] [data-dshm-shell][data-rightbar-fullscreen] [data-dshm-rightbar-col],
+/* The official panel's open attribute is set BEFORE the layout reports its
+   fullscreen presentation (the latter waits until the entry animation ends).
+   Follow that native source early to avoid two consecutive slide animations. */
+html[${ROOT_ATTR}="active"] [data-dshm-rightbar-col]:has([data-sidebar-right-panel="fullscreen"][data-sidebar-right-open]) {
   pointer-events: auto !important;
   transform: translate3d(0, 0, 0) !important;
 }
@@ -836,7 +847,10 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
           }
 
           const drawerOpen = !frame.hasAttribute("data-sidebar-collapsed");
-          const rightbarOpen = !frame.hasAttribute("data-rightbar-collapsed");
+          // A fullscreen mobile rightbar never allocates a desktop grid track.
+          const rightbarOpen = frame.hasAttribute("data-rightbar-fullscreen") ||
+            !frame.hasAttribute("data-rightbar-collapsed") ||
+            !!frame.querySelector('[data-dshm-rightbar-col] [data-sidebar-right-panel="fullscreen"][data-sidebar-right-open]');
           html.setAttribute(DRAWER_ATTR, drawerOpen ? "open" : "closed");
           html.setAttribute(RIGHTBAR_ATTR, rightbarOpen ? "open" : "closed");
           toggle.setAttribute("aria-expanded", drawerOpen ? "true" : "false");
@@ -867,7 +881,7 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
           subtree: true,
           childList: true,
           attributes: true,
-          attributeFilter: ["data-sidebar-collapsed", "data-rightbar-collapsed", "data-rightbar-fullscreen", "aria-expanded", "aria-selected"],
+          attributeFilter: ["data-sidebar-collapsed", "data-rightbar-collapsed", "data-rightbar-fullscreen", "data-sidebar-right-open", "aria-expanded", "aria-selected"],
         });
         mql.addEventListener("change", schedule);
         const offAdaptiveTheme = ctx.on("theme/change", schedule);
@@ -903,7 +917,7 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
             }
           }
         };
-      }, "ui-mobile-v6: native-motion mobile shell and settings adaptation");
+      }, "ui-mobile-v7: native-motion mobile shell and settings adaptation");
     }
 
     exports.apply = apply;

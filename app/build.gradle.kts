@@ -28,8 +28,8 @@ android {
         // Android 10+ blocks execve() from writable app home for apps targeting 29+;
         // the local PRoot/Node/DSH runtime requires executable files in app-private storage.
         targetSdk = 28
-        versionCode = 24
-        versionName = "0.4.0-preview.4-dev"
+        versionCode = 25
+        versionName = "0.4.0-preview.5-dev"
     }
 
     buildTypes {

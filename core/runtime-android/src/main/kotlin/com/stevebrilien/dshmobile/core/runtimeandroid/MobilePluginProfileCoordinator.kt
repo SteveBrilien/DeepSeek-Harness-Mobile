@@ -24,7 +24,7 @@ internal class MobilePluginProfileCoordinator(
     companion object {
         const val MOBILE_CONTEXT_PLUGIN_VERSION = "0.2.2"
         const val WEBVIEW_COMPAT_PLUGIN_VERSION = "0.1.2"
-        const val MOBILE_UI_PLUGIN_VERSION = "0.4.2-dshm.1"
+        const val MOBILE_UI_PLUGIN_VERSION = "0.4.2-dshm.2"
         const val TOKYO_THEME_PLUGIN_VERSION = "0.2.2-dshm.1"
         const val MOBILE_WEB_PROFILE_MODE = "dsh-mobile-ui-v1"
 
