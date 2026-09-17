@@ -37,3 +37,6 @@ downloads/runtime/
 # Diagnostics that may contain local paths
 *.hprof
 logs/local/
+
+# Local SSH rescue keys / device pairing material (never commit)
+.private/
