@@ -4,7 +4,8 @@
 
 ## 1. 经过核查的基线及安全约束
 
-- 橙派 OpenSSH 22 正监听；现存 `orangepi-azure-tunnel@22022` service active/running，**必须保持不动**。**手机实测否定了此前对别名的假设：** `ssh -G orange` 返回 `hostname orange`、`port 22`、无 ProxyJump，手机 DNS 把它解析到不可信的 `28.0.0.205:22`，SSH 在密钥交换前断开。禁止再次向这个地址尝试连接；先核对同网 LAN 或已有真实云跳板，并配置经主机指纹核验的 SSH 别名。
+- 橙派 OpenSSH 22 正监听；现存 `orangepi-azure-tunnel@22022` service active/running，**必须保持不动**。**手机实测否定了此前对别名的假设：** `ssh -G orange` 返回 `hostname orange`、`port 22`、无 ProxyJump，手机 DNS 把它解析到不可信的 `28.0.0.205:22`，SSH 在密钥交换前断开。禁止再次向这个地址尝试连接；手机在宿舍、橙派在实验室且使用 VPN，不应建议直接访问橙派 LAN IP。优先恢复已成功记录的云服务器跳板路径及已信任主机指纹，检查手机旧密钥是否还在。
+- **旧连接历史（2026-09-08 手机实测）**：手机 `~/.ssh/config` 曾有 `Host azure-orange` → `HostName 40.81.17.167`、`User wechat`、`IdentityFile ~/.ssh/orange`；`Host orange` → `HostName 127.0.0.1`、`Port 22022`、`User orangepi`、`IdentityFile ~/.ssh/orange`、`ProxyJump azure-orange`；`Host orangepi` → `HostName 192.168.3.130`（仅实验室同网）。当时 `ssh orange` 成功输出 `ORANGEPI_OK`，hostname 为 `orangepiaipro-20t`。当前 `ssh -G orange` 已无跳板配置；可能丢的是配置而不是密钥。2026-09-17 橙派测试 `40.81.17.167:22` TCP 可达，尚不能证明手机网络通、云账号认证、云端 `127.0.0.1:22022` 转发正常。先在手机只检查 `$HOME/.ssh/orange`、`orange.pub`、`config` 与备份的文件存在性/权限、公钥指纹；**绝不读取或发送私钥内容**。验证手机已有云服务器 host key pin，若不存在须通过可信独立渠道核实；不要盲目 `ssh-keyscan` 后接受。旧密钥无法恢复时才为手机→Azure 和手机→橙派生成新密钥，按账户单独安装公钥；当前橙派创建的 `id_ed25519_dshmobile_device` 是**橙派→手机救援专用**，不承担手机→Azure 认证，不能解决错误 DNS/旧跳板缺失。
 - 新的橙派本地 TCP `127.0.0.1:22023`（反向 SSH 到手机 `127.0.0.1:8022`）、`127.0.0.1:25555`（可选 ADB 连接）与 `127.0.0.1:25554`（可选 ADB 临时配对）目前均没有监听。之前手机 LAN 地址不可达，`adb devices` 为零设备。
 - 新设备 SSH identity 在橙派项目 `.private/ssh/id_ed25519_dshmobile_device`，私钥 `0600`、目录 `0700`、`.private/` 由 `.gitignore` 排除；仅公钥放手机账号的 `authorized_keys`。不得将私钥、ADB pairing code、Wi-Fi pairing QR、用户私密文件放入 Git/MCP 日志/聊天。可在橙派上 `ssh-keygen -lf .private/ssh/id_ed25519_dshmobile_device.pub -E sha256` 核对公钥指纹。
 - 手机端 sshd/tmux 必须属于**与 DSH Mobile 不同的 Termux 或独立沙箱包 UID/进程树**，不能由正在覆盖安装的 App 自己启动并持有。APK 升级只设计为不主动停止救援通道；网络掉线、OriginOS 杀后台、手机重启、Termux 自身更新无法做零中断承诺。tmux 保留的是其宿主进程运行期间的 session，不提供重启后进程持久性。
@@ -14,7 +15,7 @@
 
 以下命令须在**手机 Termux** 中运行，手机仍由用户持有、未接入时橙派侧不能代做；如果实际使用 Ubuntu 环境，要把 `pkg`、`$PREFIX`、`8022` 改成该环境真实值，且确认 Android 宿主不依赖 DSH Mobile。
 
-1. 安装独立工具：`pkg install openssh tmux`。检查旧版 Termux `ssh orange 'printf "ORANGEPI_OK\\n"'` 仍能用；先确认旧隧道，不重建它。
+1. 安装独立工具：`pkg install openssh tmux`。先验证旧 `$HOME/.ssh/orange` 与 SSH config/host key pin，再用已有可信跳板测试 `ssh orange`；当前测试失败时不能运行下列依赖 `ssh orange` 的安装/取脚本命令。
 2. 安全安装橙派**公钥**到手机（经过既有已校验 SSH alias `orange`，不传私钥）：
 
    ```bash
