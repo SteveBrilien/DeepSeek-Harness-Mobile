@@ -66,3 +66,11 @@
 ## 5. 目前完成与不完成
 
 橙派侧已经：独立 Ed25519 生成、权限/ignore 验证，手机和橙派脚本已通过 `bash -n`，原旧隧道保持 active。**还未**证明 phone sshd/tmux 是否正常、手机 host key 指纹、reverse SSH 链路、Android wireless adbd、掉线重连/后台保活及更新前后终端持续可用。本任务未修改 App 源码、APK、签名、OTA、SSH 系统服务及既有 tunnel。若手机无法使用 Termux/Ubuntu 之外的独立 sshd，必须先停在基础设施门禁，不在 DSH App 中伪造救援终端。
+
+## 6. 2026-09-17 手机 SSH 授权后续发现（暂时阻断）
+
+用户已在手机 Termux 取得 `vivo-orange-recovery` 公钥，指纹 `SHA256:2Xmgh3JOdp7zRyTVqol7IlspTPRE5LGIoCNEEwG7Xnw`；使用这把钥匙试连 `wechat@40.81.17.167` 返回 `Permission denied (publickey)`，只证明 `wechat` 当前会话未通过验证，**不证明 Azure 其他账户未授权**。项目外既存的 `Codex/mcp-v2-upgrade/ADD-AZURE-RECOVERY-KEY.sh` 与 `CHECK-AZURE-RECOVERY-KEY.sh` 均内置同一把手机公钥（逐字比对 PASS），但其实际 SSH 目标账户为 `DHSP@40.81.17.167`，使用橙派宿主机私有路径 `/home/orangepi/.ssh/orangepi_key.pem`。`AZURE-RECOVERY-KEY-RESULT.txt` 为空，**没有执行成功的证据**，不得宣称手机已授权。
+
+当前 MCP Project/Workspace Shell 的 Bubblewrap 隐藏宿主机 home，SSH agent 不可用，沙箱中该私钥不可访问；旧的 `azure_release_admin` HostCapability 提案状态为 `reviewed/needs_admin_approval` 而非批准。不要临时映射宿主机私钥、复制私钥到 workspace、使用不相关 GitHub 部署密钥、开放任意 SSH host shell，也不要重启已工作的 `orangepi-azure-tunnel@22022`。用户希望委托完成而不手动操作 Azure/Windows；在受控 Azure 凭据或经过管理员批准的**固定动作**能力出现前，授权仍应标记 BLOCKED。最小可完成动作是用合法 Azure 管理渠道，在正确且确认存在的 SSH 账户中**追加**这把公钥而不是覆盖 `authorized_keys`，随后校验指纹及 `127.0.0.1:22022` 现有反向连接。是否同时需要授权橙派 `orangepi` 必须再独立核对，不能推定。
+
+用户明确要求更新时终端保持可用：救援 SSH/Tmux 与 DSH App 独立并完成实际连通/掉线重连验收之前，禁止自动执行 APK 安装、force-stop、手机 SSH 进程操作或系统级 SSH 配置变更。
