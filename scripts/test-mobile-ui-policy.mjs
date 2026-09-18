@@ -10,7 +10,7 @@ const tokyoManifest = JSON.parse(await readFile(resolve(tokyoRoot, 'package.json
 const tokyoClient = await readFile(resolve(tokyoRoot, 'lib/client.js'), 'utf8');
 
 assert.equal(manifest.name, 'dsh-client-ui-mobile');
-assert.equal(manifest.version, '0.4.2-dshm.2');
+assert.equal(manifest.version, '0.4.3-dshm.1');
 assert.ok(manifest.dsh?.client, 'mobile UI must remain a DSH client plugin');
 assert.ok(manifest.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-theme'), 'mobile UI must inject the official DSH theme service');
 assert.ok(manifest.dsh.client.inject.includes('dsh-plugin-tokyo-night'), 'mobile UI must depend on the Tokyo extension service provider');

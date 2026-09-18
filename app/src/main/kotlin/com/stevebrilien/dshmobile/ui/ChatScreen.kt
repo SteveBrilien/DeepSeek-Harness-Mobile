@@ -23,16 +23,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -117,7 +113,6 @@ fun ChatScreen(
 }
 
 @SuppressLint("SetJavaScriptEnabled")
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DshWebClient(
     hostState: DshWebViewHostState,
@@ -132,20 +127,12 @@ private fun DshWebClient(
     val diagnostics = remember(context) { DshWebViewDiagnostics(context.applicationContext) }
     var fileChooserCallback by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
     var pendingFileChooserMode by remember { mutableStateOf(WebChromeClient.FileChooserParams.MODE_OPEN) }
-    var pendingDocumentIntent by remember { mutableStateOf<Intent?>(null) }
-    var imagesAccepted by remember { mutableStateOf(true) }
-    var cameraAccepted by remember { mutableStateOf(true) }
-    var pendingAcceptTypes by remember { mutableStateOf<Array<String>?>(null) }
-    var showAttachmentSources by remember { mutableStateOf(false) }
     var cameraOutput by remember { mutableStateOf<Pair<File, Uri>?>(null) }
 
     fun finishChooser(uris: Array<Uri>?) {
         val callback = fileChooserCallback
         fileChooserCallback = null
         pendingFileChooserMode = WebChromeClient.FileChooserParams.MODE_OPEN
-        pendingDocumentIntent = null
-        pendingAcceptTypes = null
-        showAttachmentSources = false
         callback?.onReceiveValue(uris)
     }
 
@@ -189,7 +176,6 @@ private fun DshWebClient(
     }
 
     fun launchSelected(intent: Intent) {
-        showAttachmentSources = false
         runCatching { fileChooserLauncher.launch(intent) }
             .onFailure {
                 diagnostics.append("file-chooser launch-failed type=${it::class.java.simpleName}")
@@ -286,22 +272,45 @@ private fun DshWebClient(
                     diagnostics.append("file-chooser rejected reason=${failure.message ?: failure::class.java.simpleName}")
                     fileChooserCallback = null
                     filePathCallback.onReceiveValue(null)
-                    return false
+                    // We handled completion, including failure. Returning false
+                    // would incorrectly delegate a second chooser to WebView.
+                    return true
                 }
                 pendingFileChooserMode = fileChooserParams?.mode ?: FileChooserParams.MODE_OPEN
                 diagnostics.append(
                     "file-chooser requested mode=$pendingFileChooserMode " +
                         "allowsMultiple=${intent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)}",
                 )
-                if (AttachmentPickerPolicy.isOpenMode(pendingFileChooserMode)) {
-                    pendingDocumentIntent = intent
-                    pendingAcceptTypes = fileChooserParams?.acceptTypes?.copyOf()
-                    imagesAccepted = AttachmentPickerPolicy.acceptsImages(pendingAcceptTypes)
-                    cameraAccepted = AttachmentPickerPolicy.acceptsCamera(pendingAcceptTypes)
-                    showAttachmentSources = true
-                } else {
-                    // Preserve non-open WebView chooser modes without overriding their contract.
-                    launchSelected(intent)
+                // Standard, upstream-owned HTML file input is triggered by the
+                // Cordis source plugin on a real user click. Native chooses only
+                // the Android OS activity, not a second ModalBottomSheet UI.
+                val accept = fileChooserParams?.acceptTypes
+                when (AttachmentPickerPolicy.sourceFor(
+                    pendingFileChooserMode, accept, fileChooserParams?.isCaptureEnabled == true,
+                )) {
+                    AttachmentPickerPolicy.Source.CAMERA -> {
+                        runCatching {
+                            val capture = AttachmentCaptureStore.create(context)
+                            cameraOutput = capture
+                            AttachmentPickerPolicy.cameraIntent(context, capture.second)
+                        }.onSuccess { cameraIntent ->
+                            runCatching { cameraLauncher.launch(cameraIntent) }.onFailure {
+                                cameraOutput?.first?.delete()
+                                cameraOutput = null
+                                diagnostics.append("file-chooser camera-launch-failed type=${it::class.java.simpleName}")
+                                finishChooser(null)
+                                Toast.makeText(context, "无法打开相机", Toast.LENGTH_SHORT).show()
+                            }
+                        }.onFailure {
+                            diagnostics.append("file-chooser camera-preparation-failed type=${it::class.java.simpleName}")
+                            finishChooser(null)
+                            Toast.makeText(context, "无法准备拍照文件", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    AttachmentPickerPolicy.Source.ALBUM -> launchSelected(
+                        AttachmentPickerPolicy.albumIntent(pendingFileChooserMode, accept),
+                    )
+                    AttachmentPickerPolicy.Source.DOCUMENT -> launchSelected(intent)
                 }
                 return true
             }
@@ -319,6 +328,12 @@ private fun DshWebClient(
         webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
+                if (fileChooserCallback != null) {
+                    // A pending result belongs to the old document. Never
+                    // deliver it to a newly navigated page or Session.
+                    diagnostics.append("file-chooser cancelled-on-navigation")
+                    finishChooser(null)
+                }
                 diagnostics.append("page-started view=${view?.let(::viewIdentity)} url=${url.orEmpty()}")
                 // A document reload/redirect starts a fresh page-side sequence even when Compose did
                 // not issue loadUrl(). Reset before the new document can emit its first handshake.
@@ -410,17 +425,21 @@ private fun DshWebClient(
                         "from=${visibilityName(view.visibility)} to=${visibilityName(targetVisibility)}",
                 )
                 view.visibility = targetVisibility
-            }
-            if (visible) {
-                view.requestLayout()
-                view.invalidate()
+                // Geometry is invalidated once on return, not on every unrelated
+                // Compose recomposition (e.g. theme/IME/selector state changes).
+                if (visible) {
+                    view.requestLayout()
+                    view.invalidate()
+                }
             }
             val shouldLoad = hostState.loadedLaunchUrl != launchUrl || view.url.isNullOrBlank()
-            diagnostics.append(
-                "update host=${hostState.id} view=${viewIdentity(view)} visible=$visible " +
-                    "shouldLoad=$shouldLoad current=${view.url.orEmpty()} launch=$launchUrl",
-            )
-            logViewState(view, diagnostics, "update")
+            if (shouldLoad) {
+                diagnostics.append(
+                    "update host=${hostState.id} view=${viewIdentity(view)} visible=$visible " +
+                        "shouldLoad=$shouldLoad launch=$launchUrl",
+                )
+                logViewState(view, diagnostics, "load-update")
+            }
             if (shouldLoad) {
                 hostState.loadedLaunchUrl = launchUrl
                 hostState.beginPresentationNavigation(
@@ -433,57 +452,7 @@ private fun DshWebClient(
         },
     )
 
-    if (showAttachmentSources && fileChooserCallback != null) {
-        ModalBottomSheet(
-            onDismissRequest = { finishChooser(null) },
-            containerColor = LocalDshColors.current.layer1,
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text("添加附件", style = MaterialTheme.typography.titleLarge)
-                Text(
-                    if (imagesAccepted) "选择来源 · 文件由 DSH 处理和发送" else "该附件类型不支持图片来源，请选择文件",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = LocalDshColors.current.textSecondary,
-                )
-                if (imagesAccepted) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        if (cameraAccepted) DshButton("拍照", modifier = Modifier.weight(1f), onClick = {
-                            runCatching {
-                                val capture = AttachmentCaptureStore.create(context)
-                                cameraOutput = capture
-                                AttachmentPickerPolicy.cameraIntent(context, capture.second)
-                            }.onSuccess { intent ->
-                                showAttachmentSources = false
-                                runCatching { cameraLauncher.launch(intent) }.onFailure {
-                                    cameraOutput?.first?.delete()
-                                    cameraOutput = null
-                                    diagnostics.append("file-chooser camera-launch-failed type=${it::class.java.simpleName}")
-                                    finishChooser(null)
-                                    Toast.makeText(context, "无法打开相机", Toast.LENGTH_SHORT).show()
-                                }
-                            }.onFailure {
-                                diagnostics.append("file-chooser camera-preparation-failed type=${it::class.java.simpleName}")
-                                finishChooser(null)
-                                Toast.makeText(context, "无法准备拍照文件", Toast.LENGTH_SHORT).show()
-                            }
-                        })
-                        DshButton("相册", modifier = Modifier.weight(1f), onClick = {
-                            launchSelected(AttachmentPickerPolicy.albumIntent(pendingFileChooserMode, pendingAcceptTypes))
-                        })
-                    }
-                }
-                DshButton("文件", modifier = Modifier.fillMaxWidth(), style = DshButtonStyle.PRIMARY, onClick = {
-                    pendingDocumentIntent?.let(::launchSelected) ?: finishChooser(null)
-                })
-                TextButton(onClick = { finishChooser(null) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("取消")
-                }
-            }
-        }
-    }
+
 }
 
 class DshWebViewHostState {

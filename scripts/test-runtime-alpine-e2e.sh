@@ -24,7 +24,7 @@ PROFILE_SEED="$ROOT_DIR/core/runtime-android/src/main/assets/$(prop webProfileSe
 PROFILE_SEED_SHA=$(prop webProfileSeedSha256)
 MOBILE_CONTEXT_VERSION=$(prop mobileContextVersion)
 WEBVIEW_COMPAT_VERSION="0.1.2"
-MOBILE_UI_VERSION="0.4.2-dshm.2"
+MOBILE_UI_VERSION="0.4.3-dshm.1"
 TOKYO_THEME_VERSION="0.2.2-dshm.1"
 
 command -v bwrap >/dev/null
@@ -144,6 +144,8 @@ mkdir -p "$TMP_ROOT/dsh-home/mobile-plugins/dsh-webview-compat"
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-webview-compat/." "$TMP_ROOT/dsh-home/mobile-plugins/dsh-webview-compat/"
 mkdir -p "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile"
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-client-ui-mobile/." "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile/"
+mkdir -p "$TMP_ROOT/dsh-home/mobile-plugins/dsh-mobile-attachment-sources"
+cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-mobile-attachment-sources/." "$TMP_ROOT/dsh-home/mobile-plugins/dsh-mobile-attachment-sources/"
 mkdir -p "$TMP_ROOT/dsh-home/mobile-plugins/dsh-plugin-tokyo-night"
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-plugin-tokyo-night/." "$TMP_ROOT/dsh-home/mobile-plugins/dsh-plugin-tokyo-night/"
 python3 - "$TMP_ROOT/dsh-home/profiles/web/package.json" <<'PY3'
@@ -153,19 +155,22 @@ profile = json.loads(p.read_text())
 deps = profile.setdefault('dependencies', {})
 deps['@dsh-mobile/dsh-webview-compat'] = 'file:/dsh-home/mobile-plugins/dsh-webview-compat'
 deps['dsh-client-ui-mobile'] = 'file:/dsh-home/mobile-plugins/dsh-client-ui-mobile'
+deps['@dsh-mobile/dsh-mobile-attachment-sources'] = 'file:/dsh-home/mobile-plugins/dsh-mobile-attachment-sources'
 deps['dsh-plugin-tokyo-night'] = 'file:/dsh-home/mobile-plugins/dsh-plugin-tokyo-night'
 bundles = profile.setdefault('dsh', {}).setdefault('profile', {}).setdefault('bundles', [])
-for name in ['@dsh-mobile/dsh-webview-compat', 'dsh-client-ui-mobile', 'dsh-plugin-tokyo-night']:
+for name in ['@dsh-mobile/dsh-webview-compat', 'dsh-client-ui-mobile', '@dsh-mobile/dsh-mobile-attachment-sources', 'dsh-plugin-tokyo-night']:
     if name not in bundles:
         bundles.append(name)
 p.write_text(json.dumps(profile, indent=2) + '\n')
 assert deps['@dsh-mobile/dsh-mobile-context'] == 'file:/dsh-home/mobile-plugins/dsh-mobile-context'
 assert deps['@dsh-mobile/dsh-webview-compat'] == 'file:/dsh-home/mobile-plugins/dsh-webview-compat'
 assert deps['dsh-client-ui-mobile'] == 'file:/dsh-home/mobile-plugins/dsh-client-ui-mobile'
+assert deps['@dsh-mobile/dsh-mobile-attachment-sources'] == 'file:/dsh-home/mobile-plugins/dsh-mobile-attachment-sources'
 assert deps['dsh-plugin-tokyo-night'] == 'file:/dsh-home/mobile-plugins/dsh-plugin-tokyo-night'
 assert '@dsh-mobile/dsh-mobile-context' in profile['dsh']['profile']['bundles']
 assert '@dsh-mobile/dsh-webview-compat' in profile['dsh']['profile']['bundles']
 assert 'dsh-client-ui-mobile' in profile['dsh']['profile']['bundles']
+assert '@dsh-mobile/dsh-mobile-attachment-sources' in profile['dsh']['profile']['bundles']
 assert 'dsh-plugin-tokyo-night' in profile['dsh']['profile']['bundles']
 print('embedded-mobile-ui-profile-offline-contract-ok')
 PY3
@@ -173,6 +178,8 @@ mkdir -p "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-c
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-webview-compat/." "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-compat/"
 mkdir -p "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile"
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-client-ui-mobile/." "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile/"
+mkdir -p "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-mobile-attachment-sources"
+cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-mobile-attachment-sources/." "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-mobile-attachment-sources/"
 mkdir -p "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-plugin-tokyo-night"
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-plugin-tokyo-night/." "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-plugin-tokyo-night/"
 inside 'test -f /dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-webview-compat/lib/client.js'
@@ -190,7 +197,7 @@ inside 'test -f /dsh-home/mobile-plugins/dsh-client-ui-mobile/package.json'
 python3 - "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile/package.json" "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile/package.json" <<'PYUI'
 import json, sys
 for path in sys.argv[1:]:
-    assert json.load(open(path))['version'] == '0.4.2-dshm.2'
+    assert json.load(open(path))['version'] == '0.4.3-dshm.1'
 print('active-mobile-ui-asset-ok')
 PYUI
 grep -q 'data-dshm-shell' "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile/lib/client.js"
@@ -276,12 +283,16 @@ mkdir -p "$TMP_ROOT/dsh-home/mobile-plugins/dsh-webview-compat"
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-webview-compat/." "$TMP_ROOT/dsh-home/mobile-plugins/dsh-webview-compat/"
 mkdir -p "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile"
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-client-ui-mobile/." "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile/"
+mkdir -p "$TMP_ROOT/dsh-home/mobile-plugins/dsh-mobile-attachment-sources"
+cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-mobile-attachment-sources/." "$TMP_ROOT/dsh-home/mobile-plugins/dsh-mobile-attachment-sources/"
 mkdir -p "$TMP_ROOT/dsh-home/mobile-plugins/dsh-plugin-tokyo-night"
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-plugin-tokyo-night/." "$TMP_ROOT/dsh-home/mobile-plugins/dsh-plugin-tokyo-night/"
 inside '/usr/local/bin/dsh plugin --profile web add file:/dsh-home/mobile-plugins/dsh-mobile-context'
 lock_before=$(sha256sum "$TMP_ROOT/dsh-home/profiles/web/pnpm-lock.yaml" | awk '{print $1}')
 mkdir -p "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile"
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-client-ui-mobile/." "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile/"
+mkdir -p "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-mobile-attachment-sources"
+cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-mobile-attachment-sources/." "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-mobile-attachment-sources/"
 python3 - "$TMP_ROOT/dsh-home/profiles/web/package.json" <<'PYOLD'
 import json, pathlib, sys
 p = pathlib.Path(sys.argv[1])
@@ -289,11 +300,14 @@ data = json.loads(p.read_text())
 data['userCustom'] = {'preserved': True}
 deps = data.setdefault('dependencies', {})
 deps['dsh-client-ui-mobile'] = 'file:/dsh-home/mobile-plugins/dsh-client-ui-mobile'
+deps['@dsh-mobile/dsh-mobile-attachment-sources'] = 'file:/dsh-home/mobile-plugins/dsh-mobile-attachment-sources'
 deps['dsh-plugin-tokyo-night'] = 'file:/dsh-home/mobile-plugins/dsh-plugin-tokyo-night'
 profile = data.setdefault('dsh', {}).setdefault('profile', {})
 bundles = profile.setdefault('bundles', [])
 if 'dsh-client-ui-mobile' not in bundles:
     bundles.append('dsh-client-ui-mobile')
+if '@dsh-mobile/dsh-mobile-attachment-sources' not in bundles:
+    bundles.append('@dsh-mobile/dsh-mobile-attachment-sources')
 if 'dsh-plugin-tokyo-night' not in bundles:
     bundles.append('dsh-plugin-tokyo-night')
 p.write_text(json.dumps(data, indent=2) + '\n')
@@ -305,10 +319,11 @@ data = json.loads(p.read_text())
 deps = data.setdefault('dependencies', {})
 deps['@dsh-mobile/dsh-webview-compat'] = 'file:/dsh-home/mobile-plugins/dsh-webview-compat'
 deps['dsh-client-ui-mobile'] = 'file:/dsh-home/mobile-plugins/dsh-client-ui-mobile'
+deps['@dsh-mobile/dsh-mobile-attachment-sources'] = 'file:/dsh-home/mobile-plugins/dsh-mobile-attachment-sources'
 deps['dsh-plugin-tokyo-night'] = 'file:/dsh-home/mobile-plugins/dsh-plugin-tokyo-night'
 profile = data.setdefault('dsh', {}).setdefault('profile', {})
 bundles = profile.setdefault('bundles', [])
-for name in ['@dsh-mobile/dsh-webview-compat', 'dsh-client-ui-mobile', 'dsh-plugin-tokyo-night']:
+for name in ['@dsh-mobile/dsh-webview-compat', 'dsh-client-ui-mobile', '@dsh-mobile/dsh-mobile-attachment-sources', 'dsh-plugin-tokyo-night']:
     if name not in bundles:
         bundles.append(name)
 p.write_text(json.dumps(data, indent=2) + '\n')
@@ -318,6 +333,8 @@ cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-webview-compat
 rm -rf "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile"
 mkdir -p "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile"
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-client-ui-mobile/." "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-client-ui-mobile/"
+mkdir -p "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-mobile-attachment-sources"
+cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-mobile-attachment-sources/." "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-mobile-attachment-sources/"
 rm -rf "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-plugin-tokyo-night"
 mkdir -p "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-plugin-tokyo-night"
 cp -a "$ROOT_DIR/core/runtime-android/src/main/assets/runtime/dsh-plugin-tokyo-night/." "$TMP_ROOT/dsh-home/profiles/web/node_modules/dsh-plugin-tokyo-night/"
@@ -330,10 +347,12 @@ assert data['userCustom']['preserved'] is True
 assert data['dependencies']['@dsh-mobile/dsh-mobile-context'] == 'file:/dsh-home/mobile-plugins/dsh-mobile-context'
 assert data['dependencies']['@dsh-mobile/dsh-webview-compat'] == 'file:/dsh-home/mobile-plugins/dsh-webview-compat'
 assert data['dependencies']['dsh-client-ui-mobile'] == 'file:/dsh-home/mobile-plugins/dsh-client-ui-mobile'
+assert data['dependencies']['@dsh-mobile/dsh-mobile-attachment-sources'] == 'file:/dsh-home/mobile-plugins/dsh-mobile-attachment-sources'
 assert data['dependencies']['dsh-plugin-tokyo-night'] == 'file:/dsh-home/mobile-plugins/dsh-plugin-tokyo-night'
 assert '@dsh-mobile/dsh-mobile-context' in data['dsh']['profile']['bundles']
 assert '@dsh-mobile/dsh-webview-compat' in data['dsh']['profile']['bundles']
 assert 'dsh-client-ui-mobile' in data['dsh']['profile']['bundles']
+assert '@dsh-mobile/dsh-mobile-attachment-sources' in data['dsh']['profile']['bundles']
 assert 'dsh-plugin-tokyo-night' in data['dsh']['profile']['bundles']
 print('old-profile-mobile-ui-reconcile-contract-ok')
 PYCHECK
@@ -344,7 +363,7 @@ inside 'test -f /dsh-home/mobile-plugins/dsh-client-ui-mobile/package.json'
 inside 'test -f /dsh-home/mobile-plugins/dsh-plugin-tokyo-night/package.json'
 python3 - "$TMP_ROOT/dsh-home/mobile-plugins/dsh-client-ui-mobile/package.json" <<'PYUI'
 import json, sys
-assert json.load(open(sys.argv[1]))['version'] == '0.4.2-dshm.2'
+assert json.load(open(sys.argv[1]))['version'] == '0.4.3-dshm.1'
 print('active-mobile-ui-asset-ok')
 PYUI
 python3 - "$TMP_ROOT/dsh-home/mobile-plugins/dsh-plugin-tokyo-night/package.json" <<'PYTOKYO2'
@@ -360,4 +379,9 @@ actual=$(inside '/usr/local/bin/dsh --version' | tail -n 1 | tr -d '\r')
 [[ "$actual" == "$DSH_VERSION" ]] || { echo "Expected DSH $DSH_VERSION, got $actual" >&2; exit 2; }
 inside 'node --version; npm --version; pnpm --version'
 
+python3 - "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-mobile-attachment-sources/package.json" "$TMP_ROOT/dsh-home/mobile-plugins/dsh-mobile-attachment-sources/package.json" <<'PYATT'
+import json,sys
+for path in sys.argv[1:]: assert json.load(open(path))['version'] == '0.1.0-dshm.1', path
+print('managed-attachment-source-plugin-ok')
+PYATT
 echo "runtime-alpine-e2e: PASS dsh=$actual"

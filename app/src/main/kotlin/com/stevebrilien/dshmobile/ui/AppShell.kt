@@ -36,6 +36,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,7 +54,6 @@ import com.stevebrilien.dshmobile.core.recovery.ProjectRegistry
 import com.stevebrilien.dshmobile.core.recovery.RecoveryVault
 import com.stevebrilien.dshmobile.runtime.RuntimeSupervisor
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 private enum class MainSection(val label: String, val icon: DshIconGlyph) {
@@ -78,8 +78,14 @@ fun DshMobileApp() {
     var onboardingComplete by remember(onboardingStore) { mutableStateOf(onboardingStore.isComplete()) }
     var showLaunchSplash by remember { mutableStateOf(true) }
 
+    // The old fixed 520 ms splash prevented ChatScreen and Runtime startup from
+    // even entering composition. Start the idempotent supervisor in parallel
+    // with the first frame; then reveal the actual startup/progress UI.
+    LaunchedEffect(runtimeSupervisor, onboardingComplete) {
+        if (onboardingComplete) runtimeSupervisor.ensureStarted()
+    }
     LaunchedEffect(Unit) {
-        delay(520)
+        withFrameNanos { }
         showLaunchSplash = false
     }
 
@@ -193,16 +199,21 @@ private fun DshMobileShell(
             visible = selected == MainSection.Home,
         )
 
-        if (selected != MainSection.Home) {
-            AnimatedContent(
+        // Home is a permanent WebView behind this overlay. Transition to a
+        // transparent Home target instead of unmounting the overlay instantly:
+        // the previous native page gets its exit animation on Home as well.
+        AnimatedContent(
                 targetState = selected,
-                modifier = Modifier.fillMaxSize().background(colors.base),
+                modifier = Modifier.fillMaxSize(),
                 transitionSpec = {
-                    (fadeIn(tween(150)) + slideInHorizontally(tween(170)) { it / 24 }) togetherWith
-                        (fadeOut(tween(100)) + slideOutHorizontally(tween(130)) { -it / 30 })
+                    (fadeIn(tween(140)) + slideInHorizontally(tween(160)) { it / 28 }) togetherWith
+                        (fadeOut(tween(110)) + slideOutHorizontally(tween(140)) { -it / 32 })
                 },
                 label = "main-section",
             ) { section ->
+                // Only native targets paint an opaque backdrop; Home must let
+                // the retained WebView show through after a smooth exit.
+                Box(Modifier.fillMaxSize().then(if (section == MainSection.Home) Modifier else Modifier.background(colors.base))) {
                 when (section) {
                     MainSection.Home -> Unit
                     MainSection.Workspace -> WorkspaceHubScreen(
@@ -223,8 +234,8 @@ private fun DshMobileShell(
                         modifier = contentModifier,
                     )
                 }
+                }
             }
-        }
 
         AnimatedVisibility(
             visible = !imeVisible,

@@ -11,6 +11,7 @@ window.__ModuleLoader__.load({
     const DRAWER_ATTR = "data-dshm-drawer";
     const RIGHTBAR_ATTR = "data-dshm-rightbar";
     const SETTINGS_ATTR = "data-dshm-settings";
+    const GESTURE_ATTR = "data-dshm-dragging";
     const TRANSIENT_ATTR = "data-dshm-transient-layer";
     const STYLE_ID = "dsh-client-ui-mobile/mobile-v7";
     const TOGGLE_ID = "dshm-mobile-nav-toggle";
@@ -78,6 +79,20 @@ html[${ROOT_ATTR}="active"][${TRANSIENT_ATTR}="open"] #${BACKDROP_ID} {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
+}
+/* Drag the existing DSH-owned drawer without transform: Settings is a fixed
+   descendant and must retain the viewport as its containing block. */
+html[${ROOT_ATTR}="active"][${GESTURE_ATTR}] [data-dshm-sidebar-col],
+html[${ROOT_ATTR}="active"][${GESTURE_ATTR}] [data-dshm-shell]:not([data-sidebar-collapsed]) [data-dshm-sidebar-col] {
+  left: var(--dshm-drag-left) !important;
+  transition: none !important;
+  pointer-events: auto !important;
+}
+html[${ROOT_ATTR}="active"][${GESTURE_ATTR}] #${BACKDROP_ID} {
+  opacity: var(--dshm-drag-opacity);
+  visibility: visible;
+  pointer-events: auto;
+  transition: none;
 }
 html[${ROOT_ATTR}="active"] [data-dshm-sidebar-root] {
   box-sizing: border-box !important;
@@ -803,6 +818,7 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
         const synchronize = () => {
           raf = 0;
           const mobile = setMobileState();
+          if (!mobile && gesture) cancelActiveGesture();
           frame = tagShell();
           tagSidebarRoot(frame);
           tagSidebarSearch(frame);
@@ -836,6 +852,8 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
           }
           if (hasVisibleTransientLayer()) html.setAttribute(TRANSIENT_ATTR, "open");
           else html.removeAttribute(TRANSIENT_ATTR);
+          if (gesture && (settings || html.hasAttribute(TRANSIENT_ATTR) ||
+              html.getAttribute(RIGHTBAR_ATTR) === "open")) cancelActiveGesture();
           if (!mobile || !frame) return;
 
           if (!normalizedInitialDrawer) {
@@ -876,6 +894,85 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
         };
         backdrop.addEventListener('click', onBackdropClick);
 
+        // One short-lived presentation gesture. The upstream layout remains the
+        // only durable drawer state; never synthesize clicks or a second store.
+        let gesture = null;
+        let settleRaf = 0;
+        const clearDrag = () => {
+          html.removeAttribute(GESTURE_ATTR);
+          html.style.removeProperty("--dshm-drag-left");
+          html.style.removeProperty("--dshm-drag-opacity");
+        };
+        const cancelActiveGesture = () => { gesture = null; clearDrag(); };
+        const excludedGestureTarget = (target) => {
+          if (!(target instanceof Element)) return true;
+          if (target.closest('[data-composer-card], [data-dshm-recent-rail], [role="dialog"], input, textarea, [contenteditable="true"]')) return true;
+          let node = target;
+          while (node instanceof HTMLElement && node !== document.body) {
+            // Never steal native horizontal scrolling, including image preview.
+            if (node.scrollWidth > node.clientWidth + 2 &&
+                /auto|scroll/.test(getComputedStyle(node).overflowX)) return true;
+            node = node.parentElement;
+          }
+          return false;
+        };
+        const onGestureDown = (event) => {
+          if (gesture || !mql.matches || event.isPrimary === false || event.button !== 0 || !frame ||
+              html.hasAttribute(SETTINGS_ATTR) || html.hasAttribute(TRANSIENT_ATTR) ||
+              html.getAttribute(RIGHTBAR_ATTR) === "open") return;
+          const sidebar = frame.querySelector('[data-dshm-sidebar-col]');
+          if (!(sidebar instanceof HTMLElement) || excludedGestureTarget(event.target)) return;
+          const open = !frame.hasAttribute('data-sidebar-collapsed');
+          const x = event.clientX;
+          // Preserve Android's leftmost system Back region; the hamburger is
+          // always available when an OEM reserves the entire edge.
+          if (open ? !sidebar.contains(event.target) : x < 28 || x > 88) return;
+          gesture = { id: event.pointerId, x, y: event.clientY, at: performance.now(),
+            open, width: sidebar.getBoundingClientRect().width, locked: false, dx: 0 };
+        };
+        const onGestureMove = (event) => {
+          const g = gesture;
+          if (!g || event.pointerId !== g.id) return;
+          const dx = event.clientX - g.x;
+          const dy = event.clientY - g.y;
+          if (!g.locked) {
+            if (Math.hypot(dx, dy) < 12) return;
+            if (Math.abs(dx) < Math.abs(dy) * 1.35 || (g.open ? dx >= 0 : dx <= 0)) {
+              gesture = null;
+              return;
+            }
+            g.locked = true;
+            html.setAttribute(GESTURE_ATTR, "");
+          }
+          if (event.cancelable) event.preventDefault();
+          g.dx = dx;
+          const width = Math.max(1, g.width);
+          const progress = Math.min(1, Math.max(0, (g.open ? width : 0) + dx) / width);
+          html.style.setProperty("--dshm-drag-left", `${(progress - 1) * width}px`);
+          html.style.setProperty("--dshm-drag-opacity", String(progress));
+        };
+        const settleGesture = (event, cancelled = false) => {
+          const g = gesture;
+          if (!g || event.pointerId !== g.id) return;
+          gesture = null;
+          if (!g.locked) return;
+          const duration = Math.max(1, performance.now() - g.at);
+          const distance = Math.abs(g.dx);
+          const commit = !cancelled && (distance >= Math.min(92, g.width * .32) ||
+            (distance >= 25 && distance / duration >= .45));
+          if (commit && frame && (frame.hasAttribute('data-sidebar-collapsed') !== g.open)) {
+            ctx.layout.toggleSidebar();
+          }
+          if (settleRaf) cancelAnimationFrame(settleRaf);
+          settleRaf = requestAnimationFrame(() => { settleRaf = 0; clearDrag(); schedule(); });
+        };
+        const onGestureUp = (event) => settleGesture(event);
+        const onGestureCancel = (event) => settleGesture(event, true);
+        document.addEventListener("pointerdown", onGestureDown, { capture: true, passive: true });
+        document.addEventListener("pointermove", onGestureMove, { capture: true, passive: false });
+        document.addEventListener("pointerup", onGestureUp, true);
+        document.addEventListener("pointercancel", onGestureCancel, true);
+
         const observer = new MutationObserver(schedule);
         observer.observe(document.documentElement, {
           subtree: true,
@@ -893,6 +990,13 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
           if (typeof offAdaptiveTheme === "function") offAdaptiveTheme();
           toggle.removeEventListener("click", onToggle);
           backdrop.removeEventListener('click', onBackdropClick);
+          document.removeEventListener("pointerdown", onGestureDown, true);
+          document.removeEventListener("pointermove", onGestureMove, true);
+          document.removeEventListener("pointerup", onGestureUp, true);
+          document.removeEventListener("pointercancel", onGestureCancel, true);
+          gesture = null;
+          if (settleRaf) cancelAnimationFrame(settleRaf);
+          clearDrag();
           if (raf) cancelAnimationFrame(raf);
           primaryViewAnimation?.cancel();
           primaryViewAnimation = null;
@@ -911,6 +1015,7 @@ html[${ROOT_ATTR}="active"] [data-dshm-theme-tokyo] svg {
           html.removeAttribute(RIGHTBAR_ATTR);
           html.removeAttribute(SETTINGS_ATTR);
           html.removeAttribute(TRANSIENT_ATTR);
+          html.removeAttribute(GESTURE_ATTR);
           for (const node of document.querySelectorAll('[data-dshm-shell], [data-dshm-shell-overlay], [data-dshm-sidebar-col], [data-dshm-sidebar-root], [data-dshm-title-row], [data-dshm-sidebar-search], [data-dshm-sidebar-toolbar], [data-dshm-conversation-view], [data-dshm-center-col], [data-dshm-rightbar-col], [data-dshm-settings-overlay], [data-dshm-settings-panel], [data-dshm-settings-nav], [data-dshm-settings-nav-title], [data-dshm-settings-nav-list], [data-dshm-settings-content], [data-dshm-settings-header], [data-dshm-settings-options], [data-dshm-font-size-row], [data-dshm-font-size-copy], [data-dshm-font-size-control], [data-dshm-font-size-stepper], [data-dshm-font-size-arrows], [data-dshm-font-size-arrow], [data-dshm-desktop-config-action], [data-dshm-desktop-config-error]')) {
             for (const attribute of Array.from(node.attributes)) {
               if (attribute.name.startsWith("data-dshm-")) node.removeAttribute(attribute.name);

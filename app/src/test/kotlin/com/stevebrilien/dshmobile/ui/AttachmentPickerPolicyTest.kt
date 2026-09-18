@@ -15,12 +15,33 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [30])
 class AttachmentPickerPolicyTest {
-    @Test fun nativeSheetAppliesOnlyToWebOpenModes() {
+    @Test fun chooserPolicyAppliesOnlyToWebOpenModes() {
         assertTrue(AttachmentPickerPolicy.isOpenMode(WebChromeClient.FileChooserParams.MODE_OPEN))
         assertTrue(AttachmentPickerPolicy.isOpenMode(WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE))
         assertFalse(AttachmentPickerPolicy.isOpenMode(WebChromeClient.FileChooserParams.MODE_SAVE))
         assertFalse(AttachmentPickerPolicy.allowsMultiple(WebChromeClient.FileChooserParams.MODE_OPEN))
         assertTrue(AttachmentPickerPolicy.allowsMultiple(WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE))
+    }
+
+    @Test fun standardHtmlAcceptAndCaptureChooseSourceWithoutNativeSheet() {
+        val one = WebChromeClient.FileChooserParams.MODE_OPEN
+        val many = WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE
+        assertEquals(AttachmentPickerPolicy.Source.CAMERA,
+            AttachmentPickerPolicy.sourceFor(one, arrayOf("image/*"), true))
+        assertEquals(AttachmentPickerPolicy.Source.ALBUM,
+            AttachmentPickerPolicy.sourceFor(many, arrayOf("image/*"), false))
+        assertEquals(AttachmentPickerPolicy.Source.DOCUMENT,
+            AttachmentPickerPolicy.sourceFor(many, emptyArray(), false))
+        assertEquals(AttachmentPickerPolicy.Source.DOCUMENT,
+            AttachmentPickerPolicy.sourceFor(many, arrayOf("image/png,application/pdf"), false))
+        // The camera produces JPEG and cannot satisfy a PNG-only request;
+        // preserve valid image selection through the gallery fallback.
+        assertEquals(AttachmentPickerPolicy.Source.ALBUM,
+            AttachmentPickerPolicy.sourceFor(one, arrayOf("image/png"), true))
+        assertEquals(AttachmentPickerPolicy.Source.ALBUM,
+            AttachmentPickerPolicy.sourceFor(many, arrayOf(".jpg,.png"), false))
+        assertEquals(AttachmentPickerPolicy.Source.DOCUMENT,
+            AttachmentPickerPolicy.sourceFor(WebChromeClient.FileChooserParams.MODE_SAVE, arrayOf("image/*"), true))
     }
 
     @Test fun sourceChoicesHonorWebAcceptConstraints() {

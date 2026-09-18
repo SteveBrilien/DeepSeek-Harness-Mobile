@@ -1,0 +1,5 @@
+# Independent, disableable presentation plugin; does not replace the official
+# conversation or the single-owner attachment rail.
+- insert:
+    - id: dsh-mobile-attachment-sources
+      name: '@dsh-mobile/dsh-mobile-attachment-sources'

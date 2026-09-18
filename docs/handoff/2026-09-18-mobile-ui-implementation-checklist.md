@@ -12,6 +12,24 @@ App 版本在 `app/build.gradle.kts` 调为 `0.5.0-preview.1-dev` / `versionCode
 
 状态定义：`RESEARCHED` 有源证据只证明调查；`OWNER_CONFIRMED` 是用户已完成反馈，不当作独立 PASS；`PASS` 必须有当前源码 commit+对应测试/样本；`NOT_RUN/BLOCKED/FAIL` 按事实写。`[x]` 有 5 项已完成研究、1 项仅完成版本构建验证；待实现或发布验收仍为 `[ ]`。
 
+## 当前实施与验收实录（2026-09-18；以这段结果覆盖旧的“全部未实现”快照）
+
+当前阶段：**IN_PROGRESS / NOT RELEASED**。已修改源码但尚未发布 APK；旧 Preview.6 / `release/update.json` 未动。已经通过独立 MCP TaskProfile Android API30 单元测试 `task-android_unit_test-20df6b6ed8b743088e42`（app 34、core/recovery 12、core/runtime-android 16，共 62/62，0 fail）；Lint `task-android_lint-504e935bcc464f12a142`（0 errors、23 warnings）；最终附件 SVG 资产 Runtime Alpine E2E `task-runtime_alpine_e2e-a1829744115846db97df`（succeeded，exit 0，PASS DSH 0.1.5-rc.2）；`mobile_context_contract` job `task-mobile_context_contract-29cc317795b541b3ac13` 也 succeeded。Node24 `scripts/test-mobile-attachment-sources.mjs` 与 `scripts/test-mobile-drawer-gesture.mjs` PASS；两者是合成 DOM/事件契约而非 OriginOS 帧证据。
+
+| 项目 | 已取得的本轮证据 | 尚不可标 PASS 的边界 |
+|---|---|---|
+| ATT01 | 真正封装的 DSH 0.1.5-rc.2 的 `InputBar` 有 HTML `input[type=file][multiple]`，入口 `onPickFiles → intakeFiles`，实际浏览器 fixture 确认，无旧 0.1.2 npm 缓存依赖。 | 手机包上的运行时内容与 Android provider 仍须真机验证。 |
+| ATT02 | 三入口复用官方真实 input，同步 `click()`，`change/cancel` 后恢复 accept/capture/multiple，标准 DSH count/size/Session 校验保留；官方单占附件槽没被双注册。 | 公开的 `ComposerAttachmentsOwnerProps.onAddFiles` 在官方单占 slot 内，外部插件没有独立 intake 服务；近期图的直接入列仍 BLOCKED，不能用模拟 paste/合成 change 硬绕。 |
+| ATT03 | 390px exact-current-profile Chromium：固定 PNG 1/2/3/5 逐步进入官方草稿；五张消息发送后出现在 Session，reload 后五张图全部重载。测试 session 在 isolated `.mcp/tmp/runtime-alpine-e2e-clean`，截图位于 `.mcp/browser/sessions/browser-af38419355c14053/`，无私人数据。 | 仅五张通过 Web→Host 消息回显；模型推理因 `MISSING_CREDENTIAL` 没有成功回复；Android 原生 `content://` grant、逐组 Host 持久化和真实设备未执行。 |
+| ATT04/07 | Native 移除 ModalBottomSheet 并按 accept/capture 分流、只回 content://；新 Cordis list slots 三入口、禁用恢复原生输入、同屏不出现双回形针，390px Chromium 截图已录。 | 端到端 Activity 重建/Provider 超时/最近图库还未通过。 |
+| ATT08 | 官方已选图横向预览、单击全屏灯箱、单项删除、五张横滑与刷新会话图片通过 Chromium。 | 最近图片预选行、MediaStore 授权/拒绝/撤销、320/360/390 三宽三主题无证据。 |
+| DR01/02 | pointer 手势实现 + Node24 open/close/vertical/system-edge/rail/modal/cancel/unload 合成事件测试 PASS。 | Chrome 手势连续 20 次 / OEM 回退、帧表现/屏幕录制仍未验收。 |
+| MOT01/PERF | Native 页面进出过渡改为保留 WebView 的透明 Home 目标；删固定 520ms splash，Supervisor 与首帧并行；已有单元编译 PASS。 | 冷/温/热三轮、reduced-motion、Android 实际帧序/设备启动时间缺证据，不能宣称缩短了多少秒。 |
+
+**剩余关键阻断**：最近图库/安全媒体桥接/正式 onAddFiles 接口；原生 URI 实际上传与 OEM 真机；定量启动/动画。不得将这段 Browser PASS 等同最终六项 PASS，未获用户许可不读取其真实图片或密钥。
+
+当前开发 APK build `task-android_debug-2e0e92c6c33f4471b57e` / signing `task-android_signing_verify-622c961c5e2f4f9f9c67` 均 PASS，包内确认新版两插件，仍**不是**六项验收全部通过和公开 release；详见 `2026-09-18-v050-attachment-integration-qa.md`。
+
 ## A. 已完成的研究（非代码交付）
 
 - [x] A01 对照用户参考截图及之前记录，定位 Preview.6 `ChatScreen.kt` 原生 `ModalBottomSheet` 与要求不符。

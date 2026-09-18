@@ -55,6 +55,24 @@ class AndroidFileChooserResultTest {
         assertArrayEquals(arrayOf(first), AndroidFileChooserResult.resolve(Activity.RESULT_OK, pickerResult(), single, null))
     }
 
+    @Test fun untrustedSchemesAreRejectedEvenWhenPickerClaimsSuccess() {
+        val hostile = arrayOf(
+            Uri.parse("file:///data/data/other.app/secret"),
+            Uri.parse("javascript:alert(1)"),
+            Uri.parse("intent://untrusted"),
+        )
+        assertNull(AndroidFileChooserResult.resolve(Activity.RESULT_OK, null, multiple, hostile))
+        assertArrayEquals(
+            arrayOf(first, second),
+            AndroidFileChooserResult.resolve(
+                Activity.RESULT_OK,
+                Intent().apply { data = first },
+                multiple,
+                arrayOf(hostile[0], second, hostile[1]),
+            ),
+        )
+    }
+
     @Test fun cancelAndEmptyResultsDoNotReturnUris() {
         assertNull(AndroidFileChooserResult.resolve(Activity.RESULT_CANCELED, pickerResult(), multiple, arrayOf(first)))
         assertNull(AndroidFileChooserResult.resolve(Activity.RESULT_OK, Intent(), multiple, null))

@@ -100,7 +100,10 @@ class MobilePluginProfileCoordinatorTest {
         assertTrue(bundleNames.contains("@dsh-mobile/dsh-mobile-context"))
         assertTrue(bundleNames.contains("@dsh-mobile/dsh-webview-compat"))
         assertTrue(bundleNames.contains("dsh-client-ui-mobile"))
+        assertTrue(bundleNames.contains("@dsh-mobile/dsh-mobile-attachment-sources"))
         assertTrue(bundleNames.contains("dsh-plugin-tokyo-night"))
+        assertEquals("file:/dsh-home/mobile-plugins/dsh-mobile-attachment-sources",
+            migrated.getJSONObject("dependencies").getString("@dsh-mobile/dsh-mobile-attachment-sources"))
         assertEquals(
             MobilePluginProfileCoordinator.MOBILE_CONTEXT_PLUGIN_VERSION,
             JSONObject(
@@ -162,6 +165,17 @@ class MobilePluginProfileCoordinatorTest {
         )
         assertTrue(coordinator.isReconciled())
 
+        assertEquals(
+            MobilePluginProfileCoordinator.ATTACHMENT_SOURCES_PLUGIN_VERSION,
+            JSONObject(File(profile, "node_modules/@dsh-mobile/dsh-mobile-attachment-sources/package.json").readText())
+                .getString("version"),
+        )
+        assertEquals(
+            MobilePluginProfileCoordinator.ATTACHMENT_SOURCES_PLUGIN_VERSION,
+            JSONObject(File(store.layout.persistentDshHome, "mobile-plugins/dsh-mobile-attachment-sources/package.json").readText())
+                .getString("version"),
+        )
+
         val firstResult = packageFile.readBytes()
         File(store.layout.persistentDshHome, "mobile-plugins/dsh-client-ui-mobile").deleteRecursively()
         coordinator.reconcile { error("reconciled profile must not reinstall seed") }
@@ -213,6 +227,20 @@ class MobilePluginProfileCoordinatorTest {
         assertTrue(expected.contentEquals(uiClient.readBytes()))
         assertTrue(coordinator.isActivePresentationReconciled())
         assertTrue(coordinator.isReconciled())
+    }
+
+    @Test
+    fun activeAttachmentSourcesPayloadDriftIsRepairedWithoutReplacingUserProfile() {
+        val profile = File(store.layout.persistentDshHome, "profiles/web")
+        seedMinimalExistingProfile(profile)
+        coordinator.reconcile { error("seed must not replace profile") }
+        val plugin = File(profile, "node_modules/@dsh-mobile/dsh-mobile-attachment-sources/lib/client.js")
+        val expected = plugin.readBytes()
+        plugin.appendText("\n// stale test bytes", StandardCharsets.UTF_8)
+        assertFalse(coordinator.isActivePresentationReconciled())
+        coordinator.reconcile { error("must not replace user profile") }
+        assertTrue(expected.contentEquals(plugin.readBytes()))
+        assertTrue(coordinator.isActivePresentationReconciled())
     }
 
     @Test

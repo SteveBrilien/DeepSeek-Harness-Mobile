@@ -39,6 +39,27 @@ internal object AttachmentPickerPolicy {
 
     fun acceptsImages(acceptTypes: Array<String>?): Boolean = acceptedImageTypes(acceptTypes) != emptySet<String>()
 
+    /** The plugin chooses a source via standard HTML accept/capture attributes.
+     * An unrestricted official input continues to use the stock system picker.
+     */
+    fun prefersAlbum(acceptTypes: Array<String>?): Boolean {
+        val tokens = acceptTokens(acceptTypes)
+        return tokens.isNotEmpty() && tokens.all { token ->
+            token == "image/*" || imageExtensions.containsKey(token) ||
+                (token.startsWith("image/") && token.length > 6 && !token.contains('*'))
+        }
+    }
+
+    enum class Source { CAMERA, ALBUM, DOCUMENT }
+
+    fun sourceFor(mode: Int, acceptTypes: Array<String>?, captureEnabled: Boolean): Source {
+        if (!isOpenMode(mode)) return Source.DOCUMENT
+        if (captureEnabled && mode == WebChromeClient.FileChooserParams.MODE_OPEN && acceptsCamera(acceptTypes)) {
+            return Source.CAMERA
+        }
+        return if (prefersAlbum(acceptTypes)) Source.ALBUM else Source.DOCUMENT
+    }
+
     /** Android ACTION_IMAGE_CAPTURE produces JPEG; do not offer it for PNG-only inputs. */
     fun acceptsCamera(acceptTypes: Array<String>?): Boolean = acceptedImageTypes(acceptTypes)?.contains("image/jpeg") != false
 
