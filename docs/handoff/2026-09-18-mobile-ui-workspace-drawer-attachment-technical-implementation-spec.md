@@ -1,10 +1,10 @@
 # DSH Mobile｜工作区、抽屉、应用 UI 与插件式附件技术实施规范
 
-> 版本：技术方案 V1.1（2026-09-18，补充官方 DeepSeek APK 静态分析）；状态：**调研与设计完成，待技术门禁、实现及设备验收**。本次只写文档，不改功能代码、不构建/安装 APK、不改变 SSH/ADB、签名、发布源、授权或用户数据。对应需求：`2026-09-18-owner-ui-and-attachment-plugin-reconciliation.md`。所有数值阈值如未注明“现有行为”，均为**拟议初值**，须基线及真机验证，而非已经过用户确认的指标。
+> 版本：技术方案 V1.2（2026-09-18，工程实施细化与独立验收清单）；状态：**调研与设计完成，待技术门禁、实现及设备验收**。本次只写文档，不改功能代码、不构建/安装 APK、不改变 SSH/ADB、签名、发布源、授权或用户数据。对应需求：`2026-09-18-owner-ui-and-attachment-plugin-reconciliation.md`。所有数值阈值如未注明“现有行为”，均为**拟议初值**，须基线及真机验证，而非已经过用户确认的指标。
 
 ## 0. 结论先行、版本与证据分级
 
-架构路线：**官方 DSH 会话/输入/附件状态不复制；Cordis 浏览器插件提供聊天内联入口与抽屉适配；Android 原生 Web Host 只管理系统 picker/临时授权/生命周期；Compose 管四项底栏、工作区、设置和 Recovery；Native Recovery Core 持有文件事务和恢复事务。** WebView 根视口仍专属 `dsh-webview-compat`。严格保留无 Root、原签名、原数据和独立 Termux SSH 救援。
+架构路线：**官方 DSH 会话/输入/附件状态不复制；Cordis 浏览器插件提供聊天内联入口与抽屉适配；Android 原生 Web Host 管理系统 picker、近期媒体的用户许可与只读缩略数据、临时授权/生命周期；Compose 管四项底栏、工作区、设置和 Recovery；Native Recovery Core 持有文件事务和恢复事务。** WebView 根视口仍专属 `dsh-webview-compat`。严格保留无 Root、原签名、原数据和独立 Termux SSH 救援。
 
 证据等级：`F`＝已直接阅读此 Git HEAD 的代码/本地包，`E`＝已核对外部官方规范但运行环境未实测，`P`＝拟议实现接口/策略，`B`＝阻断实施的未决点。`PASS` 仅指明确列出的测试，不能扩展成 OriginOS UI 实测。现场基线 Git `ae638e4`，先前已改过工作区/备份首屏并通过现有测试；手机截图所示 Preview.6 旧版 APK 并没有这些新源码改动。旧文档 `2026-09-16-ui-remediation-and-acceptance-plan.md` 中 G3 提到的“原生轻量底部 sheet”已被本轮用户的新明确要求**替代为 composer 内联插件 UI**，但原生 picker/授权职责仍保留。ADR 0011 描述的是当时 compat-only 阶段，当前 `MobilePluginProfileCoordinator.kt` 实际明确启用四个 APK-managed bundles，须以现态为准。
 
@@ -107,7 +107,7 @@ IDLE → ARMED → AWAITING_WEBVIEW_REQUEST → PICKER_LAUNCHED
                 ↘ CANCELLED/LAUNCH_FAILED/DISPOSED → CALLBACK_NULL_ONCE → IDLE
 ```
 
-每一请求绑定 `requestId`, `webViewIdentity`, `documentGeneration`, `sessionId`(如有), `mode`, `accept[]`, `multiple`, `sourceHint`, `callbackOnce`, `cameraOutputUri`。只有 Android 主线程操作 Callback/ActivityResult；重入**拒绝新请求并回新回调 null**，不能替换旧 callback。导航、WebView dispose、生命周期中断清理 pending 且一次性 null；相机失败回收自己拥有的空临时文件，仍在写入中的不抢删，过期由本目录定界清理；重建 Activity 与 provider 回调要区分“原请求可重连”或安全取消，不将旧返回 URI 送到新 Session。已选择的 URI 临时 grant 随系统契约，不默认 `takePersistableUriPermission`，只有 ACTION_OPEN_DOCUMENT/TREE 且系统明确给 persistable flag、确有长期用途时持久化。
+每一请求绑定 `requestId`, `webViewIdentity`, `documentGeneration`, `sessionId`(如有), `mode`, `accept[]`, `multiple`, `sourceHint`, `callbackOnce`, `cameraOutputUri`。只有 Android 主线程操作 Callback/ActivityResult；重入**拒绝新请求并回新回调 null**，不能替换旧 callback。实现前还需检查 `onShowFileChooser` 返回语义：若已调用 `filePathCallback.onReceiveValue(null)`，该分支应返回 `true` 表示已自行处理，不得在返回 `false` 后重复转交给 WebView 默认处理；所有异常分支做 once-only 检查。导航、WebView dispose、生命周期中断清理 pending 且一次性 null；相机失败回收自己拥有的空临时文件，仍在写入中的不抢删，过期由本目录定界清理；重建 Activity 与 provider 回调要区分“原请求可重连”或安全取消，不将旧返回 URI 送到新 Session。已选择的 URI 临时 grant 随系统契约，不默认 `takePersistableUriPermission`，只有 ACTION_OPEN_DOCUMENT/TREE 且系统明确给 persistable flag、确有长期用途时持久化。
 
 选择器防御：把外部 Intent `data/clipData/parseResult` 视为**不可信**；只接受特定任务允许的 `content://` 与本次自有 camera FileProvider URI，拒绝 `file://`、`javascript:`、未知 scheme 与指向 APP PRIVATE/自有凭据 authority 的返回；核对系统 grant / provider 可读能力、mode 单/多、去重顺序、MIME/签名（必要时有限文件头嗅探）、独立字节和总体上限、流式读取、单项错误反馈，不能仅 `ContentResolver.getType()` 宣称安全。第三方 ContentProvider 未给大小可能未知，不在 UI 主线程全量读；检查自己授权的 camera output 与任意第三方回传的 self-provider 区分；无访问权且拒绝后保留已有 DSH 草稿。日志仅记录匿名 request/计数、阶段、错误码、时长，不能打印 `content://`、文件名、API token、正文或图片数据。
 
@@ -159,7 +159,7 @@ IDLE → ARMED → AWAITING_WEBVIEW_REQUEST → PICKER_LAUNCHED
 
 ### 6.2 多根权限（独立 ADR 才能动代码）
 
-建议 `AuthorizedLocation = SandboxRoot(rootCanonical, grantId)` 或 `DocumentTree(treeUri, persistedGrantId, providerCapabilities)`，条目 `EntryKey=(grantId,relativeCanonicalPath|documentId, versionToken)`；UI 只拿 displayName / capability flags，Native resolver 按每次读写的根/提供者校验权限。文件系统根仍 `canonicalFile` containment、拒绝 symlink/特殊文件并在实际打开/提交前复核；若高风险 TOCTOU 用受控 fd/no-follow 方案或在无法证明原子时拒绝，不能仅在列目录时检查一次。SAF `ACTION_OPEN_DOCUMENT_TREE` 是用户授权**具体树**，Android 11 禁止选择内部卷/受限 SD 根、Download 树等，Provider 可能只读/拒重命名；以 `DocumentsContract` capability+grant 为事实，Uri/documentId 不能当真实绝对路径传给 PRoot。需要 PRoot cwd 的 SAF 项目必须另做 user-approved 导入/镜像到受控文件路径及双向同步/冲突策略，不能传 `content://` 伪装 POSIX cwd。`MANAGE_EXTERNAL_STORAGE` 如已有是当前用户主动授予能力，新增功能不能强制扩大权限，敏感 Android/data/obb 仍服从平台约束。
+建议 `AuthorizedLocation = SandboxRoot(rootCanonical, grantId)` 或 `DocumentTree(treeUri, persistedGrantId, providerCapabilities)`，条目 `EntryKey=(grantId,relativeCanonicalPath|documentId, versionToken)`；UI 只拿 displayName / capability flags，Native resolver 按每次读写的根/提供者校验权限。文件系统根仍 `canonicalFile` containment、拒绝 symlink/特殊文件并在实际打开/提交前复核；若高风险 TOCTOU 用受控 fd/no-follow 方案或在无法证明原子时拒绝，不能仅在列目录时检查一次。SAF `ACTION_OPEN_DOCUMENT_TREE` 是用户授权**具体树**，Android 11 的平台 SAF 文档说明部分根/Download tree 的限制随 **targetSdk≥30** 条件生效；本项目当前 targetSdk28，需在 OriginOS 真机与今后升级 targetSdk 时分别验证 UI 能否选择，不可把老 target 的一次行为当长期契约。无论能否显示，`Android/data`/`obb` 及提供者能力、实际用户 grant 必须按各自系统限制检查；Provider 可能只读/拒重命名；以 `DocumentsContract` capability+grant 为事实，Uri/documentId 不能当真实绝对路径传给 PRoot。需要 PRoot cwd 的 SAF 项目必须另做 user-approved 导入/镜像到受控文件路径及双向同步/冲突策略，不能传 `content://` 伪装 POSIX cwd。`MANAGE_EXTERNAL_STORAGE` 如已有是当前用户主动授予能力，新增功能不能强制扩大权限，敏感 Android/data/obb 仍服从平台约束。
 
 ### 6.3 多项操作计划/事务
 
@@ -243,4 +243,124 @@ Settings 一级只保留 App、Data、Runtime、Developer 四组，DSH 原生模
 
 ## 11. 本文交付与实施限制
 
-已完成：源文件/插件/API/存储与备份逐项核对、外部官方规范交叉验证、架构和失败恢复边界、接口草案、拒绝路径、矩阵、切片、待确认条件。**未完成且本轮不实施**：新增 Cordis plugin、官方 intake 扩展、Android chooser 修改、抽屉手势/UI 修复、SAF/Trash/restore schema、新单测/真机测试、编译、APK/OTA/设备操作。下一轮应先完成 P0 获取真实运行 bundle/ABI 与服务端发送证据，再据结果修订本稿中的 `P` 接口；不能把技术方案状态写成代码完成。
+已完成：源文件/插件/API/存储与备份逐项核对、外部官方规范交叉验证、DeepSeek 2.5.2 静态参考调查、工程边界、接口草案、拒绝路径、验收矩阵、切片、逐项清单与待确认条件；阶段清单见 `2026-09-18-mobile-ui-implementation-checklist.md`。**未完成且本轮不实施**：新增 Cordis plugin、官方 intake 扩展、Android chooser 修改、抽屉手势/UI 修复、SAF/Trash/restore schema、新单测/真机测试、编译、APK/OTA/设备操作。下一轮应先完成 P0 获取真实运行 bundle/ABI 与服务端发送证据，再据结果修订本稿中的 `P` 接口；不能把技术方案状态写成代码完成。
+
+
+## 12. V1.2 工程决策与证据缺口（不把静态推测写成已实现）
+
+**证据链**：R1 是用户真实 Preview.6 截图（视觉与人机需求事实），R2 是本项目 `7486bac` 源码/锁包（能证明当前实现而不能证明设备运行成功），R3 是已校验来源/签名的官方 DeepSeek 2.5.2 APK 的可读局部反编译（证明该版本的一部分架构；JADX 304 处错误，不能证明动态容器/线上协议），R4 是 Android/DSH 官方公开规范（可能与冻结版本或 OEM 有差异），R5 是下一轮独立受控 OriginOS/Host E2E（当前**不存在**）。所有实现 PR 的验收必须至少附 R2+对应 R5；R3 只能为借鉴来源，不能为 DSH 功能完成证明。
+
+- DeepSeek 静态能确认：Compose `UploadPanel`、三等权操作按钮、授权后 MediaStore 最新图片独立数据源（20 项分页）、Photo Picker/SAF、相机 URI 与文件 Intent 分离；**不能确认其最外层是否一定不是系统 sheet、不能确认服务端上传协议/任何品牌的动画帧率**。本产品要求「浏览器 composer 中内联、不盖聊天」来自用户设计，不是声称原厂以相同技术实现。
+- 现项目 `app/build.gradle.kts` 确认 `targetSdk=28`，`app/src/main/AndroidManifest.xml` 已声明 `READ_EXTERNAL_STORAGE`；Android 11/OriginOS 用真实运行授权状态决定是否访问第三方 MediaStore。DeepSeek targetSdk36 的 `READ_MEDIA_*` 路径是**跨版本研究对象**而非本项目可直接套用的 Manifest 变更；升级 targetSdk 另 ADR，并首先评估 PRoot/执行权限、存储及签名升级风险。
+- 现 `ChatScreen.kt` `onShowFileChooser` 显示 `ModalBottomSheet`，有一项重入保护，但**当前诊断日志可能包含 `url`、控制台文本、失败 `message`**。附件新链路必须单独脱敏，且正式评审应审计已有诊断日志，不在本轮悄然修改应用代码。
+- `DshPresentationBridge` 的固定 `http://127.0.0.1:3080` + `WEB_MESSAGE_LISTENER` 当前是单向几何遥测、schema 与 generation 独立。**不复用其对象名/解析器来发媒体授权命令**；新协议独立 origin 白名单与启用开关，并使用 `isMainFrame`、document+session generation 与最小权限。WebMessage origin 限制不是防本 origin XSS 的充分条件。
+
+### 12.1 ADR 决策表：能落地的路线与真正的止损点
+
+| 问题 | 首选方案 | 失败时合法退路 | 不能退让的条件 | 决策证据 |
+|---|---|---|---|---|
+| 附件入口/已选 rail | Cordis list slots + 官方单占 rail | 不增加入口，保留官方安全 input | 第三方不接管官方单占槽；禁 synthetic paste | 冻结 slot 类型、装卸负例、草稿 echo |
+| File→DSH admission | 发现冻结正式 owner intake 或增加最小版本化上游扩展点 | 仅官方文件选择器；禁止宣称新插件能上传 | 必须共用模型、类型、数量、总字节、session 验证 | 类型签名+1/2/3/5 Host 回执 |
+| 近期图显示 | 用户动作后有限 MediaStore query，单次安全缩略接口 | 权限拒绝时不渲染近照，保留相册系统 picker | 不把原始 URI/任意文件路径暴露到 JS 或日志 | 授权状态+抓包/权限负例 |
+| 缩略图交付至浏览器 | **待 P0 实验**：受限媒体代理/独立受信 origin 的只读缩略请求；大小和 CSP/CORS/回收可证 | 原生 UI 仅承载受控最近图子视图但不覆盖聊天；若布局不能嵌入则无近照并披露差距 | 禁向 WebMessage 批量 base64 图或 `content://` 任意访问 URL | 同源/CSP、缓存/撤权测试及帧录制 |
+| 三入口→系统 picker | 正式 owner API 保持原生 user activation，Native 仅做来源选择 | 安全默认 `FileChooserParams.createIntent()` | 不通过异步 ACK 后在没有用户激活的回调中 `input.click()` | 浏览器+OriginOS 每源链路 |
+| Drawer 动画 | 官方布局 state + 无 transform modal 祖先的受控过渡 | 保留汉堡+遮罩、关闭手势实验 | Settings modal 不缩窄、不误操作系统边缘返回 | 布局树+视频/帧跟踪 |
+| SAF/Trash/Recovery | 每个高风险数据域单独 ADR、checkpoint、journal | 暂不开启高风险按钮，既有只读/导出保留 | 不牺牲隔离、不覆盖唯一用户数据 | 断电/授权撤销/冲突注入 |
+
+## 13. ATT 具体工程契约：两套状态、两道数据门槛
+
+### 13.1 逻辑对象（**设计类型，尚未存在于源码**）
+
+- `RecentMediaItem`: `{ephemeralMediaId, permissionGeneration, timestamp?, displayAspectRatio, thumbnailHandle}`。`ephemeralMediaId` 在 Native 维护的授权集合内唯一，**没有稳定绝对路径或原始 URI 字段进入浏览器**。按页面切换/权限撤销/应用重启废弃；不上传时即使缩略图显示成功，也只算 `visible` 而非附件。
+- `AttachmentSelection`: `{selectionId, documentGeneration, sessionGeneration, origin, localItemIds[], state}`。`state=idle→selecting→validating→admitting→draftReady | cancelled | failed`；相册多选与点击近期照片共用「验证后 admission」入口、去重限额。官方草稿使用其真实 `DraftAttachmentId`，**不要把 ephemeralMediaId 冒充官方 draftId**。
+- `NativeChooser`: `{requestId, webViewIdentity, documentGeneration, sessionGeneration, source, accept, multiple, callbackOnce, outputUri?}`；和 `AttachmentSelection` 的 requestId 明确关联但不同层：一次系统选择器回调可返回多项 URI，每项再有独立 admission/error；Native 只能对原请求完成一次回调。
+- `MediaPermissionSnapshot`: `{osApi, appTargetSdk, scope:'none'|'selected'|'full', generation}`，**每次 `onResume` / 请求使用前重查系统状态**，不把 permission granted 永久缓存。API30 以真实系统许可判定 `full`/`none`，不在 Android11 假造 Android14 的部分媒体权限分支；已获 picker 的单个 URI grant 与整个最近图片库访问权限相互独立。
+
+### 13.2 MediaBridgeV1 时序（仅规范，不假定实现已经存在）
+
+```
+Browser 真实点击“展开” ──> Native permission status  ──> 展示近期/有限说明
+Browser 展示槽请求 LIST_RECENT(pageToken,limit<=20)
+Native [origin/mainframe/session/permission 再检] ──> page metadata + opaque handles
+Browser 懒请求 thumbnail(handle) ──> Native restricted thumbnail transport [待 P0 验证]
+Browser 点击近期单项 ──> SELECT_RECENT(handle, sessionGeneration)
+Native 核授权与句柄、验证 MIME/size/字节预算 ──> 正式 DSH intake owner
+owner returns official draftIds/error ──> 官方 attachment rail 重新观察状态
+Browser 点击“相册/文件/拍照” ──> owner 正式 requestFiles / Native chooser
+Android ActivityResult ──> 单次 callback/data+ClipData 去重 → 每项校验/admission
+用户真实点击发送 ──> DSH Host accept ──> durable Session 事件/附件引用 → reload 校验
+```
+
+关键：**桥消息只是控制面**，不得在 JS bridge 中传整张图片/不受控 URI；媒体字节面由 `Native ContentResolver` 到经过验证的输入 owner 的受控路径完成。当前 DSH Web 输入是 Browser `File` / 官方 draft owner，Native 可读的 `content://` **并不会自动变成 Browser File**。P0 要给出明确可测试的物理字节交付契约（受控 URL+`fetch/blob`/File 还是上游受控 Host admission），若不能同时证明 CSP/CORS、同源、流式大小限制、撤销与 session 授权，则阻断 ATT-3，不能只实现媒体 thumbnail。
+
+**控制消息最小 Envelope（拟议字段，非已开放 API）**：`{schema:1,kind,requestId,documentGeneration,sessionGeneration,payload}`；Android 严格限定精确 origin 与 main frame、payload 8KiB 等拟议上限、请求 ID 去重、短时超时、消息版本、source 枚举、最小 `limit`；回 `accepted|cancelled|rejected{code}`，不含文件名/本地路径/凭据。参数错误与未授权一律无副作用地拒绝，按真实 native gesture/permission state 重新校验，**不能把一个 WebMessage 本身视为可信用户点击**。网页刷新、Session 改变、后台、renderer death、插件 unload 均使待决句柄与请求失效。新桥只在有版本匹配/安全降级能力时启动。
+
+### 13.3 近期媒体 Provider 预算、权限和空态
+
+- 查询：仅在用户主动展开并已授权时调用 `MediaStore.Images`；`_id,date_added,_display_name,_size` 最小投影，`date_added DESC,_id DESC` 稳序，每次最多 20 项（**借鉴的设计初值，不是 DSH 模型 20 张限制**），后台 dispatcher；分页中的内容删除/新增要防重防丢，出现空 cursor/`SecurityException` 立即拒绝并清缓存。只缓存最小缩略图，不储存用户全图副本，视图离开或权限 generation 更新时释放 bitmap/blob/句柄；具体缓存上限由 Heap、长列表和帧测试校准。
+- 本 App Android11 / targetSdk28 / Manifest `READ_EXTERNAL_STORAGE`：明确请求与授权后只读可见媒体，拒绝/「不再询问」时无需重启仍可走支持的系统 Photo Picker/SAF；无权限应显示一行简短可操作说明而非空白占位、不反复弹权限框。Picker 只授所选 URI，不自动获得全图库。Android 13+ 的 `READ_MEDIA_IMAGES`、Android14+ 的 Selected Photos Access **必须结合实际 targetSdk 条件**单列兼容 ADR；不可照搬其他 App 的 targetSdk36 Manifest。权限变化要在 `onResume` 及每次读取前检查，尤其部分授权与后台撤销。官方公开文档支持 Photo Picker 在满足模块条件的 Android11+ 上可用、否则由 AndroidX 兼容/SAF 回退，不能仅按 SDK 数字保证可用。
+- 缩略图：Native ContentResolver `loadThumbnail`/等效受控解码只取目标尺寸；旋转/坏 EXIF/超时/超大解码返回 placeholder；优先按屏幕密度生成低分辨率缩略，而不是 full-size bitmap 写 WebMessage。选中一张后权限突然撤销 → 该项失败标明原因并保留此前已就绪的其他草稿。日志不记录 URI、名称或 Base64。
+- 媒体句柄授权：按当前 `documentGeneration+sessionGeneration+permissionGeneration` 发短时 opaque handle，只有用户已见/已点的范围有读取能力；原生资源端点若需要临时 token，绑定 session/请求/有限用途并有过期和撤销，不通过普通 `localhost` 无认证公开全部媒体。缩略与原图读取使用不同 token 与预算；跨会话不可重放。所有方案须用固定安全样本验证网络隔离/同源行为。
+
+### 13.4 Android chooser 与 DSH 入列的失败矩阵
+
+| 情况 | 必须行为 | 验收反例 |
+|---|---|---|
+| 来源打开被取消、无可处理相机 App | `cancelled`，Native callback null **仅一次**，保留文字与原草稿 | 重开后旧结果落入新请求 |
+| 1/2/3/5 项 `data`/`ClipData` 重复、null、无读授权 | 稳序去重、每项校验；单项拒绝可解释 | 仅看选择 UI 显示 5 张就判成功 |
+| OS/SAF 返回超过 DSH 限额 | owner 再次按模型/数量/总大小校验，保留原有效草稿 | 以 PhotoPicker max 参数当安全边界 |
+| 提供者假 MIME、未知 size、超时或大图 | 流式上限/文件头验证、拒越界、不阻塞 UI | 依赖 `ContentResolver.getType` 一项 |
+| 网络掉线/密钥失效 | 附件已就绪状态与发送失败区分；草稿不丢，显示 AUTH/TRANSPORT | 将用户截图的模型 AUTH 错误算成 chooser 失败 |
+| 页面跳转、切 Session、App Activity 重建 | invalidate generation、旧 callback null 一次、不跨 Session 提交 | 返回后跳入另一会话并误发 |
+| 双击、重复回执、发送超时 outcome unknown | request/submit ID 幂等与 Session echo 查询后再重试 | 两条重复消息或吞掉原输入 |
+| 丢权限、低内存、Renderer 被杀 | 释放临时媒体缓存，恢复输入文本/可恢复草稿，必要时退官方入口 | 持有失效 URI 或让 JS 可读任意照片 |
+
+## 14. Drawer / 工作区 / 备份的实施级定义
+
+### 14.1 Drawer 与 Back：一次状态、一个手势裁判
+
+`DrawerAdapter` 是短期 presentation；DSH layout service 是唯一 open/close 权威。View 仅接收 `desiredOpen`、`dragProgress`、`modalDepth`。在 `pointerdown` 前查 `composedPath`：输入文本、附件横条、横向可滚动容器、系统 Back 边缘不参与；锁轴前不取消滚动；`pointerup` 只向官方 owner 提交一次动作，`pointercancel`/WebView reload 绝无提交。基线状态/响应式宽度变化时取消动画且重算遮罩热区。验收需包括「官方 Settings fixed dialog 在 sidebar DOM 中打开时宽度正常」与右栏/空白 Hero；若原生 header 无可用 slot，先加最小 versioned header outlet，再改布局，不写固定绝对定位箭头。
+
+避免用 `transform`/`will-change` 包围 Settings fixed modal；如果 `left` 帧开销大，先测合成层、只动画不含 modal 的子内容或经官方 outlet 把 modal portal 出去的可行性。**未解决 portal/contains-block 前性能不作为删安全避让的理由**。`Back` 关闭顺序在 UI owner 一处返回 handled；一个事件最多一次处理，Android Back 与网页 history 导航不能同时发生。抽屉无障碍有焦点恢复、reduced-motion 退化和按钮替代路径。
+
+### 14.2 Workspace：按真实能力显示工具栏，不是假性多选
+
+当前紧凑头部已入库、`selectedPath:String?` 仍只有单选。新增 selection `Set<EntryKey>` 前必须定义稳定 ID/版本戳、授权根；工具栏只在 `selection.isNotEmpty()` 出现并据 `providerFlags∩grant∩dataSafety` 裁剪复制/移动/Trash。`ProjectRegistry` 的快捷项不是第二文件系统，进入时先审核 root 可访问；不支持跨根直接 PRoot cwd。批量操作先出只读 `FileOperationPlan`（包含预估/冲突/空间/源版本）→确认→ journal / stage / verify / commit / per-item outcome；批量失败留下可恢复原件，不默默删除/改名。旧 Trash 未存原始路径，不允许猜原位恢复；若无法证明旧条目来源，只有明确授权的「恢复到新目录」。
+
+交互验收：320dp/360dp 下不因右侧按钮换两行占据首屏；可点面包屑、长按切选择、多选后撤销、切项目清除失效 selection；搜索/排序/隐藏文件只改变可见性，不发生文件写入；授权撤销、符号链接、重名和跨卷半失败均有可复现错误。文件预览不允许加载未授权 `file://` 页面；Terminal 跳转要区分 POSIX 目录与 SAF URI。
+
+### 14.3 Settings/Recovery：用户可见状态和真实数据能力一一对应
+
+入口 App/Data/Runtime/Developer 四组；运行参数/凭据、插件配置和恢复按权限隔离，不把 debug 控件铺首屏。Backup 依次显示 `Vault found`（仅存在）、`manifest verified`（结构）、`archive verified`（完整逐项哈希）、`restore plan available`（冲突/空间/权限可解）、`restored`（每个数据域成功）的**不同语义**。目前只开放真实可用的创建/导出/校验，不能给 `restorePersistentDshHomeFromLatest()` 连上“一键完整恢复”。
+
+恢复独立阶段必须先确定「范围矩阵：Projects/Files/Sessions/Local plugins/SSH keys/credentials」，每类标 `exported/verified/restorable/requires-re-auth/not-supported`；加密密钥经历卸载/重装不可默认为可解，真正恢复前要单独 checkpoint、备份清单/逐项计划/写前校验、失败补偿与 crash recovery。APK 本身更新不能被视为备份成功。若用户仅请求 UI 优化，先做已支持能力的信息架构，不把未做完的恢复移至醒目按钮。
+
+## 15. 质量门禁与交付证据结构（每次提交独立记录）
+
+每个里程碑要附 `evidence/<milestone>/manifest.md`（**下一轮拟建，当前没有**），字段 `sourceCommit, runtimeSeedSha, webProfileSha, plugin versions/hash, deviceModel/OS/WebView, testSampleIds, taskJobIds, caseResults, screenGeometry, redactionStatus, knownFailures, rollbackTarget`。敏感截图/私有 URI/令牌/密钥进 gitignored 私有存储，仓库只保留匿名指标和可复现脚本；`sourceCommit` 与运行 APK 内容必须对应，不能用之前 59 项测试替新源码背书。
+
+- **G0 安全就绪**：未受损的原签名/旧 APK/现有用户数据；独立 Termux SSH 必须实时恢复并断开→重连验证；ADB 若未连只准模拟器和橙派静态验收。签名不一致、备份不可恢复、救援掉线都阻断真机覆盖安装。
+- **G1 ABI**：实际 bundle/slot generation、公开 intake 与 Host echo 实验通过，否则冻结 D1，不进入照片面板的“可发送”实现。官方+compat-only 对照无插件副作用。
+- **G2 插件与 Android**：版本/注入/卸载双向可逆、单占 slot 无冲突；Native 权限和 chooser/MediaBridge 的安全负例覆盖，包括 Android 11 target 28；任何权限扩大另评审。
+- **G3 静态与运行时**：`android_unit_test`、`android_lint`、`runtime_alpine_e2e`、exact-current-profile Chromium gate（**目前不是 TaskProfile，需先登记/规范命令**）、Node24 policy/syntax、`git diff --check` 与代码审查。Lint `0 errors` 不等于 23 条已消除；警告要分类并记录是否新增。
+- **G4 设备**：官方+compat 与插件两组 320/360/390dp、light/dark/Tokyo、fontScale、IME、旋转、右栏/Settings/抽屉/图库横滑；连续 Drawer≥20、键盘收回≥10（**测试次数为验收设计，不是性能承诺**），图片 1/2/3/5 个真正发送及重载；必须能在 Host 端验证测试样本数量与引用，不以 UI 显示或 chooser callback 替代。
+- **G5 发布**：冻结 clean build、生成与历史证书相同的签名、versionCode 单调递增、覆盖安装/旧数据可见/插件持久/Terminal 和恢复校验、独立 APK HTTPS URL 实际下载 SHA 验证；明确手动 APK 与 OTA update manifest 分离，未经确认不修改 `release/update.json`。任何 Blocker 未清不宣称 Release PASS。
+
+验收结论只写 `PASS | FAIL | BLOCKED | NOT_RUN`，并附运行环境/证据/对应 commit；`PARTIAL` 用于有证据的一部分 case 而非整体发布结论。报告没有运行 G0–G5，也没有注册新 TaskProfile 或提供新 APK。
+
+## 16. 风险列表与技术停机规则
+
+| ID | 触发 | 后果 | 防护或降级 | 阻断范围 |
+|---|---|---|---|---|
+| R-ATT-01 | 当前 DSH 无公共 `File[]` admission | UI 可选但发不出 | 先上游小契约；保持官方 input | ATT D1/D2 |
+| R-ATT-02 | Native URI 无可信跨进程字节通道 | 缩略可看、草稿不可接收 | 受控代理实验，禁止任意 URI bridge | ATT D2 |
+| R-ATT-03 | MediaStore 权限拒绝/撤销/Target SDK 差异 | 权限异常或数据越权 | 动态 permission generation、Photo Picker/SAF 降级 | 最近图功能 |
+| R-ATT-04 | Native picker 重入/Session 切换 | 串发错会话、回调泄漏 | once-only callbacks 与 generation | 安装/发送 |
+| R-DR-01 | `transform` 祖先改变 Settings modal containing block | 设置窄缝重现 | 不改 modal 祖先，独立 portal ADR | Drawer 交互 |
+| R-WKS-01 | 登记项目越出原授权根 | 目录不可打开或越权 | AuthorizedLocation ADR、能力识别 | 跨根/批处理 |
+| R-REC-01 | 只校验 manifest 就执行写恢复 | 覆盖唯一数据 | catalog+read-only plan+checkpoint+rollback | Restore UI |
+| R-OPS-01 | SSH/ADB 断线或已有数据不可恢复 | 无法救援 | 先复连/备份，禁止安装/清理 | 实机/APK |
+
+## 17. 实施清单、更新与文档交叉引用
+
+逐项可勾选、含负责人/验收证据/状态的施工清单是 [`2026-09-18-mobile-ui-implementation-checklist.md`](2026-09-18-mobile-ui-implementation-checklist.md)。设计冻结基线 `7486bac`；本次 V1.2 仅文档，**不将任何 GATE、APK 或用户设备状态标为 PASS**。逐条更新清单后才可声称某项完成。Android 官方接口以 2026-09-18 核对的 WebChromeClient/FileChooserParams、Photo Picker、MediaStore、SAF、WebMessageListener 文档为参考，**构建前仍以 pin+设备实际行为为准**。
