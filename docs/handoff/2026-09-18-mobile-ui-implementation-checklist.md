@@ -88,3 +88,11 @@ App 版本在 `app/build.gradle.kts` 调为 `0.5.0-preview.1-dev` / `versionCode
 | Termux SSH 救援 | `NOT_REQUIRED_BY_OWNER` | 不恢复、不测试、不作发布阻断；亦不擅自关闭旧服务 |
 
 **发布判断**：仅对当前六个体验结果逐项给 `PASS|FAIL|BLOCKED|NOT_RUN`；签名/版本码/旧数据仍必须独立核对。`REL` 项是安全/可交付性检查，不意味着继续重构其他已确认页面。历史 V1.2 52 项及长篇 workspace/restore 技术方案只作为研究档案，由 Git `a5c7b82` 可恢复。
+
+
+### 21:05 CST ATT04 增量记录
+`FileChooserRequestGate` 已增加旧 ActivityResult 迟到隔离与四项 Android 11 测试（独立切片，报告见 `2026-09-18-v050-attachment-integration-qa.md`）。只解决 callback/launcher 串发风险；URI grant、provider MIME/容量限额、真机 Activity 重建及相机完成结果仍为 ATT04 阻断，不打勾。
+
+
+### 21:16 CST ATT04 门禁更新
+本地 70/70 单测、Lint 0 errors/23 warnings、Alpine E2E 单独重跑 PASS、debug build + stable signer 均有 task/job 记录（见 QA）。首次并发 E2E exit3 已如实记录。ATT04 仅 launcher 迟到结果隔离切片具备 JVM 证据；OriginOS 真机 callback/权限与 Host 回执尚未执行，保持总项未完成。当前调试 APK 是本地候选，release/OTA 不变。

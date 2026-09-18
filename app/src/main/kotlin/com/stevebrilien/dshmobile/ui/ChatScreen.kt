@@ -125,61 +125,60 @@ private fun DshWebClient(
 ) {
     val context = LocalContext.current
     val diagnostics = remember(context) { DshWebViewDiagnostics(context.applicationContext) }
-    var fileChooserCallback by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
-    var pendingFileChooserMode by remember { mutableStateOf(WebChromeClient.FileChooserParams.MODE_OPEN) }
-    var cameraOutput by remember { mutableStateOf<Pair<File, Uri>?>(null) }
-
-    fun finishChooser(uris: Array<Uri>?) {
-        val callback = fileChooserCallback
-        fileChooserCallback = null
-        pendingFileChooserMode = WebChromeClient.FileChooserParams.MODE_OPEN
-        callback?.onReceiveValue(uris)
-    }
+    // ActivityResult can arrive after navigation or composition disposal. The gate
+    // belongs to the long-lived WebView host, not the transient composable.
+    val chooser = hostState.fileChooserGate
 
     val cameraLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
-        val capture = cameraOutput
-        cameraOutput = null
-        val succeeded = fileChooserCallback != null && result.resultCode == Activity.RESULT_OK &&
+        val request = chooser.takeResult(FileChooserRequestGate.Kind.CAMERA)
+        val capture = request?.cameraOutput
+        val succeeded = request?.callback != null && result.resultCode == Activity.RESULT_OK &&
             capture?.first?.isFile == true && capture.first.length() > 0L
-        diagnostics.append("file-chooser camera-complete success=$succeeded callbackPresent=${fileChooserCallback != null}")
+        diagnostics.append("file-chooser camera-complete success=$succeeded callbackPresent=${request?.callback != null}")
         if (!succeeded) capture?.first?.delete()
-        // Camera providers may return a null Intent; the pre-authorized output URI is authoritative.
-        finishChooser(if (succeeded) arrayOf(capture!!.second) else null)
-        if (result.resultCode == Activity.RESULT_OK && !succeeded) {
+        // Camera providers may return a null Intent; our own output URI is authoritative.
+        request?.callback?.onReceiveValue(if (succeeded) arrayOf(capture!!.second) else null)
+        if (request != null && result.resultCode == Activity.RESULT_OK && !succeeded && request.callback != null) {
             Toast.makeText(context, "相机未生成图片，请重新选择", Toast.LENGTH_SHORT).show()
         }
     }
     val fileChooserLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
-        val callbackPresent = fileChooserCallback != null
-        val parsed = runCatching {
-            WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
-        }.getOrNull()
-        val uris = AndroidFileChooserResult.resolve(
-            resultCode = result.resultCode,
-            data = result.data,
-            mode = pendingFileChooserMode,
-            parsed = parsed,
-        )
-        // Only anonymous counts and completion state are logged. Do not log
-        // filenames, content URIs, document data or picker intent payloads.
-        diagnostics.append(
-            "file-chooser resultCode=${result.resultCode} mode=$pendingFileChooserMode " +
-                "clipCount=${result.data?.clipData?.itemCount ?: 0} hasData=${result.data?.data != null} " +
-                "parsedCount=${parsed?.size ?: 0} returnedCount=${uris?.size ?: 0} " +
-                "callbackPresent=$callbackPresent",
-        )
-        finishChooser(uris)
+        // Taking the exact request first guarantees an old result can never be
+        // delivered into a new page, even when the old callback was abandoned.
+        val request = chooser.takeResult(FileChooserRequestGate.Kind.FILE)
+        if (request == null) {
+            diagnostics.append("file-chooser ignored unexpected file result")
+        } else {
+            val parsed = runCatching {
+                WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
+            }.getOrNull()
+            val uris = if (request.callback == null) null else AndroidFileChooserResult.resolve(
+                resultCode = result.resultCode,
+                data = result.data,
+                mode = request.mode,
+                parsed = parsed,
+            )
+            // No filenames, URIs, picker intent payloads, or other document data.
+            diagnostics.append(
+                "file-chooser resultCode=${result.resultCode} mode=${request.mode} " +
+                    "clipCount=${result.data?.clipData?.itemCount ?: 0} hasData=${result.data?.data != null} " +
+                    "parsedCount=${parsed?.size ?: 0} returnedCount=${uris?.size ?: 0} " +
+                    "callbackPresent=${request.callback != null}",
+            )
+            request.callback?.onReceiveValue(uris)
+        }
     }
 
     fun launchSelected(intent: Intent) {
+        chooser.stage(FileChooserRequestGate.Kind.FILE)
         runCatching { fileChooserLauncher.launch(intent) }
             .onFailure {
                 diagnostics.append("file-chooser launch-failed type=${it::class.java.simpleName}")
-                finishChooser(null)
+                chooser.abortBeforeLaunch()
             }
     }
 
@@ -212,7 +211,7 @@ private fun DshWebClient(
     DisposableEffect(webView, diagnostics) {
         diagnostics.append("client-enter host=${hostState.id} view=${viewIdentity(webView)}")
         onDispose {
-            finishChooser(null)
+            chooser.abandonDocument()
             // Do not delete an in-flight camera file while another Activity may
             // still be writing it; stale private captures expire on the next capture.
             // The WebView belongs to the shell-level host and deliberately survives this
@@ -247,71 +246,64 @@ private fun DshWebClient(
                 fileChooserParams: FileChooserParams?,
             ): Boolean {
                 if (filePathCallback == null) return false
-                // A launcher has one in-flight ActivityResult. Replacing its callback
-                // would deliver an older picker result to a different Web input.
-                // Reject only the new request; preserve the original chooser.
-                if (fileChooserCallback != null) {
+                val mode = fileChooserParams?.mode ?: FileChooserParams.MODE_OPEN
+                // Reject a new request while any earlier ActivityResult is pending,
+                // INCLUDING a request whose old-page callback was already cancelled.
+                if (!chooser.begin(filePathCallback, mode)) {
                     diagnostics.append("file-chooser rejected overlapping-request")
-                    filePathCallback.onReceiveValue(null)
                     return true
                 }
-                fileChooserCallback = filePathCallback
                 val intent = runCatching {
-                    val multiple = fileChooserParams?.mode == FileChooserParams.MODE_OPEN_MULTIPLE
+                    val multiple = mode == FileChooserParams.MODE_OPEN_MULTIPLE
                     (fileChooserParams?.createIntent() ?: Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                         addCategory(Intent.CATEGORY_OPENABLE)
                         type = "*/*"
                     }).apply {
-                        // Android 11 provider implementations vary in how they
-                        // honor createIntent() for MODE_OPEN_MULTIPLE. Explicitly
-                        // propagate only the mode actually requested by DSH.
                         if (multiple) putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
                 }.getOrElse { failure ->
-                    diagnostics.append("file-chooser rejected reason=${failure.message ?: failure::class.java.simpleName}")
-                    fileChooserCallback = null
-                    filePathCallback.onReceiveValue(null)
-                    // We handled completion, including failure. Returning false
-                    // would incorrectly delegate a second chooser to WebView.
+                    diagnostics.append("file-chooser rejected reason=${failure::class.java.simpleName}")
+                    chooser.abortBeforeLaunch()
                     return true
                 }
-                pendingFileChooserMode = fileChooserParams?.mode ?: FileChooserParams.MODE_OPEN
                 diagnostics.append(
-                    "file-chooser requested mode=$pendingFileChooserMode " +
+                    "file-chooser requested mode=$mode " +
                         "allowsMultiple=${intent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)}",
                 )
-                // Standard, upstream-owned HTML file input is triggered by the
-                // Cordis source plugin on a real user click. Native chooses only
-                // the Android OS activity, not a second ModalBottomSheet UI.
                 val accept = fileChooserParams?.acceptTypes
                 when (AttachmentPickerPolicy.sourceFor(
-                    pendingFileChooserMode, accept, fileChooserParams?.isCaptureEnabled == true,
+                    mode, accept, fileChooserParams?.isCaptureEnabled == true,
                 )) {
                     AttachmentPickerPolicy.Source.CAMERA -> {
+                        var capture: Pair<File, Uri>? = null
                         runCatching {
-                            val capture = AttachmentCaptureStore.create(context)
-                            cameraOutput = capture
-                            AttachmentPickerPolicy.cameraIntent(context, capture.second)
+                            AttachmentCaptureStore.create(context).also { capture = it }
+                                .let { AttachmentPickerPolicy.cameraIntent(context, it.second) }
                         }.onSuccess { cameraIntent ->
+                            chooser.stage(FileChooserRequestGate.Kind.CAMERA, capture)
                             runCatching { cameraLauncher.launch(cameraIntent) }.onFailure {
-                                cameraOutput?.first?.delete()
-                                cameraOutput = null
+                                capture?.first?.delete()
                                 diagnostics.append("file-chooser camera-launch-failed type=${it::class.java.simpleName}")
-                                finishChooser(null)
+                                chooser.abortBeforeLaunch()
                                 Toast.makeText(context, "无法打开相机", Toast.LENGTH_SHORT).show()
                             }
                         }.onFailure {
+                            capture?.first?.delete()
                             diagnostics.append("file-chooser camera-preparation-failed type=${it::class.java.simpleName}")
-                            finishChooser(null)
+                            chooser.abortBeforeLaunch()
                             Toast.makeText(context, "无法准备拍照文件", Toast.LENGTH_SHORT).show()
                         }
                     }
-                    AttachmentPickerPolicy.Source.ALBUM -> launchSelected(
-                        AttachmentPickerPolicy.albumIntent(pendingFileChooserMode, accept),
-                    )
+                    AttachmentPickerPolicy.Source.ALBUM -> runCatching {
+                        AttachmentPickerPolicy.albumIntent(mode, accept)
+                    }.onSuccess(::launchSelected).onFailure {
+                        diagnostics.append("file-chooser album-preparation-failed type=${it::class.java.simpleName}")
+                        chooser.abortBeforeLaunch()
+                    }
                     AttachmentPickerPolicy.Source.DOCUMENT -> launchSelected(intent)
                 }
+                // The callback is always resolved here or by our ActivityResult.
                 return true
             }
 
@@ -328,11 +320,9 @@ private fun DshWebClient(
         webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
-                if (fileChooserCallback != null) {
-                    // A pending result belongs to the old document. Never
-                    // deliver it to a newly navigated page or Session.
+                if (chooser.hasActiveCallback) {
                     diagnostics.append("file-chooser cancelled-on-navigation")
-                    finishChooser(null)
+                    chooser.abandonDocument()
                 }
                 diagnostics.append("page-started view=${view?.let(::viewIdentity)} url=${url.orEmpty()}")
                 // A document reload/redirect starts a fresh page-side sequence even when Compose did
@@ -371,6 +361,7 @@ private fun DshWebClient(
                 diagnostics.append(
                     "render-process-gone crashed=${detail?.didCrash()} priority=${detail?.rendererPriorityAtExit()}",
                 )
+                chooser.abandonDocument()
                 hostState.invalidate(view)
                 view?.destroy()
                 latestFatalWebViewError(
@@ -457,6 +448,7 @@ private fun DshWebClient(
 
 class DshWebViewHostState {
     val id: String = UUID.randomUUID().toString().take(8)
+    internal val fileChooserGate = FileChooserRequestGate()
     var loadedLaunchUrl: String? = null
     private var webView: WebView? = null
     private var presentationBridgeView: WebView? = null
@@ -552,6 +544,7 @@ class DshWebViewHostState {
     }
 
     fun destroy() {
+        fileChooserGate.abandonDocument()
         webView?.let { view ->
             runCatching { view.stopLoading() }
             runCatching { view.destroy() }

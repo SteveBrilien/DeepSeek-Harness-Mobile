@@ -67,3 +67,20 @@
 - `android_debug` job `task-android_debug-3558b338fbb84036afbb` **succeeded/exit0**，含本轮 JavaScript/Cordis `0.1.1-dshm.1` 和 RecentMediaRepository；`android_signing_verify` job `task-android_signing_verify-6e0bdc22651c44d3a0fd` **succeeded/exit0**、签名证书未变。项目本地未发布 `app/build/outputs/apk/debug/app-debug.apk` SHA256 `22f04762855a854e1b525469c479caa8a3e0d4162083e3579264cec6f9c9bdd8`，大小 `88,865,711` bytes，ZIP 含最新插件 JS/package。App 源版本仍 `0.5.0-preview.1-dev` / code 27，无 OTA 或已发布候选替换。
 - Chromium 320/360/390px 原始证据经截图人工比对：内联面板及独立附件回形针有效；**不等于真实 OriginOS/近期图点击入列/上传服务端回执**。未获得用户敏感 API 密钥，模型推理与硬件帧仍 `NOT_RUN`。
 - 发布 gate 仍明确 `BLOCKED`: 缺受支持的 `File[]` intake plugin API、直接近期图 UI+桥接与权限撤销、Android 11 设备 Picker/Host 真发送、抽屉 20 次、启动基准和覆盖安装。已取得构建成果只留作工程证据，不提供未经验收的 APK 下载链接。
+
+
+## 21:05 CST｜ATT04 选择器迟到结果隔离修复（独立切片）
+
+- 根因（代码审计）：旧实现以 `fileChooserCallback != null` 作为唯一 in-flight 标记；`onPageStarted` / Compose onDispose 把该值清零后，若旧 Android picker 未返回就允许新文件输入启动，迟到的 ActivityResult 可能用最新的 `pendingFileChooserMode` 和最新 callback 处理，造成跨页面/会话串发。该竞态并非真机复现结论。
+- 修复：`FileChooserRequestGate` 改为 WebView host 生命周期所有，区分 `inFlight` 和 `hasActiveCallback`；重入只取消新请求，导航/销毁只取消旧 WebView callback、**不释放未消费的 launcher 槽**；旧结果到达时按 FILE/CAMERA kind 精确消费原请求，不能分发给新输入。准备/launch 异常才释放槽；无效相机产物仅删除本次自建私有临时文件。所有回调在清状态后触发，防止重入。
+- 新增 API30 Robolectric `FileChooserRequestGateTest` 四场景：重入拒新保旧、导航后迟到结果不能串发、另一类型 launcher 不能抢请求、launch 失败单次取消。仅证明 JVM mock 行为；Android Activity 重建/丢失 Result、OEM grant、真实照片发送仍 `DEVICE_NOT_RUN`，本切片不能标 ATT04 全部完成。
+- 编译/测试与 APK 结果必须使用本切片独立任务最新回执填写；不得沿用上一提交 `2c657f4` 的 66 项测试和 APK SHA 充当现构建。
+
+
+### 21:16 CST｜本切片测试/打包回执（可追溯）
+
+- `android_unit_test` `task-android_unit_test-3a07787ff37c4683a851` succeeded/exit 0：app 42 + recovery 12 + runtime-android 16 = **70/70**，0 failures/errors；新增 `FileChooserRequestGateTest` 4/4 PASS（API30 Robolectric）。
+- `android_lint` `task-android_lint-ae3d741825eb430ba0c4` succeeded/exit 0，`app/build/reports/lint-results-debug.txt` 为 **0 errors, 23 warnings**；警告未清零，仍需分类跟踪。Node24 `test-mobile-attachment-sources`/`test-mobile-drawer-gesture`/`test-mobile-ui-policy` PASS，`git diff --check` PASS。
+- `runtime_alpine_e2e` 首轮 `task-runtime_alpine_e2e-b9a309373fd1434d9ed3` **failed/exit 3**：在 embedded web token exchange 服务启动 30 秒等待窗口内没有读到目标 URL；此轮与 Lint 并行，日志因 guest `/tmp` 绑定独立 tmpfs 且脚本超时未输出详细原因，**不能证明负载是根因**。随后单独重跑 `task-runtime_alpine_e2e-07244cfd844f43c5ab8e` **succeeded/exit 0**：embedded-web-auth、online fallback、node-pty 和 web-auth 及 managed-attachment-source-plugin 均通过，`runtime-alpine-e2e: PASS dsh=0.1.5-rc.2`。保持脚本不变；将首次超时记为未定位的非稳定性，后续需增加脱敏启动诊断与合理超时观察，不可隐去首次失败。
+- `android_debug` `task-android_debug-5c293c8e28f54baea50f` succeeded/exit 0，172 Gradle tasks；`android_signing_verify` `task-android_signing_verify-6ecb228f22d948719605` succeeded/exit 0，匹配原稳定签名。开发包 `app/build/outputs/apk/debug/app-debug.apk` 字节数 **88,867,998**，SHA-256 `e8a670dabba4bc9232579e5a1ca2acf3dee5833b8ee9dfe629d44b340613ebf4`；仅本地构建并核对签名，**无设备安装、无 OTA/发布、无新的公网 APK URL**。
+- 本轮 `adb_devices` 仍为空。Vivo OriginOS 对 URI grant、复建 Activity 的 launcher 恢复、1/2/3/5 图发送回执与真正近期图片预选/上传桥，全部保持 `DEVICE_NOT_RUN`/`BLOCKED`，本切片不计入这些完成指标。
