@@ -75,6 +75,7 @@ assert.equal(registrations.size, 2, 'only two public list slots; no single attac
 assert.ok(context.style.textContent.includes('button:has(+ input[type="file"])'));
 assert.equal(context.style.textContent.includes('input[type="file"] { display: none'), false);
 const trigger = registrations.get('conversation.input.left');
+assert.equal(trigger().props.children.type, 'svg', 'attachment trigger must not duplicate upstream Commands plus icon');
 const panel = registrations.get('conversation.input.dock');
 assert.equal(panel(), null, 'panel closed initially');
 trigger().props.onClick();

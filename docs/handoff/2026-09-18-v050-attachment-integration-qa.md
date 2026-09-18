@@ -48,3 +48,22 @@
 - 本轮最新源码 `android_debug` job `task-android_debug-2e0e92c6c33f4471b57e` **succeeded/exit 0**（172 Gradle tasks）；`android_signing_verify` job `task-android_signing_verify-622c961c5e2f4f9f9c67` **succeeded/exit 0**，证书 SHA-256 与历史证书相同，未更换密钥。
 - 本地 `app/build/outputs/apk/debug/app-debug.apk` 为 **88,466,017 bytes**，SHA-256 `ec13be6128a4825a1ac8c3b73a56ebdf0ae52de6cff109dfb53a6f54421ace2f`；ZIP 确认含 `assets/runtime/dsh-mobile-attachment-sources/{package.json,cordis.patch.yml,lib/client.js}` 与新版 `dsh-client-ui-mobile`。`app/build.gradle.kts` versionCode=27、versionName=0.5.0-preview.1-dev。此包是未发布的当前开发候选；没有公开 HTTPS 地址、没有覆盖安装、没有设备或更新清单修改。
 - **发布结论仍 BLOCKED**：MediaStore 最近预选与一次直接入列正式接口、设备 Android 11 picker grant / 五组独立 Host 回执、抽屉和动效实机验收、启动冷/温/热测量；浏览器最终 SVG 外观还需重取截图。因此禁止发旧 Preview.6 链接冒充新版，不触动 `release/update.json`。
+
+
+## 20:45 CST｜继续推进：实际插件截图与近期图库安全底座（追加，不覆盖历史结论）
+
+- 浏览器 `runtime_presentation_debug_current` 独立临时 job `task-runtime_presentation_debug_current-c71d0ad1ef3b470faaf0` 由本轮直接启动，精确本地 DSH profile 0.1.5-rc.2 无个人密钥。当前 plugin 正常文档流展开，`Commands` 原加号与**附件回形针**不再相同；内联拍照/相册/文件均在 320/360/390 宽有明确的独立点击区域，左中右各等宽。各宽度同一浏览器沙箱截图 `.mcp/browser/sessions/browser-41a96044116e4f29/screenshot-1789735369663.png`（320×700）、`screenshot-1789735462011.png`（360×740）、`screenshot-1789735331503.png`（390×780）。截图仅证明 Chromium 视觉/布局，**未提供 Android OriginOS 或近期图直接选入证明**。相关三个浏览器 session 已单独关闭，任务仅取消本轮专用 fixture；其他宿主服务与隧道未操作。
+- 由于插件 UI 的最后一次更新改变了 bundle assets，将 `dsh-mobile-attachment-sources` 独立版本升级为 `0.1.1-dshm.1`（`package.json` / `MobilePluginProfileCoordinator` / Alpine E2E 的版本契约一致），确保已有旧 profile 的 managed hash/版本条件强制核对。Node24 附件源测试额外断言独立 SVG 回形针；附件/抽屉/UI-policy 三脚本 PASS。`runtime_alpine_e2e` job `task-runtime_alpine_e2e-c86c2523944f40599959` 对新的 `0.1.1` assets **succeeded/exit0/DSH=0.1.5-rc.2**，含 profile 旧资产迁移。
+- 原生新建 `RecentMediaRepository.kt` 和 API30 `RecentMediaRepositoryTest.kt`：仅显式调用 `page()` 时、持有 `READ_EXTERNAL_STORAGE` 权限才查询图片；一次最多 20 条，DATE_ADDED+_ID seek 分页，缺字段/非法 MIME/无效大小拒绝，返回 content URI identity，不返 DATA 路径，不在对象中缓存图库，权限撤销或 provider 异常 fail closed。测试验证拒绝权限不查询、分页/过滤、查询期间撤销与空 provider 四种场景。新文件仍**不是用户可见的最近图库**，尚未添加 Compose/Web UI、缩略图桥接或文件直接入列，不读取真实用户的照片。
+- `android_unit_test` job `task-android_unit_test-2ee0d0038e1f4adc8570` 已针对上述仓库通过：app 38 + recovery 12 + runtime-android 16，**66/66，0 failures/errors**。测试 fixture 的 Kotlin 泛型警告已作类型标注，后续字节对应复跑须另记，不引用上一任务为最终门禁。
+- 最重要的正式接口边界没有变化：当前 `InputActions.addAttachments(ids)` 只接受已有 browser-owned draft IDs；官方 `ComposerAttachmentsOwnerProps.onAddFiles(File[])` 只提供给 single slot 的官方附件 renderer，第三方 list slot 无 public 文件接入面。不得凭 repository existence 把 ATT05/ATT06/ATT08 完成，仍需最小、版本化、可审查的官方 owner intake 扩展，再建立受限 Android origin+document+session epoch 的缩略图/bytes bridge 与撤权测试。
+- 待验收仍是用户收敛的六项：近期图内联/直接选入、OriginOS picker 1/2/3/5 真发送和授权恢复、抽屉 20 次、原生切页动画与启动冷温热量化。无 APK 发布、无 OTA 更改；不要求 SSH 救援。
+
+
+## 20:52 CST｜最终当前字节门禁（阶段性，可构建但不可发布）
+
+- `android_unit_test` job `task-android_unit_test-78d30cd0ab964149b97f` **succeeded/exit0**：`app 38/38`、`core/recovery 12/12`、`core/runtime-android 16/16`，合计 **66/66**，0 fail/0 error。该任务包含 `RecentMediaRepositoryTest` 的 4 个 API30 fixture 和类型警告清理后的源字节。
+- `android_lint` job `task-android_lint-47d32adad27848229d32` **succeeded/exit0**，`app/build/reports/lint-results-debug.txt`: **0 errors, 23 warnings**；23 项既有告警尚需另行逐条排查，不将其称作 0 warnings。
+- `android_debug` job `task-android_debug-3558b338fbb84036afbb` **succeeded/exit0**，含本轮 JavaScript/Cordis `0.1.1-dshm.1` 和 RecentMediaRepository；`android_signing_verify` job `task-android_signing_verify-6e0bdc22651c44d3a0fd` **succeeded/exit0**、签名证书未变。项目本地未发布 `app/build/outputs/apk/debug/app-debug.apk` SHA256 `22f04762855a854e1b525469c479caa8a3e0d4162083e3579264cec6f9c9bdd8`，大小 `88,865,711` bytes，ZIP 含最新插件 JS/package。App 源版本仍 `0.5.0-preview.1-dev` / code 27，无 OTA 或已发布候选替换。
+- Chromium 320/360/390px 原始证据经截图人工比对：内联面板及独立附件回形针有效；**不等于真实 OriginOS/近期图点击入列/上传服务端回执**。未获得用户敏感 API 密钥，模型推理与硬件帧仍 `NOT_RUN`。
+- 发布 gate 仍明确 `BLOCKED`: 缺受支持的 `File[]` intake plugin API、直接近期图 UI+桥接与权限撤销、Android 11 设备 Picker/Host 真发送、抽屉 20 次、启动基准和覆盖安装。已取得构建成果只留作工程证据，不提供未经验收的 APK 下载链接。

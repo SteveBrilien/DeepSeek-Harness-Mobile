@@ -113,9 +113,12 @@ window.__ModuleLoader__.load({
         style: {
           background: "transparent", border: 0, cursor: "pointer",
           color: "var(--dsw-alias-label-primary)",
-          minHeight: "36px", minWidth: "36px", fontSize: "21px",
+          minHeight: "36px", minWidth: "36px", display: "inline-flex",
+          alignItems: "center", justifyContent: "center",
         },
-        children: "+",
+        // The upstream Commands control also uses a plus glyph; a paperclip
+        // distinguishes the attachment plugin without hiding Commands.
+        children: sourceIcon("file"),
       });
     }
     function SourcePanel() {

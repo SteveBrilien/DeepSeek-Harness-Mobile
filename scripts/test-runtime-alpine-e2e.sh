@@ -381,7 +381,7 @@ inside 'node --version; npm --version; pnpm --version'
 
 python3 - "$TMP_ROOT/dsh-home/profiles/web/node_modules/@dsh-mobile/dsh-mobile-attachment-sources/package.json" "$TMP_ROOT/dsh-home/mobile-plugins/dsh-mobile-attachment-sources/package.json" <<'PYATT'
 import json,sys
-for path in sys.argv[1:]: assert json.load(open(path))['version'] == '0.1.0-dshm.1', path
+for path in sys.argv[1:]: assert json.load(open(path))['version'] == '0.1.1-dshm.1', path
 print('managed-attachment-source-plugin-ok')
 PYATT
 echo "runtime-alpine-e2e: PASS dsh=$actual"

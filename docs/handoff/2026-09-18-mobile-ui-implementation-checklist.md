@@ -30,6 +30,14 @@ App 版本在 `app/build.gradle.kts` 调为 `0.5.0-preview.1-dev` / `versionCode
 
 当前开发 APK build `task-android_debug-2e0e92c6c33f4471b57e` / signing `task-android_signing_verify-622c961c5e2f4f9f9c67` 均 PASS，包内确认新版两插件，仍**不是**六项验收全部通过和公开 release；详见 `2026-09-18-v050-attachment-integration-qa.md`。
 
+## 20:45 CST 实施快照（不修改历史复选框，不等同所有目标 PASS）
+
+- `ATT04/ATT07`：正式来源插件的内联三入口、SVG 回形针、官方 `input[type=file]` 路径通过 320/360/390px Chromium 截图；版本 `0.1.1-dshm.1` + Node24 契约 + `runtime_alpine_e2e` job `task-runtime_alpine_e2e-c86c2523944f40599959` PASS。DOM/UI 插件已实现，OEM chooser 仍 `DEVICE_NOT_RUN`。
+- `ATT05` 近期图 repository 的**权限查询底座已实现但不标整体完成**：仅在已授权 Android8-12 查询，20 条/页、稳定游标、fail closed；API30 四测试 PASS，Android11 设备未运行。`ATT02/ATT06/ATT08` 的正式 `File[]` 接入、MediaBridge、直接点近照入列和视觉列表仍 `BLOCKED/NOT_IMPLEMENTED`。
+- 本轮新增 Android `android_unit_test` job `task-android_unit_test-2ee0d0038e1f4adc8570` 成功、66/66、0 fail；上述结果属于测试源码当时状态，后续 lint/build 与最终类型警告修复需要复测。Chromium 截图路径与风险见 `2026-09-18-v050-attachment-integration-qa.md`。
+
+**20:52 CST 字节对应测试补录：** Unit `task-android_unit_test-78d30cd0ab964149b97f` PASS 66/66，Lint `task-android_lint-47d32adad27848229d32` PASS 0 errors/23 warnings，Debug `task-android_debug-3558b338fbb84036afbb` PASS，Signing `task-android_signing_verify-6e0bdc22651c44d3a0fd` PASS；最终本地 APK SHA256 与未发布理由见 QA 文档。上述只勾选对应测试门禁，不替用户标 OEM 体验或图库桥接 PASS。
+
 ## A. 已完成的研究（非代码交付）
 
 - [x] A01 对照用户参考截图及之前记录，定位 Preview.6 `ChatScreen.kt` 原生 `ModalBottomSheet` 与要求不符。
