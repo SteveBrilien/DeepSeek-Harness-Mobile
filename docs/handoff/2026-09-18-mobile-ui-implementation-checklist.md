@@ -10,7 +10,7 @@
 
 App 版本在 `app/build.gradle.kts` 调为 `0.5.0-preview.1-dev` / `versionCode=27`，原版本 `0.4.0-preview.6-dev` / 26。新版本系列**不等于六项目标完成、稳定 1.0 或新 APK 已发布**；`release/update.json` 与旧 APK/SHA 不改，managed plugin/Runtime 版本独立，只有真实包资源变化且验证通过才升 bundle marker。
 
-状态定义：`RESEARCHED` 有源证据只证明调查；`OWNER_CONFIRMED` 是用户已完成反馈，不当作独立 PASS；`PASS` 必须有当前源码 commit+对应测试/样本；`NOT_RUN/BLOCKED/FAIL` 按事实写。以下 `[x]` 仅对应研究，所有待实现项 `[ ]`。
+状态定义：`RESEARCHED` 有源证据只证明调查；`OWNER_CONFIRMED` 是用户已完成反馈，不当作独立 PASS；`PASS` 必须有当前源码 commit+对应测试/样本；`NOT_RUN/BLOCKED/FAIL` 按事实写。`[x]` 有 5 项已完成研究、1 项仅完成版本构建验证；待实现或发布验收仍为 `[ ]`。
 
 ## A. 已完成的研究（非代码交付）
 
@@ -48,7 +48,7 @@ App 版本在 `app/build.gradle.kts` 调为 `0.5.0-preview.1-dev` / `versionCode
 
 ## E. 版本、质量与发布（不强制 Termux SSH 救援）
 
-- [ ] REL01 检查当前源码 `versionName=0.5.0-preview.1-dev`、`versionCode=27>26`，生成当前构建 metadata 并核实原签名一致；版本变更**不应改 DSH runtime pin/插件 marker**。
+- [x] REL01 [BUILD_VERIFIED，非功能验收] 当前源码与本地 APK metadata 均为 `versionName=0.5.0-preview.1-dev`、`versionCode=27>26`、包名不变；`android_debug` job `task-android_debug-adfaf64433d74eb58988` 成功（172 tasks、exit 0），`android_signing_verify` job `task-android_signing_verify-c6edef7411ee40d88c57` 验证旧稳定证书一致；本地 `app/build/outputs/apk/debug/app-debug.apk` 未发布、未安装，DSH runtime pin/插件 marker/旧 APK/OTA 未改。
 - [ ] REL02 各功能 commit 分别进行 ABI/Node24、Android API30 单测、`android_lint`、`runtime_alpine_e2e`、exact-current-profile Chromium A/B、`git diff --check`/review；不可借上一轮 59 项或旧 APK 测试顶替。
 - [ ] REL03 提供真实已授权设备时按功能验证 1/2/3/5 图片 Host 回执、横滑与抽屉、过渡及冷/温/热性能；如果无设备，照实标记 `DEVICE_NOT_RUN`，小主机通过不能冒充真机通过。
 - [ ] REL04 APK 手动覆盖安装前核对历史 APK/证书、版本递增与已有数据/可靠非破坏备份或用户自主保留；**SSH 救援非条件**，不强制 ADB、绝不主动清数据/卸载或停旧 SSH 服务。

@@ -1,6 +1,6 @@
 # DSH Mobile｜工作区、抽屉、应用 UI 与插件式附件技术实施规范
 
-> 版本：技术方案 V1.3（2026-09-18，用户收敛实施范围及版本变更）；状态：**调研与设计完成，待技术门禁、实现及设备验收**。本次只调整需求文档及 Android app 版本元数据，不开发新功能、不构建/安装 APK、不改变 SSH/ADB、签名、发布源、授权或用户数据。对应需求：`2026-09-18-owner-ui-and-attachment-plugin-reconciliation.md`。所有数值阈值如未注明“现有行为”，均为**拟议初值**，须基线及真机验证，而非已经过用户确认的指标。
+> 版本：技术方案 V1.3（2026-09-18，用户收敛实施范围及版本变更）；状态：**调研与设计完成，待技术门禁、实现及设备验收**。本次只调整需求文档及 Android app 版本元数据，不开发新功能；只本地构建验证版本元数据，不安装/发布 APK、不改变 SSH/ADB、签名、发布源、授权或用户数据。对应需求：`2026-09-18-owner-ui-and-attachment-plugin-reconciliation.md`。所有数值阈值如未注明“现有行为”，均为**拟议初值**，须基线及真机验证，而非已经过用户确认的指标。
 
 ## V1.3 最新用户指令优先（覆盖下方旧阶段安排）
 
@@ -8,7 +8,7 @@
 
 **本轮唯一功能范围**：`ATT-UPLOAD` 图片 1/2/3/5 实际上传发送；`ATT-PREVIEW` 已选预览和获许可的最近图片；`ATT-SOURCES` 与 composer 融合的拍照/相册/文件三等权入口（取消当前来源 ModalBottomSheet）；`DR-SWIPE` 左侧抽屉左右滑动跟手开关且横向图库/系统返回不冲突；`PAGE-MOTION` 原生和 Web 切页过渡；`PERF-START` 冷/温/热启动性能定位优化。下文早期 D3 Header/Settings、D4 IME、D5 Workspace、D6 Recovery 详细方案保留为**历史参考，退出当前任务和发布功能阻断**；不可将它们列为本轮未完成功能。只保留升级过程中本来就必须执行的签名、用户数据安全、回归测试。
 
-**应用版本约定**：Gradle `app/build.gradle.kts` 从 `0.4.0-preview.6-dev`/`versionCode=26` 更新为 `0.5.0-preview.1-dev`/`versionCode=27`，表示进入新的开发系列，**并非正式稳定 1.0，也不代表六项体验已经交付**。App `versionName/versionCode` 与 `dsh-client-ui-mobile`、managed plugin bundle marker、DSH runtime pin **是不同版本轴**：只有插件真实变更且完成对应验证后才更新插件 marker。旧 `release/*.apk`、`release/SHA256SUMS`、`release/update.json` 保持原值；仅源码调号不是已发布新 APK，未来打包须匹配实际 APK metadata、原证书、哈希和手动下载验证。
+**应用版本约定**：Gradle `app/build.gradle.kts` 从 `0.4.0-preview.6-dev`/`versionCode=26` 更新为 `0.5.0-preview.1-dev`/`versionCode=27`，表示进入新的开发系列，**并非正式稳定 1.0，也不代表六项体验已经交付**。App `versionName/versionCode` 与 `dsh-client-ui-mobile`、managed plugin bundle marker、DSH runtime pin **是不同版本轴**：只有插件真实变更且完成对应验证后才更新插件 marker。旧 `release/*.apk`、`release/SHA256SUMS`、`release/update.json` 保持原值；已由 `android_debug` job `task-android_debug-adfaf64433d74eb58988` 本地构建验证 APK metadata 27 / 0.5.0-preview.1-dev，`android_signing_verify` job `task-android_signing_verify-c6edef7411ee40d88c57` 原证书验证成功；这不是新 APK 发布或附件等功能交付，未来正式打包仍须冻结 clean build、内容哈希与手动下载验证。
 
 当前施工权威清单：`docs/handoff/2026-09-18-mobile-ui-implementation-checklist.md` V1.3；本规范旧范围清单/门禁如冲突均由以上指令及 V1.3 清单覆盖。附件正式 intake 的缺口仍是核心阻断，不能只改 UI 而虚报发送成功。
 
@@ -249,11 +249,11 @@ Settings 一级只保留 App、Data、Runtime、Developer 四组，DSH 原生模
 
 新增**直接观察证据 F（官方 APK 静态，非 DSH 自身）**：官方网站 `https://download.deepseek.com/` 的脚本指向 `https://download.deepseek.com/apk/deepseek.apk`；本次样本 `com.deepseek.chat` `2.5.2`/273，SHA256 `a6d025c14c98118a5a67849e04aaef6f3c9c13aaf0fa62caaee0e47091374ea3`，官方渠道+签名验证通过，JADX 部分反编译返回 304 项解码错误，不能推测遗漏调用。独立研究记录（含组件锚点、证据等级、限制与设计变更）：[`docs/research/2026-09-18-deepseek-official-apk-attachment-static-analysis.md`](../research/2026-09-18-deepseek-official-apk-attachment-static-analysis.md)。其 `UploadPanel` 是**原生 Compose**，`UploadPanelActionButtonGroup` 提供拍照/相册/文件三入口；`UploadPanelImageScroller` 的 `x17` 数据源用授权 MediaStore 查询近期图片，Photo Picker / SAF 多选由单独 ActivityResult contract 负责，后续文件上传状态也单独表达。结论是**近期图片展示和已选 DSH 草稿必须是两份身份分明的数据源**；依照该 UX 实现而不是照搬其私有代码、视觉资产、权限声明或云端上传协议。
 
-**实施门禁补充**：Native SDK30 `READ_EXTERNAL_STORAGE` 拒绝/撤销场景、Android13/14 full/partial 图片可见范围、MediaStore 20 项分页与有界缩略图、系统 picker `data + ClipData` 保序去重、接入 DSH 正式 intake 并观察服务端 ACK 必须分别测试。该 APK 能证明功能可实现，不能证明 DSH Web 当前公开了此桥接能力；它的 20 张上限也不应越过 DSH 模型实际数量/大小限制。本增补没有触发新的 APK 构建或设备操作。
+**实施门禁补充**：Native SDK30 `READ_EXTERNAL_STORAGE` 拒绝/撤销场景、Android13/14 full/partial 图片可见范围、MediaStore 20 项分页与有界缩略图、系统 picker `data + ClipData` 保序去重、接入 DSH 正式 intake 并观察服务端 ACK 必须分别测试。该 APK 能证明功能可实现，不能证明 DSH Web 当前公开了此桥接能力；它的 20 张上限也不应越过 DSH 模型实际数量/大小限制。V1.2 增补当时未构建；V1.3 仅本地执行版本元数据 APK 构建与证书验证，未发布或操作设备。
 
 ## 11. 本文交付与实施限制
 
-已完成：源文件/插件/API/存储与备份逐项核对、外部官方规范交叉验证、DeepSeek 2.5.2 静态参考调查、工程边界、接口草案、拒绝路径、验收矩阵、切片、逐项清单与待确认条件；阶段清单见 `2026-09-18-mobile-ui-implementation-checklist.md`。**未完成且本轮不实施**：新增 Cordis plugin、官方 intake 扩展、Android chooser 修改、抽屉手势/UI 修复、新单测/真机测试、编译、APK/OTA/设备操作；SAF/Trash/restore 已由用户确认退出本轮范围。下一轮应先完成 P0 获取真实运行 bundle/ABI 与服务端发送证据，再据结果修订本稿中的 `P` 接口；不能把技术方案状态写成代码完成。
+已完成：源文件/插件/API/存储与备份逐项核对、外部官方规范交叉验证、DeepSeek 2.5.2 静态参考调查、工程边界、接口草案、拒绝路径、验收矩阵、切片、逐项清单与待确认条件；阶段清单见 `2026-09-18-mobile-ui-implementation-checklist.md`。**未完成且本轮不实施**：新增 Cordis plugin、官方 intake 扩展、Android chooser 修改、抽屉手势/UI 修复、新单测/真机测试、发布版 clean build、APK/OTA 发布及设备操作；SAF/Trash/restore 已由用户确认退出本轮范围。下一轮应先完成 P0 获取真实运行 bundle/ABI 与服务端发送证据，再据结果修订本稿中的 `P` 接口；不能把技术方案状态写成代码完成。
 
 
 ## 12. V1.2 工程决策与证据缺口（不把静态推测写成已实现）
@@ -356,7 +356,7 @@ Android ActivityResult ──> 单次 callback/data+ClipData 去重 → 每项�
 - **G4 设备（V1.3 当前范围）**：附件官方+插件 320/360/390dp、主题及字体缩放、抽屉与图库横滑不冲突、左右滑开关≥20 次、切页帧与冷温热启动记录、图片 1/2/3/5 个真正发送及重载；Host 端验证测试样本数量与引用。原有 IME/右栏/设置只做不回退的基础冒烟，**不重新作为独立待实现项**。无受控设备时标 DEVICE_NOT_RUN，不虚报 PASS。
 - **G5 发布**：冻结 clean build、生成与历史证书相同的签名、versionCode 单调递增、覆盖安装/旧数据可见/插件持久/Terminal 和恢复校验、独立 APK HTTPS URL 实际下载 SHA 验证；明确手动 APK 与 OTA update manifest 分离，未经确认不修改 `release/update.json`。任何 Blocker 未清不宣称 Release PASS。
 
-验收结论只写 `PASS | FAIL | BLOCKED | NOT_RUN`，并附运行环境/证据/对应 commit；`PARTIAL` 用于有证据的一部分 case 而非整体发布结论。报告没有运行 G0–G5，也没有注册新 TaskProfile 或提供新 APK。
+验收结论只写 `PASS | FAIL | BLOCKED | NOT_RUN`，并附运行环境/证据/对应 commit；`PARTIAL` 用于有证据的一部分 case 而非整体发布结论。V1.3 只验证版本 metadata 构建和证书（见上方任务 ID），G0–G5 完整发布门禁仍未运行；没有注册新 TaskProfile 或提供新 APK 下载。
 
 ## 16. 风险列表与技术停机规则
 
