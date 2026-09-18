@@ -1,10 +1,20 @@
 # DSH Mobile｜工作区、抽屉、应用 UI 与插件式附件技术实施规范
 
-> 版本：技术方案 V1.2（2026-09-18，工程实施细化与独立验收清单）；状态：**调研与设计完成，待技术门禁、实现及设备验收**。本次只写文档，不改功能代码、不构建/安装 APK、不改变 SSH/ADB、签名、发布源、授权或用户数据。对应需求：`2026-09-18-owner-ui-and-attachment-plugin-reconciliation.md`。所有数值阈值如未注明“现有行为”，均为**拟议初值**，须基线及真机验证，而非已经过用户确认的指标。
+> 版本：技术方案 V1.3（2026-09-18，用户收敛实施范围及版本变更）；状态：**调研与设计完成，待技术门禁、实现及设备验收**。本次只调整需求文档及 Android app 版本元数据，不开发新功能、不构建/安装 APK、不改变 SSH/ADB、签名、发布源、授权或用户数据。对应需求：`2026-09-18-owner-ui-and-attachment-plugin-reconciliation.md`。所有数值阈值如未注明“现有行为”，均为**拟议初值**，须基线及真机验证，而非已经过用户确认的指标。
+
+## V1.3 最新用户指令优先（覆盖下方旧阶段安排）
+
+2026-09-18 用户明确：**不再需要 SSH 救援通道**，不恢复、不验收、不再作为 APK 发布强制条件；无需关闭既有 SSH 设施，除非另有明确操作指令。用户确认此前工作区、设置/备份、标题/侧边栏既有布局、IME/系统栏等其他 UI 已实现，**本轮停止继续开发/列待办**；该状态是 `OWNER_CONFIRMED / OUT_OF_SCOPE`，不是代码/真机 PASS，若发现独立缺陷再重新开需求，不以旧截图倒推必须重新开发。
+
+**本轮唯一功能范围**：`ATT-UPLOAD` 图片 1/2/3/5 实际上传发送；`ATT-PREVIEW` 已选预览和获许可的最近图片；`ATT-SOURCES` 与 composer 融合的拍照/相册/文件三等权入口（取消当前来源 ModalBottomSheet）；`DR-SWIPE` 左侧抽屉左右滑动跟手开关且横向图库/系统返回不冲突；`PAGE-MOTION` 原生和 Web 切页过渡；`PERF-START` 冷/温/热启动性能定位优化。下文早期 D3 Header/Settings、D4 IME、D5 Workspace、D6 Recovery 详细方案保留为**历史参考，退出当前任务和发布功能阻断**；不可将它们列为本轮未完成功能。只保留升级过程中本来就必须执行的签名、用户数据安全、回归测试。
+
+**应用版本约定**：Gradle `app/build.gradle.kts` 从 `0.4.0-preview.6-dev`/`versionCode=26` 更新为 `0.5.0-preview.1-dev`/`versionCode=27`，表示进入新的开发系列，**并非正式稳定 1.0，也不代表六项体验已经交付**。App `versionName/versionCode` 与 `dsh-client-ui-mobile`、managed plugin bundle marker、DSH runtime pin **是不同版本轴**：只有插件真实变更且完成对应验证后才更新插件 marker。旧 `release/*.apk`、`release/SHA256SUMS`、`release/update.json` 保持原值；仅源码调号不是已发布新 APK，未来打包须匹配实际 APK metadata、原证书、哈希和手动下载验证。
+
+当前施工权威清单：`docs/handoff/2026-09-18-mobile-ui-implementation-checklist.md` V1.3；本规范旧范围清单/门禁如冲突均由以上指令及 V1.3 清单覆盖。附件正式 intake 的缺口仍是核心阻断，不能只改 UI 而虚报发送成功。
 
 ## 0. 结论先行、版本与证据分级
 
-架构路线：**官方 DSH 会话/输入/附件状态不复制；Cordis 浏览器插件提供聊天内联入口与抽屉适配；Android 原生 Web Host 管理系统 picker、近期媒体的用户许可与只读缩略数据、临时授权/生命周期；Compose 管四项底栏、工作区、设置和 Recovery；Native Recovery Core 持有文件事务和恢复事务。** WebView 根视口仍专属 `dsh-webview-compat`。严格保留无 Root、原签名、原数据和独立 Termux SSH 救援。
+架构路线：**官方 DSH 会话/输入/附件状态不复制；Cordis 浏览器插件提供聊天内联入口与抽屉适配；Android 原生 Web Host 管理系统 picker、近期媒体的用户许可与只读缩略数据、临时授权/生命周期；Compose 管四项底栏、工作区、设置和 Recovery；Native Recovery Core 持有文件事务和恢复事务。** WebView 根视口仍专属 `dsh-webview-compat`。严格保留无 Root、原签名和原数据；Termux SSH 救援不再列为本产品的强制依赖。
 
 证据等级：`F`＝已直接阅读此 Git HEAD 的代码/本地包，`E`＝已核对外部官方规范但运行环境未实测，`P`＝拟议实现接口/策略，`B`＝阻断实施的未决点。`PASS` 仅指明确列出的测试，不能扩展成 OriginOS UI 实测。现场基线 Git `ae638e4`，先前已改过工作区/备份首屏并通过现有测试；手机截图所示 Preview.6 旧版 APK 并没有这些新源码改动。旧文档 `2026-09-16-ui-remediation-and-acceptance-plan.md` 中 G3 提到的“原生轻量底部 sheet”已被本轮用户的新明确要求**替代为 composer 内联插件 UI**，但原生 picker/授权职责仍保留。ADR 0011 描述的是当时 compat-only 阶段，当前 `MobilePluginProfileCoordinator.kt` 实际明确启用四个 APK-managed bundles，须以现态为准。
 
@@ -202,9 +212,9 @@ Settings 一级只保留 App、Data、Runtime、Developer 四组，DSH 原生模
 | Recovery | 损坏 ZIP/manifest/hash、zip bomb、schema 过新、权限被收回、空间不足、运行时忙、断电模拟 checkpoint/stage/commit、Rollback、加密凭据独立恢复、旧数据升级 | 仅验证并恢复成功类别可显示完成，失败无抹除唯一副本 |
 | Performance | 同机冷/温/热各 ≥3 次，TTID/TTFD 分段，抽屉帧时间/输入滚动/内存峰值、长目录+大图源 | 按新旧同配置记录差异和回归，不用用户单次 26s 宣称改进 |
 
-门禁顺序必须记录每条结果：G0 Git/签名/旧 APK SHA/非破坏备份/救援 SSH 复连与用户授权→P0 ABI/API/附件实际来源调查→针对性 Node24 type/syntax/slot policy、Android11 unit/Robolectric→`android_lint`→`runtime_alpine_e2e`→exact-current-profile Chromium composition gate（official+compat 为对照）、`git diff --check`、review→受控设备 OriginOS ADB/SSH 下真实 UI+发送、覆盖安装备份与数据复核→本地 commit/发布候选。现存上一轮 `59` 单测、`0 errors 23 warnings`、Alpine E2E PASS 只证明上一轮源码对应范围；本轮无新代码、不运行这些门禁。用户未授权发布时不动 `release/update.json`，无清数据/卸载、无擅改外部 Git remote。
+门禁顺序必须记录每条结果：G0 Git/签名/旧 APK SHA/非破坏备份/用户授权（不再要求 Termux SSH 救援）→P0 ABI/API/附件实际来源调查→针对性 Node24 type/syntax/slot policy、Android11 unit/Robolectric→`android_lint`→`runtime_alpine_e2e`→exact-current-profile Chromium composition gate（official+compat 为对照）、`git diff --check`、review→受控设备 OriginOS ADB/SSH 下真实 UI+发送、覆盖安装备份与数据复核→本地 commit/发布候选。现存上一轮 `59` 单测、`0 errors 23 warnings`、Alpine E2E PASS 只证明上一轮源码对应范围；本轮仅有版本元数据变更、不运行这些完整门禁。用户未授权发布时不动 `release/update.json`，无清数据/卸载、无擅改外部 Git remote。
 
-设备控制现实：`2026-09-18-live-phone-diagnostic-baseline.md` 记录过 `22023` 救援通道一度 OK 后又掉线，当前实时连通性仍须重新验证，旧日志不能作今天手机在线证明；`adb devices` 曾为空/配对受限，不能把普通 Termux shell 视为已授权 ADB。**后续任何 APK 安装先实际重建/复测独立 Termux→Azure→橙派救援、备份、签名一致性与 Android 11 真机通道**，否则只做静态设计与 Browser 可控测试。
+设备控制现实：既往 Termux 救援和 ADB 连接曾掉线；**根据本次用户明确指示，救援通道不是前置条件、不要求恢复或复连，也不主动停止既有服务**。ADB 未授权时必须准确标记真机测试 NOT_RUN/BLOCKED，不能借 Termux 普通 shell 冒充 ADB。手动覆盖安装仍检查签名一致、版本码递增、个人数据和非破坏备份；由用户自主安装或提供授权设备，禁止自动卸载、清数据、破坏旧隧道。
 
 ## 9. 切片、依赖、降级与决策点
 
@@ -215,9 +225,9 @@ Settings 一级只保留 App、Data、Runtime、Developer 四组，DSH 原生模
 | D2 ATT 展示插件 | Browser list slot 三入口/已选 official rail/可授权最近图、Android chooser thin bridge，remove native ModalBottomSheet；版本 hash/seed/profile 双路 | 插件禁用与 Native 默认 picker 退路，草稿/Session 不丢 |
 | D3 DR/Header | 官方状态、非全屏真实遮罩、header/Hero 可靠占位、手势、Settings/rightbar 优先级；先保留无手势按钮路径 | 单个 UI 插件禁用回官方+compat；不改 viewport |
 | D4 Insets/性能 | 有责任层证据后最小改 Native padding 或 Browser 监听，分层 TTID/TTFD 和帧优化 | 独立特性开关；新优化回退后 WebView/Runtime 保留 |
-| D5 Workspace explorer | 紧凑视图→真正 multiselect→授权根 ADR/SAF→可取消批处理→Trash manifest/restore→Terminal cwd | 文件 schema 升级需 migration + checkpoint + journal，UI 回退不回滚用户文件 |
-| D6 Settings/Recovery | 数据分类/验证 catalog→read-only plan→事务及故障注入→启用明确支持范围的恢复 UI | 旧备份可读、兼容迁移与原备份永不覆盖 |
-| D7 候选与发布 | 全门禁、真机持续救援、安全回退、版本递增/证书同一、用户验收 | 候选只本地，OTA 必须另获确认 |
+| D5 Workspace explorer（退出本轮） | 用户报告其余 UI 已实现；本轮不追加工作区重构 | 如发现具体回归另立缺陷，绝不绕过文件权限/事务保障 |
+| D6 Settings/Recovery（退出本轮） | 用户报告其余 UI 已实现；本轮不新增恢复 UI 或改动已有业务 | 保留既有数据保护，未经单独请求不做写入式恢复 |
+| D7 候选与发布 | 本轮六项体验门禁、非破坏数据/签名检查、版本递增与用户验收，不要求救援 SSH | 候选只本地，OTA 必须另获确认 |
 
 需要明确确认但不阻断 D0 文档的事项：①已核实参考图顶部是授权后 MediaStore 最近图库，DSH 的已选 rail 是另一层；两者都是目标，前者拒绝授权时降级为已选栏和系统 picker；②“文件”是否要求 PDF/TXT 真的随提示词传给模型？默认先图片文档选择器，普通文件另立官方协议；③项目是否需要设备任意外部目录和 SAF 文件夹作为 **可直接运行的 PRoot cwd**？默认授权浏览与运行目录分离；④抽屉左边缘与 Android 系统返回冲突时优先系统返回，汉堡永远可用；⑤完整恢复的第一期资产范围，默认只暴露实际验证可恢复的类别。以上选择都是本技术方案的可测试假设，非已获得最终产品确认。
 
@@ -243,7 +253,7 @@ Settings 一级只保留 App、Data、Runtime、Developer 四组，DSH 原生模
 
 ## 11. 本文交付与实施限制
 
-已完成：源文件/插件/API/存储与备份逐项核对、外部官方规范交叉验证、DeepSeek 2.5.2 静态参考调查、工程边界、接口草案、拒绝路径、验收矩阵、切片、逐项清单与待确认条件；阶段清单见 `2026-09-18-mobile-ui-implementation-checklist.md`。**未完成且本轮不实施**：新增 Cordis plugin、官方 intake 扩展、Android chooser 修改、抽屉手势/UI 修复、SAF/Trash/restore schema、新单测/真机测试、编译、APK/OTA/设备操作。下一轮应先完成 P0 获取真实运行 bundle/ABI 与服务端发送证据，再据结果修订本稿中的 `P` 接口；不能把技术方案状态写成代码完成。
+已完成：源文件/插件/API/存储与备份逐项核对、外部官方规范交叉验证、DeepSeek 2.5.2 静态参考调查、工程边界、接口草案、拒绝路径、验收矩阵、切片、逐项清单与待确认条件；阶段清单见 `2026-09-18-mobile-ui-implementation-checklist.md`。**未完成且本轮不实施**：新增 Cordis plugin、官方 intake 扩展、Android chooser 修改、抽屉手势/UI 修复、新单测/真机测试、编译、APK/OTA/设备操作；SAF/Trash/restore 已由用户确认退出本轮范围。下一轮应先完成 P0 获取真实运行 bundle/ABI 与服务端发送证据，再据结果修订本稿中的 `P` 接口；不能把技术方案状态写成代码完成。
 
 
 ## 12. V1.2 工程决策与证据缺口（不把静态推测写成已实现）
@@ -339,11 +349,11 @@ Android ActivityResult ──> 单次 callback/data+ClipData 去重 → 每项�
 
 每个里程碑要附 `evidence/<milestone>/manifest.md`（**下一轮拟建，当前没有**），字段 `sourceCommit, runtimeSeedSha, webProfileSha, plugin versions/hash, deviceModel/OS/WebView, testSampleIds, taskJobIds, caseResults, screenGeometry, redactionStatus, knownFailures, rollbackTarget`。敏感截图/私有 URI/令牌/密钥进 gitignored 私有存储，仓库只保留匿名指标和可复现脚本；`sourceCommit` 与运行 APK 内容必须对应，不能用之前 59 项测试替新源码背书。
 
-- **G0 安全就绪**：未受损的原签名/旧 APK/现有用户数据；独立 Termux SSH 必须实时恢复并断开→重连验证；ADB 若未连只准模拟器和橙派静态验收。签名不一致、备份不可恢复、救援掉线都阻断真机覆盖安装。
+- **G0 安全就绪**：原签名、旧 APK/用户数据、版本码和非破坏备份需核对；**不以 Termux SSH 救援是否在线作门禁**。ADB 未连仅运行模拟器/橙派验证，真机验收如实列待测；签名不一致、会清除用户唯一数据等仍阻断安装。
 - **G1 ABI**：实际 bundle/slot generation、公开 intake 与 Host echo 实验通过，否则冻结 D1，不进入照片面板的“可发送”实现。官方+compat-only 对照无插件副作用。
 - **G2 插件与 Android**：版本/注入/卸载双向可逆、单占 slot 无冲突；Native 权限和 chooser/MediaBridge 的安全负例覆盖，包括 Android 11 target 28；任何权限扩大另评审。
 - **G3 静态与运行时**：`android_unit_test`、`android_lint`、`runtime_alpine_e2e`、exact-current-profile Chromium gate（**目前不是 TaskProfile，需先登记/规范命令**）、Node24 policy/syntax、`git diff --check` 与代码审查。Lint `0 errors` 不等于 23 条已消除；警告要分类并记录是否新增。
-- **G4 设备**：官方+compat 与插件两组 320/360/390dp、light/dark/Tokyo、fontScale、IME、旋转、右栏/Settings/抽屉/图库横滑；连续 Drawer≥20、键盘收回≥10（**测试次数为验收设计，不是性能承诺**），图片 1/2/3/5 个真正发送及重载；必须能在 Host 端验证测试样本数量与引用，不以 UI 显示或 chooser callback 替代。
+- **G4 设备（V1.3 当前范围）**：附件官方+插件 320/360/390dp、主题及字体缩放、抽屉与图库横滑不冲突、左右滑开关≥20 次、切页帧与冷温热启动记录、图片 1/2/3/5 个真正发送及重载；Host 端验证测试样本数量与引用。原有 IME/右栏/设置只做不回退的基础冒烟，**不重新作为独立待实现项**。无受控设备时标 DEVICE_NOT_RUN，不虚报 PASS。
 - **G5 发布**：冻结 clean build、生成与历史证书相同的签名、versionCode 单调递增、覆盖安装/旧数据可见/插件持久/Terminal 和恢复校验、独立 APK HTTPS URL 实际下载 SHA 验证；明确手动 APK 与 OTA update manifest 分离，未经确认不修改 `release/update.json`。任何 Blocker 未清不宣称 Release PASS。
 
 验收结论只写 `PASS | FAIL | BLOCKED | NOT_RUN`，并附运行环境/证据/对应 commit；`PARTIAL` 用于有证据的一部分 case 而非整体发布结论。报告没有运行 G0–G5，也没有注册新 TaskProfile 或提供新 APK。
@@ -359,7 +369,7 @@ Android ActivityResult ──> 单次 callback/data+ClipData 去重 → 每项�
 | R-DR-01 | `transform` 祖先改变 Settings modal containing block | 设置窄缝重现 | 不改 modal 祖先，独立 portal ADR | Drawer 交互 |
 | R-WKS-01 | 登记项目越出原授权根 | 目录不可打开或越权 | AuthorizedLocation ADR、能力识别 | 跨根/批处理 |
 | R-REC-01 | 只校验 manifest 就执行写恢复 | 覆盖唯一数据 | catalog+read-only plan+checkpoint+rollback | Restore UI |
-| R-OPS-01 | SSH/ADB 断线或已有数据不可恢复 | 无法救援 | 先复连/备份，禁止安装/清理 | 实机/APK |
+| R-OPS-01 | 未获授权的真机控制或旧数据未保护 | 无法得到设备证据/可能丢数据 | 橙派测后标真机待测，保留旧 APK、签名核验和非破坏备份；SSH 救援可选 | 自动安装/数据迁移 |
 
 ## 17. 实施清单、更新与文档交叉引用
 

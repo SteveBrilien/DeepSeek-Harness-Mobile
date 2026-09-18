@@ -2,6 +2,12 @@
 
 All notable architectural and product changes should be recorded here.
 
+## 2026-09-18 — DEVELOPMENT VERSION: 0.5.0-preview.1-dev (code 27; not released)
+
+Advanced the **App versionName and Android versionCode** from `0.4.0-preview.6-dev`/26 to `0.5.0-preview.1-dev`/27 for the next development line. This version bump alone adds no attachment, drawer, page-animation or startup-performance feature. The product owner narrowed the active UI work to (1) image upload and preview including authorized recent photos, (2) inline three-source actions, (3) left drawer swipe open/close, (4) page transitions, and (5) startup performance. All other UI features are owner-confirmed for this scope, not independently certified as fully implemented. Termux SSH rescue is no longer a user-required release gate; standard non-destructive update safeguards and existing SSH isolation still apply.
+
+No new release APK or OTA manifest is published by changing Gradle metadata. Historical `release/` files and previous release notes remain immutable. See `docs/handoff/2026-09-18-mobile-ui-implementation-checklist.md` V1.3.
+
 ## 2026-09-16 — CANDIDATE: Preview.3 mobile motion and startup visibility
 
 Replaced Preview.2 sidebar dead-strip/display toggling with full-width transform-only drawer, integrated top-left panel button and native header collapse; added bounded rightbar, modal and tab transitions with reduced-motion support. Added IME/bottom chrome transition and OriginOS immersive-sticky re-hide. Instrumented startup stages and added owned-generation warm-reuse fast path; corrected a token lookup regression by writing a new DSH start marker only on the cold path and added regression coverage. Bumped candidate app to `0.4.0-preview.3` (code 23), mobile UI bundle to `0.4.1-dshm.1`. Browser 360x708, Unit and Alpine E2E pass; physical Vivo keyboard/nav/startup timing validation remains required. See `docs/handoff/2026-09-16-ui-motion-and-startup-preview3.md`.
