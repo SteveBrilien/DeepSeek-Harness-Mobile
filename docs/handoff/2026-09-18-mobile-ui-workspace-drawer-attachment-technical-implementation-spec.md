@@ -1,6 +1,6 @@
 # DSH Mobile｜工作区、抽屉、应用 UI 与插件式附件技术实施规范
 
-> 版本：技术方案 V1.0（2026-09-18）；状态：**调研与设计完成，待技术门禁、实现及设备验收**。本次只写文档，不改功能代码、不构建/安装 APK、不改变 SSH/ADB、签名、发布源、授权或用户数据。对应需求：`2026-09-18-owner-ui-and-attachment-plugin-reconciliation.md`。所有数值阈值如未注明“现有行为”，均为**拟议初值**，须基线及真机验证，而非已经过用户确认的指标。
+> 版本：技术方案 V1.1（2026-09-18，补充官方 DeepSeek APK 静态分析）；状态：**调研与设计完成，待技术门禁、实现及设备验收**。本次只写文档，不改功能代码、不构建/安装 APK、不改变 SSH/ADB、签名、发布源、授权或用户数据。对应需求：`2026-09-18-owner-ui-and-attachment-plugin-reconciliation.md`。所有数值阈值如未注明“现有行为”，均为**拟议初值**，须基线及真机验证，而非已经过用户确认的指标。
 
 ## 0. 结论先行、版本与证据分级
 
@@ -30,7 +30,7 @@
 | ID | 最小可观察结果 | 权威状态/技术负责人 | 发布阻断点 |
 |---|---|---|---|
 | ATT-1 | 聊天输入区内三来源并排、无 ModalBottomSheet、展开/收起不遮历史 | Browser Cordis 插件（呈现）；Native 只选择 | 正式插件插槽与 intake API 兼容 |
-| ATT-2 | 用户授权的近照横向预选（可用时）、已选附件水平栏、放大/移除、失败标记 | 图片：DSH Attachment slot；可选近照：授权媒体提供者 | Android 11 权限、DSH 单占槽不冲突 |
+| ATT-2 | 授权后展示独立的近期图片横向预选栏、已选附件水平栏、放大/移除、失败标记；拒绝权限安全降级 | 近照：受控 Android MediaStore provider；已选图片：官方 DSH Attachment slot | Android 11 权限、DSH 单占槽不冲突 |
 | ATT-3 | 1/2/3/5 张图片真实发送且失败保留；文件入口只宣称实际支持的 MIME | DSH input/session + Native picker；Host 服务端 ACK | 端到端发送、URI 验证、多选限额 |
 | DR-1 | 非全屏抽屉、真实遮罩、汉堡与标题同排、保留右栏与 Settings | `ctx.layout` + UI 插件 | Settings fixed containing block、Hero fallback |
 | DR-2 | 打开/关闭跟手、滚动/边缘系统返回/附件横滑不误触、Back 层级正确 | UI 插件交互状态 + Native Back 协议 | 真机帧与手势冲突 |
@@ -89,8 +89,8 @@ Android Activity / AppShell (四导航、系统栏/IME、唯一长驻 WebView)
 
 ### 3.4 来源 UI 与图四信息层级
 
-- 输入工具行独立、可关闭的附件按钮注册 `conversation.input.left`（唯一新 `id`）；点击使 panel 以 `conversation.input.dock` 或经 owner 明确授权的卡内 child 承载，**随输入区正常布局展开，不使用 Native `ModalBottomSheet`、body fixed overlay 或独立 Android 全屏选择页作为三入口面板**。布局优先：可用且明确授权的最近图片水平预选栏（高度拟 64–76dp；无权限时不虚构空白缩略图）→ 已选官方图片栏（不复制）→ 三个并排相同高度的「拍照」「相册」「文件」（320dp 宽仍有清晰文字与可点区域），可键盘/屏幕阅读器访问；内联 panel 展开必须与 IME/阅读位置配合，不强制 `scrollToBottom`。
-- **最近照片≠已选照片**：参考图上方是最近媒体，官方 ui-attachment 已提供的是已选草稿；若必须展示未经选择的最近媒体，另设可关闭的 Native consent-scoped media provider，授权范围、顺序、分页、低清缩略图/缓存、权限撤销须由用户明确授予。系统 Photo Picker 本身不是可在 App 中嵌入的任意最近图库；未获得适用访问权时只展示已选栏与系统 picker 入口，不暗中扫描 `MediaStore`，不默认请求整库权限。这是与参考图达到完全一致的**单独待确认能力门槛**。
+- 输入工具行独立、可关闭的附件按钮注册 `conversation.input.left`（唯一新 `id`）；点击使 panel 以 `conversation.input.dock` 或经 owner 明确授权的卡内 child 承载，**随输入区正常布局展开，不使用 Native `ModalBottomSheet`、body fixed overlay 或独立 Android 全屏选择页作为三入口面板**。布局要求：用户授权可见的近期图片水平预选栏（官方 App 2.5.2 为约 80dp，本站拟 64–80dp 需实机适配；无权限时不虚构空白缩略图）→ 已选官方图片栏（不复制）→ 三个并排相同高度的「拍照」「相册」「文件」（320dp 宽仍有清晰文字与可点区域），可键盘/屏幕阅读器访问；内联 panel 展开必须与 IME/阅读位置配合，不强制 `scrollToBottom`。
+- **最近照片≠已选照片**：参考图上方的确是单独的近期图库，而非 DSH 官方已选草稿栏。2026-09-18 已从 DeepSeek 官方 Android APK 2.5.2/versionCode273 静态确认其原生 Compose `UploadPanelImageScroller` 通过获得授权后的 MediaStore 图片数据源读取近期图片、按 `date_added DESC, _id DESC` 排序并以每页 20 项读取；三个来源按钮由单独的 Compose `UploadPanelActionButtonGroup` 等权布局。详见 `docs/research/2026-09-18-deepseek-official-apk-attachment-static-analysis.md`。因此**近期图片预选栏是明确的产品目标，不是可选增强**；技术前置是另设权限受控 `RecentMediaRepository`，仅查询已授权的 MediaStore 项、限制分页/缩略缓存并在撤销后清空；无权限时只展示已选 DSH 栏与系统 picker，不能暗中扫描。系统 Photo Picker 仍是单独系统选择动作，不是这个栏。DeepSeek 原生 App 不是 DSH Cordis 宿主，不能据此认定 DSH 官方 intake 插槽已经开放，Bridge/正式 intake 仍为 P0 阻断点。
 - 文件只允许模型/DSH 已支持的类型。若冻结版本只承认 image/png/jpeg/webp/gif，则「文件」可通过系统 DocumentsUI 选择符合 accept 的**图片文件**，在说明中明确“目前仅支持图片”；PDF/TXT 的文件管理/`@file` 引用不等于二进制附件发送。扩展普通文件需定义官方 durable attachment ref、mime/大小、序列化、Host admission、历史展示及模型/工具消费，独立里程碑，不以名字和本地卡片冒充支持。
 
 ### 3.5 Native 选择器协议与权限边界
@@ -219,7 +219,7 @@ Settings 一级只保留 App、Data、Runtime、Developer 四组，DSH 原生模
 | D6 Settings/Recovery | 数据分类/验证 catalog→read-only plan→事务及故障注入→启用明确支持范围的恢复 UI | 旧备份可读、兼容迁移与原备份永不覆盖 |
 | D7 候选与发布 | 全门禁、真机持续救援、安全回退、版本递增/证书同一、用户验收 | 候选只本地，OTA 必须另获确认 |
 
-需要明确确认但不阻断 D0 文档的事项：①参考图顶部是“最近图库”还是“已选图栏+最近图库都需要”？默认两层目标、无授权时仅已选栏；②“文件”是否要求 PDF/TXT 真的随提示词传给模型？默认先图片文档选择器，普通文件另立官方协议；③项目是否需要设备任意外部目录和 SAF 文件夹作为 **可直接运行的 PRoot cwd**？默认授权浏览与运行目录分离；④抽屉左边缘与 Android 系统返回冲突时优先系统返回，汉堡永远可用；⑤完整恢复的第一期资产范围，默认只暴露实际验证可恢复的类别。以上选择都是本技术方案的可测试假设，非已获得最终产品确认。
+需要明确确认但不阻断 D0 文档的事项：①已核实参考图顶部是授权后 MediaStore 最近图库，DSH 的已选 rail 是另一层；两者都是目标，前者拒绝授权时降级为已选栏和系统 picker；②“文件”是否要求 PDF/TXT 真的随提示词传给模型？默认先图片文档选择器，普通文件另立官方协议；③项目是否需要设备任意外部目录和 SAF 文件夹作为 **可直接运行的 PRoot cwd**？默认授权浏览与运行目录分离；④抽屉左边缘与 Android 系统返回冲突时优先系统返回，汉堡永远可用；⑤完整恢复的第一期资产范围，默认只暴露实际验证可恢复的类别。以上选择都是本技术方案的可测试假设，非已获得最终产品确认。
 
 ## 10. 官方外部规范与本机参考（2026-09-18 调研）
 
@@ -234,6 +234,12 @@ Settings 一级只保留 App、Data、Runtime、Developer 四组，DSH 原生模
 7. MDN：[Containing block](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Display/Containing_block)：fixed 子孙的 transform/filter/will-change containing-block 问题；不能凭“transform 总更快”选择抽屉动画。
 
 **本机参考文件索引**：`docs/UI_BASELINE.md`、`docs/REQUIREMENTS_BASELINE.md`、`docs/DSH_COMPATIBILITY.md`、`docs/DATA_RECOVERY.md`、`docs/DEVELOPMENT_RULES.md`、`docs/adr/0001-*.md`/`0005-*.md`/`0007-*.md`/`0008-*.md`/`0011-*.md`、`docs/handoff/2026-09-16-ui-remediation-and-acceptance-plan.md`、`docs/handoff/2026-09-18-owner-ui-and-attachment-plugin-reconciliation.md`；实际浏览器类型是本地 `.mcp/tmp/dsh-npm-install-host/node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/types/client/contract/{slots,input}.d.ts` 与 `ui-attachment/lib/client.js`，**本地缓存是证据而非依赖/发布源**；原生实现触点详见本文件第 2 节。
+
+### 10.1 官方 DeepSeek APK 反向分析增补（2026-09-18）
+
+新增**直接观察证据 F（官方 APK 静态，非 DSH 自身）**：官方网站 `https://download.deepseek.com/` 的脚本指向 `https://download.deepseek.com/apk/deepseek.apk`；本次样本 `com.deepseek.chat` `2.5.2`/273，SHA256 `a6d025c14c98118a5a67849e04aaef6f3c9c13aaf0fa62caaee0e47091374ea3`，官方渠道+签名验证通过，JADX 部分反编译返回 304 项解码错误，不能推测遗漏调用。独立研究记录（含组件锚点、证据等级、限制与设计变更）：[`docs/research/2026-09-18-deepseek-official-apk-attachment-static-analysis.md`](../research/2026-09-18-deepseek-official-apk-attachment-static-analysis.md)。其 `UploadPanel` 是**原生 Compose**，`UploadPanelActionButtonGroup` 提供拍照/相册/文件三入口；`UploadPanelImageScroller` 的 `x17` 数据源用授权 MediaStore 查询近期图片，Photo Picker / SAF 多选由单独 ActivityResult contract 负责，后续文件上传状态也单独表达。结论是**近期图片展示和已选 DSH 草稿必须是两份身份分明的数据源**；依照该 UX 实现而不是照搬其私有代码、视觉资产、权限声明或云端上传协议。
+
+**实施门禁补充**：Native SDK30 `READ_EXTERNAL_STORAGE` 拒绝/撤销场景、Android13/14 full/partial 图片可见范围、MediaStore 20 项分页与有界缩略图、系统 picker `data + ClipData` 保序去重、接入 DSH 正式 intake 并观察服务端 ACK 必须分别测试。该 APK 能证明功能可实现，不能证明 DSH Web 当前公开了此桥接能力；它的 20 张上限也不应越过 DSH 模型实际数量/大小限制。本增补没有触发新的 APK 构建或设备操作。
 
 ## 11. 本文交付与实施限制
 
