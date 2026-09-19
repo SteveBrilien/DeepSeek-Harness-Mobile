@@ -92,3 +92,13 @@
 - 同一诊断补丁 `android_unit_test` task-android_unit_test-351af8fdc5d546328fc0 成功，app 44 + recovery 12 + runtime-android 16 = 72/72，无失败；新增 StartupPhaseTimelineTest 2/2。`android_lint` task-android_lint-b2f33c0b22224bb790e4 成功，0 errors/23 warnings；`android_debug` task-android_debug-fcfb90a4b3b547b799f0 成功；`android_signing_verify` task-android_signing_verify-2ce2c1aa9ef24a66a56a 成功，原证书 SHA256 085c7b7dea582ff9295b250f88d0e90e947bd293ac727a8240a747c8c9b24907，git diff --check PASS。
 - 未发布开发 APK app/build/outputs/apk/debug/app-debug.apk：88,870,384 bytes，SHA256 3eadc1ea260d981ac4fc14c57f73f1dc0e5d8941b7be279fbe1302e0380c782a，版本 0.5.0-preview.1-dev / code 27。`runtime_alpine_e2e` task-runtime_alpine_e2e-ff7a6dbb42624f1b88cd 成功/exit0，DSH 0.1.5-rc.2；它验证本地 Linux Runtime 而非 OriginOS 真机，原先首轮 E2E exit3 未定位历史记录仍保留。
 - 本次 adb_devices=[]；未访问私人照片、未安装 APK、未修改 OTA 和 SSH。最近图安全桥/官方 File[] intake、1/2/3/5 图片真机发送、抽屉与切页动画 20 次、冷温热启动量化、覆盖安装/HTTPS 下载验收仍 BLOCKED/NOT_RUN；不勾选完整 PERF/REL，也不声称发布。
+
+
+## 2026-09-20 00:53 CST｜ATT05 最近媒体分页安全收敛（未交付最近图库 UI）
+
+- 源基线 `79f614c`，仅修改 `RecentMediaRepository.kt` 和相应 API30 Robolectric 测试：原始 `limit<=20` 只限制返回数量，遇到大量不支持 MIME/无效大小的记录可能无限扫描。现限制每页最多 `4*limit` 个游标行（最大 80 行），返回结果的 `next` 使用最后**扫描**的合法 seek 键，确保过滤行后的下一页推进；非法 ID/时间键不可可靠续页，fail closed 返回 `Unavailable`。
+- 在交付本页的 URI 身份前重新核验媒体许可；查询期间撤销许可不返回已收集照片。仍仅显式 `page()` 且获 `READ_EXTERNAL_STORAGE` 授权后查询；不预取、缓存或记录用户图库，不增加权限，不向 Browser 暴露任意 `content://`。此限制不是 provider 自身执行/返回时间的绝对上限。
+- 新增三项回归：100 条不支持类型中只扫描前 8 条且后一页继续、游标查询后授权撤销、非法 seek 键拒绝。`android_unit_test` `task-android_unit_test-c70df0a6208e4bd884c3` **succeeded/exit0**，app 47、recovery 12、runtime-android 16，合计 **75/75**、0 failures/errors，RecentMediaRepositoryTest 7/7。
+- `android_lint` `task-android_lint-125aedaf1bd74b1bb1ef` **succeeded/exit0**，0 errors/23 warnings；`android_debug` `task-android_debug-3b4392c41af344a2859d` **succeeded/exit0**；`android_signing_verify` `task-android_signing_verify-226c0ad4f4594d9a9b13` **succeeded/exit0**，签名与原稳定证书 SHA256 `085c7b7dea582ff9295b250f88d0e90e947bd293ac727a8240a747c8c9b24907` 相同。`runtime_alpine_e2e` `task-runtime_alpine_e2e-2cfd9b7e48134f0eb2bd` **succeeded/exit0**，DSH 0.1.5-rc.2，包含 Web 授权与托管附件插件检查；`git diff --check` PASS。此前 E2E 首轮超时的历史记录仍保留，不将此次通过推断为绝无波动。
+- 本地**未发布** APK `app/build/outputs/apk/debug/app-debug.apk`：88,870,677 bytes，SHA256 `9dc3f382e771e7983928c8496b744f53ebb442784fe3bb05334a1857471c82c7`；版本 `0.5.0-preview.1-dev` / code 27。仅本地构建，没有真机安装、HTTPS 下载或 OTA 修改；这不是发布包。
+- ATT05 仍 `PARTIAL/BLOCKED`：缺受控缩略图桥、用户可见的授权近期预选和正式文件入列接口。OriginOS URI grant/Host 1/2/3/5 图发送、抽屉 20 次、切页动画、冷温热启动与覆盖安装全部 `DEVICE_NOT_RUN`；PERF/REL 不因该安全补丁变更完成状态。

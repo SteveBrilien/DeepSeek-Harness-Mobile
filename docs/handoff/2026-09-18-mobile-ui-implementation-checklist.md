@@ -100,3 +100,8 @@ App 版本在 `app/build.gradle.kts` 调为 `0.5.0-preview.1-dev` / `versionCode
 ### 2026-09-19 18:50 CST PERF/REL 阶段性校验
 
 新增 `StartupPhaseTimeline` Activity→Runtime→合法 main-frame positive-root presentation-ready 的只读日志及 2 个单测；composer 可交互明确 NOT_MEASURED。当前源码 72/72 JVM 单测、Lint 0 errors/23 warnings、Debug APK 和历史证书校验通过（具体 job/SHA/边界见 QA）；adb_devices=[]，Vivo 真机冷/温/热、图片 Host 回执、近期图库桥及发布仍 DEVICE_NOT_RUN/BLOCKED。不改 PERF01/PERF02 和 REL02–REL05 勾选状态，不发布 APK/OTA，也不恢复 SSH 救援要求。
+
+
+### 2026-09-20 00:53 CST ATT05 分页安全切片门禁（整体仍未完成）
+
+`RecentMediaRepository` 为授权查询加入至多 4×limit（最大 80）行的本地扫描预算、过滤行后的 seek 游标推进、无效键 fail closed 和输出前权限重检，新增 3 项 API30 回归。`task-android_unit_test-c70df0a6208e4bd884c3` 75/75 PASS；Lint `task-android_lint-125aedaf1bd74b1bb1ef` 0 errors/23 warnings；Debug `task-android_debug-3b4392c41af344a2859d`、签名 `task-android_signing_verify-226c0ad4f4594d9a9b13` 和 Alpine E2E `task-runtime_alpine_e2e-2cfd9b7e48134f0eb2bd` 均 succeeded/exit0；完整回执与本地 APK SHA 见 QA。仅 repo 底座安全加强，**ATT05 不打勾**：近期图片 UI/桥/正式 intake 和 OriginOS 真机尚未完成；不发布 APK 或 OTA，不要求 SSH 救援。

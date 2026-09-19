@@ -27,6 +27,12 @@ internal class RecentMediaRepository(
             context.contentResolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, columns, where, args, order)
         },
 ) {
+    private companion object {
+        // Malformed/unsupported provider rows must not cause an unbounded scan
+        // while the caller waits for a page of valid thumbnails.
+        const val MAX_SCANNED_ROWS_PER_ITEM = 4
+    }
+
     data class Image(val uri: Uri, val id: Long, val dateAddedSeconds: Long, val mimeType: String, val sizeBytes: Long)
     data class Anchor(val dateAddedSeconds: Long, val id: Long)
 
@@ -57,16 +63,24 @@ internal class RecentMediaRepository(
                 val mimeIndex = rows.getColumnIndexOrThrow(mime)
                 val sizeIndex = rows.getColumnIndexOrThrow(size)
                 val images = ArrayList<Image>(limit)
-                while (images.size < limit && rows.moveToNext()) {
+                var scanned = 0
+                var lastScanned: Anchor? = null
+                while (images.size < limit && scanned < limit * MAX_SCANNED_ROWS_PER_ITEM && rows.moveToNext()) {
+                    scanned++
                     val entryId = rows.getLong(idIndex)
                     val date = rows.getLong(addedIndex)
+                    // Invalid seek keys cannot be paginated without skipping/looping.
+                    if (entryId <= 0L || date < 0L) return Result.Unavailable
+                    lastScanned = Anchor(date, entryId)
                     val mediaType = rows.getString(mimeIndex).orEmpty().lowercase(java.util.Locale.ROOT)
                     val bytes = rows.getLong(sizeIndex)
-                    if (entryId <= 0L || date < 0L || bytes <= 0L || !mediaType.startsWith("image/")) continue
+                    if (bytes <= 0L || !mediaType.startsWith("image/")) continue
                     images.add(Image(ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, entryId), entryId, date, mediaType, bytes))
                 }
-                // Do not cache media identities across permission revocation or Session changes.
-                Result.Items(images, images.lastOrNull()?.let { Anchor(it.dateAddedSeconds, it.id) })
+                // Permission revocation mid-query must not expose identities.
+                if (!permissionGranted()) return Result.PermissionRequired
+                // Advance through scanned invalid MIME/size rows to avoid repeats.
+                Result.Items(images, lastScanned)
             }
         } catch (_: SecurityException) {
             Result.PermissionRequired
