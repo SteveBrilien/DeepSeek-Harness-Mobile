@@ -46,6 +46,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.stevebrilien.dshmobile.BuildConfig
+import com.stevebrilien.dshmobile.DshMobileApplication
 import com.stevebrilien.dshmobile.runtime.RuntimeSupervisor
 import java.io.File
 import java.util.UUID
@@ -125,6 +126,10 @@ private fun DshWebClient(
 ) {
     val context = LocalContext.current
     val diagnostics = remember(context) { DshWebViewDiagnostics(context.applicationContext) }
+    val startupTimeline = (context.applicationContext as? DshMobileApplication)?.startupTimeline
+    LaunchedEffect(startupTimeline) {
+        startupTimeline?.markRuntimeReady()?.let(diagnostics::append)
+    }
     // ActivityResult can arrive after navigation or composition disposal. The gate
     // belongs to the long-lived WebView host, not the transient composable.
     val chooser = hostState.fileChooserGate
@@ -475,6 +480,12 @@ class DshWebViewHostState {
                 return@install
             }
             latestPresentationTelemetry = telemetry
+            if (telemetry.phase == "presentation-ready" &&
+                (telemetry.rootWidth ?: 0.0) > 0.0 && (telemetry.rootHeight ?: 0.0) > 0.0
+            ) {
+                (view.context.applicationContext as? DshMobileApplication)?.startupTimeline
+                    ?.markPresentationReady()?.let(diagnostics::append)
+            }
         }
     }
 

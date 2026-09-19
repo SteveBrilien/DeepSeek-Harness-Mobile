@@ -96,3 +96,7 @@ App 版本在 `app/build.gradle.kts` 调为 `0.5.0-preview.1-dev` / `versionCode
 
 ### 21:16 CST ATT04 门禁更新
 本地 70/70 单测、Lint 0 errors/23 warnings、Alpine E2E 单独重跑 PASS、debug build + stable signer 均有 task/job 记录（见 QA）。首次并发 E2E exit3 已如实记录。ATT04 仅 launcher 迟到结果隔离切片具备 JVM 证据；OriginOS 真机 callback/权限与 Host 回执尚未执行，保持总项未完成。当前调试 APK 是本地候选，release/OTA 不变。
+
+### 2026-09-19 18:50 CST PERF/REL 阶段性校验
+
+新增 `StartupPhaseTimeline` Activity→Runtime→合法 main-frame positive-root presentation-ready 的只读日志及 2 个单测；composer 可交互明确 NOT_MEASURED。当前源码 72/72 JVM 单测、Lint 0 errors/23 warnings、Debug APK 和历史证书校验通过（具体 job/SHA/边界见 QA）；adb_devices=[]，Vivo 真机冷/温/热、图片 Host 回执、近期图库桥及发布仍 DEVICE_NOT_RUN/BLOCKED。不改 PERF01/PERF02 和 REL02–REL05 勾选状态，不发布 APK/OTA，也不恢复 SSH 救援要求。

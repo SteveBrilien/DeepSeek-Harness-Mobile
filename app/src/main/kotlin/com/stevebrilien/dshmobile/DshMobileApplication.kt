@@ -2,9 +2,11 @@ package com.stevebrilien.dshmobile
 
 import android.app.Application
 import com.stevebrilien.dshmobile.runtime.RuntimeSupervisor
+import com.stevebrilien.dshmobile.ui.StartupPhaseTimeline
 
 /** Process-wide application kernel for long-lived control-plane coordinators. */
 class DshMobileApplication : Application() {
+    internal val startupTimeline = StartupPhaseTimeline()
     val runtimeSupervisor: RuntimeSupervisor by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         RuntimeSupervisor(this)
     }
