@@ -73,6 +73,37 @@ class AndroidFileChooserResultTest {
         )
     }
 
+    @Test fun oversizedPickerResultsFailClosedInsteadOfForwardingPartialBatches() {
+        val many = (1..65).map { Uri.parse("content://picker.test/$it") }
+        assertNull(AndroidFileChooserResult.resolve(Activity.RESULT_OK, null, multiple, many.toTypedArray()))
+        assertArrayEquals(
+            many.take(64).toTypedArray(),
+            AndroidFileChooserResult.resolve(Activity.RESULT_OK, null, multiple, many.take(64).toTypedArray()),
+        )
+        val overflowingClip = ClipData.newUri(RuntimeEnvironment.getApplication().contentResolver, "test", first)
+        repeat(64) { overflowingClip.addItem(ClipData.Item(Uri.parse("content://picker.test/clip-$it"))) }
+        assertNull(AndroidFileChooserResult.resolve(
+            Activity.RESULT_OK, Intent().apply { clipData = overflowingClip }, multiple, null,
+        ))
+        val clipAtLimit = ClipData.newUri(RuntimeEnvironment.getApplication().contentResolver, "test", first)
+        repeat(63) { clipAtLimit.addItem(ClipData.Item(Uri.parse("content://picker.test/clip-$it"))) }
+        assertNull(AndroidFileChooserResult.resolve(
+            Activity.RESULT_OK,
+            Intent().apply { clipData = clipAtLimit; data = Uri.parse("content://picker.test/extra") },
+            multiple,
+            null,
+        ))
+    }
+
+    @Test fun malformedContentUriWithoutAuthorityNeverReachesWebView() {
+        val invalid = Uri.parse("content:///private/image")
+        assertNull(AndroidFileChooserResult.resolve(Activity.RESULT_OK, null, single, arrayOf(invalid)))
+        assertArrayEquals(
+            arrayOf(first),
+            AndroidFileChooserResult.resolve(Activity.RESULT_OK, null, multiple, arrayOf(invalid, first)),
+        )
+    }
+
     @Test fun cancelAndEmptyResultsDoNotReturnUris() {
         assertNull(AndroidFileChooserResult.resolve(Activity.RESULT_CANCELED, pickerResult(), multiple, arrayOf(first)))
         assertNull(AndroidFileChooserResult.resolve(Activity.RESULT_OK, Intent(), multiple, null))

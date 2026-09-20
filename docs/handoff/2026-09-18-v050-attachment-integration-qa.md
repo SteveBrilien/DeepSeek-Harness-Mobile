@@ -102,3 +102,12 @@
 - `android_lint` `task-android_lint-125aedaf1bd74b1bb1ef` **succeeded/exit0**，0 errors/23 warnings；`android_debug` `task-android_debug-3b4392c41af344a2859d` **succeeded/exit0**；`android_signing_verify` `task-android_signing_verify-226c0ad4f4594d9a9b13` **succeeded/exit0**，签名与原稳定证书 SHA256 `085c7b7dea582ff9295b250f88d0e90e947bd293ac727a8240a747c8c9b24907` 相同。`runtime_alpine_e2e` `task-runtime_alpine_e2e-2cfd9b7e48134f0eb2bd` **succeeded/exit0**，DSH 0.1.5-rc.2，包含 Web 授权与托管附件插件检查；`git diff --check` PASS。此前 E2E 首轮超时的历史记录仍保留，不将此次通过推断为绝无波动。
 - 本地**未发布** APK `app/build/outputs/apk/debug/app-debug.apk`：88,870,677 bytes，SHA256 `9dc3f382e771e7983928c8496b744f53ebb442784fe3bb05334a1857471c82c7`；版本 `0.5.0-preview.1-dev` / code 27。仅本地构建，没有真机安装、HTTPS 下载或 OTA 修改；这不是发布包。
 - ATT05 仍 `PARTIAL/BLOCKED`：缺受控缩略图桥、用户可见的授权近期预选和正式文件入列接口。OriginOS URI grant/Host 1/2/3/5 图发送、抽屉 20 次、切页动画、冷温热启动与覆盖安装全部 `DEVICE_NOT_RUN`；PERF/REL 不因该安全补丁变更完成状态。
+
+
+## 2026-09-21 00:08 CST｜ATT04 第三方 Picker 批量结果边界（非真机验收）
+
+- 基于 `4511692`，审查 `AndroidFileChooserResult.resolve`：此前仅按 content scheme 过滤，第三方 picker 的 `ClipData` 与解析结果可包含大量 URI，调用线程可能进行无界收集并将大量 URI 转交 WebView。现在为多选结果设置最多 64 个 URI 的 Native 传输安全上限，分别预检 ClipData / parsed 的条数并在合并去重过程中检查上限；溢出整批取消（返回 null），**不静默截断后误认用户选择成功**。同时拒绝缺失 authority 的畸形 `content:` URI。64 是 Android Host 传输保护，不覆盖 DSH 官方每模型数量、类型、文件字节限制，也不能证明已取得 URI 实际读取权限。
+- 新增 API30 Robolectric 2 项测试：65 张 parsed/ClipData 整批拒绝、64 张边界有效、两来源合并 65 张拒绝；缺 authority URI 拒绝但其他正常项保留。`AndroidFileChooserResultTest` 9/9。当前全套 `android_unit_test` job `task-android_unit_test-9b4ce0197b8b4578909a` **succeeded/exit0**，app 49 + recovery 12 + runtime-android 16 = **77/77**，0 failure/error。
+- `android_lint` job `task-android_lint-1abd4aa67508435dbcc0` **succeeded/exit0**，报告 **0 errors / 23 warnings**；`android_debug` job `task-android_debug-cf628ef9a0d548fcafaa` **succeeded/exit0**，`android_signing_verify` `task-android_signing_verify-8859a1a3b950404383b8` **succeeded/exit0**、原稳定证书未变；独立 Alpine `runtime_alpine_e2e` `task-runtime_alpine_e2e-57d5ad555f1d480aaa92` **succeeded/exit0**、DSH `0.1.5-rc.2`、Web 鉴权/插件检查通过。`git diff --check` PASS。
+- 本地未发布开发 APK `app/build/outputs/apk/debug/app-debug.apk`：**88,870,884 bytes**、SHA256 `6416fed52e5a68fe089f17c52d9b57821111076d14069ab77fc8ad89ee08f16d`，App 仍 `0.5.0-preview.1-dev` / 27。未发布、未安装、未改 OTA；本切片仅补 URI 入站边界，ATT04 全项不打勾。
+- ADB 本轮 `adb_devices=[]`；Android 11 Vivo 的 URI grant/权限撤销、1/2/3/5 图真实发送、近期图用户可见 UI/正式 onAddFiles 桥、抽屉/切页及冷温热 p50、HTTPS 下载验收仍 `DEVICE_NOT_RUN` 或 `BLOCKED`。不访问私有图库、不要求 SSH 救援、不将 Alpine 或 JVM PASS 冒充 OEM PASS。
