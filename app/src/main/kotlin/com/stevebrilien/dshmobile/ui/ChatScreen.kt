@@ -1,5 +1,6 @@
 package com.stevebrilien.dshmobile.ui
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
@@ -133,6 +134,9 @@ private fun DshWebClient(
     // ActivityResult can arrive after navigation or composition disposal. The gate
     // belongs to the long-lived WebView host, not the transient composable.
     val chooser = hostState.fileChooserGate
+    val recentMediaPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> hostState.recentMediaBridge?.onPermissionResult(granted) }
 
     val cameraLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -194,6 +198,9 @@ private fun DshWebClient(
         hostState.obtain(context).also { view ->
             hostState.ensurePresentationBridge(view, diagnostics)
             hostState.ensureThemeBridge(view, diagnostics)
+            hostState.ensureRecentMediaBridge(view, diagnostics) {
+                recentMediaPermissionLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
             diagnostics.append(
                 "host-obtain host=${hostState.id} view=${viewIdentity(view)} reused=$existing launch=$launchUrl",
             )
@@ -458,6 +465,9 @@ class DshWebViewHostState {
     private var webView: WebView? = null
     private var presentationBridgeView: WebView? = null
     private var themeBridgeView: WebView? = null
+    private var recentBridgeView: WebView? = null
+    internal var recentMediaBridge: RecentMediaWebBridge? = null
+        private set
     private val presentationNavigationState = DshPresentationNavigationState()
     internal var latestPresentationTelemetry: DshPresentationTelemetry? = null
         private set
@@ -497,12 +507,23 @@ class DshWebViewHostState {
         }
     }
 
+    internal fun ensureRecentMediaBridge(view: WebView, diagnostics: DshWebViewDiagnostics,
+                                         requestPermission: () -> Unit) {
+        if (recentBridgeView === view) return
+        recentMediaBridge?.close()
+        recentBridgeView = view
+        recentMediaBridge = RecentMediaWebBridge(view.context.applicationContext, requestPermission).also {
+            diagnostics.append("recent-media-bridge installed=${it.install(view)}")
+        }
+    }
+
     internal fun beginPresentationNavigation(
         launchUrl: String,
         diagnostics: DshWebViewDiagnostics,
         reason: String,
     ) {
         presentationNavigationState.reset()
+        recentMediaBridge?.resetDocument()
         latestPresentationTelemetry = null
         val origin = runCatching {
             Uri.parse(launchUrl).let { "${it.scheme}://${it.host}:${it.port}" }
@@ -548,6 +569,9 @@ class DshWebViewHostState {
             loadedLaunchUrl = null
             presentationBridgeView = null
             themeBridgeView = null
+            recentBridgeView = null
+            recentMediaBridge?.close()
+            recentMediaBridge = null
             presentationNavigationState.reset()
             latestPresentationTelemetry = null
             latestThemeSnapshot = null
@@ -564,6 +588,9 @@ class DshWebViewHostState {
         loadedLaunchUrl = null
         presentationBridgeView = null
         themeBridgeView = null
+        recentBridgeView = null
+        recentMediaBridge?.close()
+        recentMediaBridge = null
         presentationNavigationState.reset()
         latestPresentationTelemetry = null
         latestThemeSnapshot = null

@@ -1,6 +1,6 @@
 {
   "name": "@dsh-mobile/dsh-mobile-attachment-sources",
-  "version": "0.1.1-dshm.1",
+  "version": "0.1.2-dshm.1",
   "description": "Opt-in composer-integrated attachment source buttons using the frozen DSH native file input",
   "type": "module",
   "main": "lib/index.js",

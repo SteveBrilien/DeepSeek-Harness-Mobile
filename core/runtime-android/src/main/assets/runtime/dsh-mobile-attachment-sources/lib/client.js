@@ -8,6 +8,7 @@ window.__ModuleLoader__.load({
     const jsx = require("react/jsx-runtime");
     const inject = ["slots"];
     const PLUGIN_ATTR = "data-dshm-attachment-panel";
+    const PANEL_ID = "dshm-attachment-source-panel";
     const ORIGINAL = new Map();
     const STYLE_ID = "dshm-attachment-sources-style";
     let open = false;
@@ -16,10 +17,64 @@ window.__ModuleLoader__.load({
     function setOpen(value) {
       if (open === value) return;
       open = value;
+      if (!open) { pending.clear(); recent = { state: "idle", photos: [] }; }
       for (const fn of listeners) fn();
     }
     function useOpen() {
       return React.useSyncExternalStore(subscribe, () => open, () => false);
+    }
+    // Native-only optional, read-only media bridge. Never request storage access
+    // on page load, never expose content:// or use a synthetic file selection.
+    let recent = { state: "idle", photos: [] };
+    let nextRequestId = 0;
+    const pending = new Map();
+    function publishRecent(next) {
+      recent = next;
+      for (const fn of listeners) fn();
+    }
+    function useRecent() {
+      return React.useSyncExternalStore(subscribe, () => recent, () => ({ state: "idle", photos: [] }));
+    }
+    function mediaBridge() {
+      const bridge = window.dshMobileRecentMedia;
+      if (!bridge || typeof bridge.postMessage !== "function") return null;
+      if (bridge.__dshmRecentBound !== true) {
+        bridge.__dshmRecentBound = true;
+        bridge.onmessage = (event) => {
+          const data = (() => { try { return JSON.parse(event.data); } catch (_) { return null; } })();
+          if (!data || data.schema !== 1 || !Number.isSafeInteger(data.id)) return;
+          const request = pending.get(data.id);
+          if (!request) return;
+          pending.delete(data.id);
+          if (!open) return;
+          if (data.state === "permission-required" || data.state === "unsupported" || data.state === "unavailable") {
+            publishRecent({ state: data.state, photos: [] });
+          } else if (request.action === "list" && data.state === "items" && Array.isArray(data.photos)) {
+            const photos = data.photos.slice(0, 12)
+              .filter(item => typeof item.key === "string" && /^[a-f0-9-]{36}$/.test(item.key))
+              .map(item => ({ key: item.key, thumbnail: null }));
+            publishRecent({ state: "items", photos });
+            for (const item of photos) requestRecent("thumb", item.key);
+          } else if (request.action === "thumb" && data.state === "thumbnail" &&
+                     typeof data.thumbnail === "string" && data.thumbnail.length <= 48000 &&
+                     data.thumbnail.startsWith("data:image/jpeg;base64,")) {
+            publishRecent({ ...recent, photos: recent.photos.map(item => item.key === request.key
+              ? { ...item, thumbnail: data.thumbnail } : item) });
+          } else if (request.action === "permission" && data.state === "granted") {
+            requestRecent("list");
+          }
+        };
+      }
+      return bridge;
+    }
+    function requestRecent(action, key) {
+      const bridge = mediaBridge();
+      if (!bridge) { publishRecent({ state: "unavailable", photos: [] }); return; }
+      if (pending.size >= 16) return;
+      const id = ++nextRequestId;
+      pending.set(id, { action, key });
+      try { bridge.postMessage(JSON.stringify({ schema: 1, id, action, ...(key ? { key } : {}) })); }
+      catch (_) { pending.delete(id); publishRecent({ state: "unavailable", photos: [] }); }
     }
     // Only use the official rc.2 input; its own React onChange calls intakeFiles,
     // retaining all upstream model/byte/count/Session admission checks. Never
@@ -99,46 +154,98 @@ window.__ModuleLoader__.load({
       font: "inherit", color: "var(--dsw-alias-label-primary)",
       background: "var(--dsw-specific-selector)",
       border: "1px solid var(--dsw-alias-border-l2)",
-      borderRadius: "15px", minHeight: "76px", minWidth: 0,
+      borderRadius: "16px", minHeight: "72px", minWidth: 0,
       flex: "1 1 0", padding: "10px 2px", cursor: "pointer",
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "8px",
     };
-    function SourceTrigger() {
-      const expanded = useOpen();
-      return jsx.jsx("button", {
-        type: "button", "data-dshm-attachment-trigger": "",
-        "aria-label": "添加附件", "aria-expanded": expanded,
-        "aria-controls": "dshm-attachment-source-panel",
-        onClick: () => setOpen(!expanded),
-        style: {
-          background: "transparent", border: 0, cursor: "pointer",
-          color: "var(--dsw-alias-label-primary)",
-          minHeight: "36px", minWidth: "36px", display: "inline-flex",
-          alignItems: "center", justifyContent: "center",
-        },
-        // The upstream Commands control also uses a plus glyph; a paperclip
-        // distinguishes the attachment plugin without hiding Commands.
-        children: sourceIcon("file"),
-      });
+    // The frozen DSH paperclip is the ONLY attachment trigger. Capture its real
+    // click before React's delegated handler; never overwrite official markup,
+    // icon, handlers, FileList, or the browser-owned draft admission path.
+    function paperclipFor(event) {
+      const button = event.target instanceof Element ? event.target.closest("button") : null;
+      if (!button || !button.closest("[data-composer-card]")) return null;
+      const next = button.nextElementSibling;
+      return next instanceof HTMLInputElement && next.type === "file" && !button.disabled && !next.disabled
+        ? button : null;
     }
-    function SourcePanel() {
+    function SourcePanel({ placement }) {
       const expanded = useOpen();
+      const photos = useRecent();
       const [error, setError] = React.useState("");
-      React.useEffect(() => { if (!expanded) setError(""); }, [expanded]);
-      if (!expanded) return null;
+      const [selectedKey, setSelectedKey] = React.useState(null);
+      const phase = document.querySelector('[data-composer-seat]')?.closest('[data-phase]')?.getAttribute('data-phase');
+      // Both list slots may exist in the same mounted conversation: only the
+      // actually visible phase may request gallery data or hold photo handles.
+      const visiblePanel = expanded && (phase == null ? placement === "active" : placement === phase);
+      React.useEffect(() => {
+        if (visiblePanel) {
+          publishRecent({ state: "loading", photos: [] });
+          requestRecent("list");
+        } else if (!expanded) { setError(""); setSelectedKey(null); }
+      }, [visiblePanel]);
+      if (!visiblePanel) return null;
       const pick = (source) => {
-        if (!launchSource(source)) setError("当前 DSH 输入尚未就绪，请返回聊天后重试");
+        if (!launchSource(source)) setError("附件输入暂不可用，请重试");
       };
+      const selected = photos.photos.find(item => item.key === selectedKey && item.thumbnail);
+      const gallery = photos.state === "items"
+        ? jsx.jsx("div", {
+            "data-dshm-recent-rail": "ready",
+            "aria-label": "最近图片，只读预览；选择请通过相册确认",
+            style: { display: "flex", overflowX: "auto", gap: "7px", padding: "4px 0 12px",
+              overscrollBehaviorX: "contain", touchAction: "pan-x" },
+            children: photos.photos.map(item => jsx.jsx("button", {
+              type: "button", "data-dshm-recent-preview": "", key: item.key,
+              "aria-label": "预览最近图片，在相册中确认选择",
+              onClick: () => setSelectedKey(item.key),
+              style: { flex: "0 0 74px", width: "74px", height: "74px", borderRadius: "13px",
+                border: "1px solid var(--dsw-alias-border-l2)", overflow: "hidden", padding: 0,
+                background: "var(--dsw-specific-selector)", color: "var(--dsw-alias-label-secondary)" },
+              children: item.thumbnail
+                ? jsx.jsx("img", { src: item.thumbnail, alt: "近期图片缩略图", loading: "lazy",
+                    style: { width: "100%", height: "100%", objectFit: "cover" } })
+                : "…",
+            }, item.key)),
+          })
+        : photos.state === "permission-required"
+          ? jsx.jsx("button", {
+              type: "button", "data-dshm-recent-permission": "",
+              onClick: () => { publishRecent({ state: "loading", photos: [] }); requestRecent("permission"); },
+              style: { padding: "12px 4px", font: "inherit", border: 0, background: "transparent",
+                color: "var(--dsw-alias-state-business-primary)", textAlign: "left", cursor: "pointer" },
+              children: "允许访问最近照片（仅供预览）",
+            })
+          : jsx.jsx("div", {
+              "data-dshm-recent-rail": photos.state,
+              role: "status",
+              style: { fontSize: "12px", color: "var(--dsw-alias-label-secondary)",
+                padding: "7px 4px 10px", lineHeight: "19px" },
+              children: photos.state === "loading" ? "正在加载最近照片…"
+                : photos.state === "unsupported" ? "当前系统不支持内嵌最近照片；请从相册选择"
+                : photos.state === "unavailable" ? "暂无法显示最近照片；仍可使用相册选择"
+                : "最近照片预览仅在授权后显示",
+            });
       return jsx.jsxs("section", {
-        id: "dshm-attachment-source-panel", [PLUGIN_ATTR]: "",
-        "aria-label": "附件来源",
+        id: placement === "active" ? PANEL_ID : PANEL_ID + "-hero",
+        [PLUGIN_ATTR]: "",
+        "data-dshm-attachment-placement": placement,
+        "aria-label": "附件选择面板",
         style: {
-          boxSizing: "border-box", width: "min(100%, var(--dsh-composer-card-max-width, 748px))",
-          margin: "0 auto 8px", padding: "9px",
-          border: "1px solid var(--dsw-alias-border-l2)", borderRadius: "20px",
-          background: "var(--dsw-specific-input-major)", color: "var(--dsw-alias-label-primary)",
+          boxSizing: "border-box", width: "100%", maxWidth: "var(--dsh-composer-card-max-width, 748px)",
+          margin: "0 auto", padding: "0 12px 10px", minWidth: 0,
+          color: "var(--dsw-alias-label-primary)",
         },
         children: [
+          gallery,
+          selected ? jsx.jsxs("div", { "data-dshm-recent-full-preview": "",
+            style: { display: "flex", alignItems: "center", gap: "10px", paddingBottom: "10px" },
+            children: [jsx.jsx("img", { src: selected.thumbnail, alt: "放大预览",
+              style: { width: "76px", height: "76px", objectFit: "contain" } }),
+              jsx.jsx("button", { type: "button", onClick: () => pick("album"),
+                children: "前往相册勾选" }),
+              jsx.jsx("button", { type: "button", "aria-label": "关闭预览", onClick: () => setSelectedKey(null),
+                children: "×" })],
+          }) : null,
           jsx.jsx("div", {
             style: { display: "flex", gap: "8px", width: "100%" },
             children: [
@@ -155,22 +262,95 @@ window.__ModuleLoader__.load({
       });
     }
     function apply(ctx) {
-      // Only suppress the existing paperclip when this plugin is installed.
-      // The upstream input remains in the DOM, and disabling the plugin
-      // restores the official UI without any DSH package modifications.
       const style = document.createElement("style");
       style.id = STYLE_ID;
-      style.textContent = 'html[data-dsh-mobile-ui="active"] [data-composer-card] button:has(+ input[type="file"]) { display: none !important; }';
+      style.textContent = `
+        /* Preserve the official paperclip and place an expandable attachment
+           dock AFTER the composer. The sticky seat grows UP from the bottom. */
+        html[data-dsh-mobile-ui="active"] [data-composer-seat]:has([data-dshm-attachment-panel]) {
+          z-index: 9;
+        }
+        [data-dshm-attachment-panel] {
+          overflow: hidden;
+          animation: dshm-attachment-rise 210ms cubic-bezier(.2,.8,.2,1) both;
+        }
+        [data-dshm-attachment-placement="hero"] { order: 20; }
+        [data-phase="active"] [data-dshm-attachment-placement="hero"],
+        [data-phase="hero"] [data-dshm-attachment-placement="active"] { display: none; }
+        [data-phase="hero"] [data-conversation-scroll]:has([data-dshm-attachment-panel]) {
+          justify-content: flex-end;
+        }
+        [data-phase="hero"] [data-composer-seat] > div:has([data-dshm-attachment-panel]) {
+          padding-bottom: 0;
+        }
+        @keyframes dshm-attachment-rise {
+          from { opacity: 0; transform: translateY(18px); }
+          78% { opacity: 1; transform: translateY(-2px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        /* Visual-only press response: no layout reflow, pointer capture or
+           synthetic interaction with the official file admission path. */
+        [data-dshm-attachment-source], [data-dshm-recent-preview] {
+          -webkit-tap-highlight-color: transparent;
+          transform-origin: center;
+          transition: transform 170ms cubic-bezier(.2,1.15,.3,1), filter 130ms ease;
+        }
+        [data-dshm-attachment-source]:active, [data-dshm-recent-preview]:active {
+          transform: translateY(1px) scale(.965);
+          filter: brightness(.93);
+          transition-duration: 85ms;
+        }
+        [data-dshm-attachment-source]:focus-visible, [data-dshm-recent-preview]:focus-visible {
+          outline: 2px solid var(--dsw-alias-state-business-primary, #638fff);
+          outline-offset: 2px;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          [data-dshm-attachment-panel] { animation: none; }
+          [data-dshm-attachment-source], [data-dshm-recent-preview] {
+            transition: none;
+          }
+          [data-dshm-attachment-source]:active, [data-dshm-recent-preview]:active {
+            transform: none;
+            filter: brightness(.93);
+          }
+        }
+      `;
       document.head.appendChild(style);
-      ctx.slots.inject("conversation.input.left", () => ctx.slots.register({
-        name: "conversation.input.left", id: "dshm-attachment-trigger", order: 30,
-      }, SourceTrigger));
+      const onClick = (event) => {
+        const button = paperclipFor(event);
+        if (button) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          setOpen(!open);
+          button.setAttribute("aria-expanded", String(open));
+          button.setAttribute("aria-controls", PANEL_ID + (document.querySelector('[data-phase="hero"]') ? "-hero" : ""));
+          return;
+        }
+        // The sources handle their own clicks, including synchronous upstream
+        // input.click(). Close only when clicking outside the composer/dock.
+        const target = event.target;
+        if (open && target instanceof Element &&
+          !target.closest('[data-composer-card], [data-dshm-attachment-panel]')) setOpen(false);
+      };
+      const onKeyDown = (event) => {
+        if (open && event.key === "Escape") { setOpen(false); event.preventDefault(); }
+      };
+      document.addEventListener("click", onClick, true);
+      document.addEventListener("keydown", onKeyDown, true);
       ctx.slots.inject("conversation.input.dock", () => ctx.slots.register({
-        name: "conversation.input.dock", id: "dshm-attachment-panel", order: 70,
-      }, SourcePanel));
+        name: "conversation.input.dock", id: "dshm-attachment-hero", order: 70,
+      }, () => jsx.jsx(SourcePanel, { placement: "hero" })));
+      ctx.slots.inject("conversation.composer.dock", () => ctx.slots.register({
+        name: "conversation.composer.dock", id: "dshm-attachment-active", order: 70,
+      }, () => jsx.jsx(SourcePanel, { placement: "active" })));
       ctx.effect(() => () => {
         setOpen(false);
+        document.removeEventListener("click", onClick, true);
+        document.removeEventListener("keydown", onKeyDown, true);
         for (const input of [...ORIGINAL.keys()]) restoreInput(input);
+        for (const button of document.querySelectorAll('[data-composer-card] button[aria-controls="' + PANEL_ID + '"]')) {
+          button.removeAttribute("aria-controls"); button.removeAttribute("aria-expanded");
+        }
         style.remove();
         listeners.clear();
       });
